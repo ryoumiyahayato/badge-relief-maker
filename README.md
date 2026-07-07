@@ -20,8 +20,11 @@ The current runnable path is a simple single-side proof of concept:
 - Deduplicate repeated vertices.
 - Export optional mask and heightmap previews.
 - Export OBJ.
+- Return a basic manufacturing report with size and warning fields.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
+
+The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
 The intended MVP still includes contour smoothing, stronger mesh repair, STL/GLB export, a desktop GUI and later double-side mode.
 
