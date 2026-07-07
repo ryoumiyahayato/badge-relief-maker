@@ -15,6 +15,9 @@ class ReliefParameters:
     alpha_threshold: int = 1
     minimum_thickness_mm: float = 0.8
     use_mask_footprint: bool = True
+    crop_to_foreground: bool = True
+    crop_padding_px: int = 1
+    max_grid_cells: int = 20000
 
 
 @dataclass(frozen=True)
