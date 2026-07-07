@@ -4,6 +4,8 @@ This file is the execution guide for future Codex work. Do not turn this project
 
 ## Task 1: Make the single image pipeline runnable
 
+Status: first version implemented.
+
 Input:
 
 - A local PNG path
@@ -41,21 +43,30 @@ Acceptance:
 
 ## Task 3: Add base and side closure
 
+Status: first masked footprint version implemented.
+
 Input:
 
-- Front surface mesh
+- Heightmap
+- Foreground mask
 - Base thickness
 - Total dimensions
 
 Output:
 
-- Closed or near closed solid mesh
+- Mask footprint relief solid
 
 Acceptance:
 
 - The mesh has a back plate.
 - Side walls connect the front surface to the back plate.
 - Exported OBJ can be opened by Blender.
+
+Next refinement:
+
+- Replace per-pixel solid cells with contour-based side closure.
+- Remove duplicate vertices.
+- Smooth stair-step boundaries.
 
 ## Task 4: Add STL and GLB export
 
