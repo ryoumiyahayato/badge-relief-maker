@@ -2,7 +2,7 @@ import numpy as np
 from PIL import Image
 
 from badge_relief_maker.app.core.manufacturability_check import basic_report
-from badge_relief_maker.app.core.mask_processing import crop_to_mask, resize_mask_and_heightmap
+from badge_relief_maker.app.core.mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
 from badge_relief_maker.app.core.mesh_exporter import export_ascii_stl, implemented_formats
 from badge_relief_maker.app.core.mesh_optimize import optimize_mesh
@@ -51,6 +51,18 @@ def test_basic_report_includes_size_and_warnings():
     assert report["bbox"]["size_y"] == 5.0
     assert report["estimated_total_thickness_mm"] == 3.0
     assert isinstance(report["warnings"], list)
+
+
+def test_clean_mask_removes_tiny_fragments_and_fills_holes():
+    mask = np.zeros((7, 7), dtype=bool)
+    mask[1:6, 1:6] = True
+    mask[3, 3] = False
+    mask[0, 0] = True
+    cleaned, report = clean_mask(mask, min_component_pixels=2, fill_hole_pixels=2)
+    assert not cleaned[0, 0]
+    assert cleaned[3, 3]
+    assert report["removed_small_component_pixels"] == 1
+    assert report["filled_hole_pixels"] == 1
 
 
 def test_ascii_stl_export_writes_facets(tmp_path):
@@ -105,6 +117,7 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert result.report["export_format"] == "obj"
     assert "bbox" in result.report
     assert "warnings" in result.report
+    assert "mask_cleanup" in result.report
     assert (preview_dir / "mask_preview.png").exists()
     assert (preview_dir / "heightmap_preview.png").exists()
     text = output_path.read_text(encoding="utf-8")
