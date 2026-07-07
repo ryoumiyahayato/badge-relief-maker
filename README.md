@@ -19,14 +19,14 @@ The current runnable path is a simple single-side proof of concept:
 - Add base thickness and side walls.
 - Deduplicate repeated vertices.
 - Export optional mask and heightmap previews.
-- Export OBJ.
+- Export OBJ or ASCII STL.
 - Return a basic manufacturing report with size and warning fields.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
 The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
-The intended MVP still includes contour smoothing, stronger mesh repair, STL/GLB export, a desktop GUI and later double-side mode.
+The intended MVP still includes contour smoothing, stronger mesh repair, GLB export, a desktop GUI and later double-side mode.
 
 ## Planned modes
 
@@ -40,8 +40,16 @@ Input one front image and one back image, align both sides, generate relief for 
 
 ## CLI proof of concept
 
+Export OBJ:
+
 ```bash
 python -m badge_relief_maker.app --input input.png --output output.obj --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
+```
+
+Export ASCII STL:
+
+```bash
+python -m badge_relief_maker.app --input input.png --output output.stl --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
 ```
 
 To export mask and heightmap preview images:
@@ -68,13 +76,13 @@ Disable foreground crop when debugging full image scale:
 python -m badge_relief_maker.app --input input.png --output output.obj --no-crop
 ```
 
-This command currently exports OBJ only. It should be treated as a first pipeline test, not a production-grade model.
+This command should be treated as a first pipeline test, not a production-grade model.
 
 ## Suggested development order
 
 1. Improve single-side relief generation from a clean PNG.
 2. Replace pixel-cell footprint with contour-based side closure.
-3. Add STL and GLB export.
+3. Add GLB export.
 4. Add mesh repair and manufacturing checks.
 5. Add simple PySide6 GUI.
 6. Add double-side alignment and solid generation.
