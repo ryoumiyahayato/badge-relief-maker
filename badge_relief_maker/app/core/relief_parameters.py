@@ -18,6 +18,9 @@ class ReliefParameters:
     crop_to_foreground: bool = True
     crop_padding_px: int = 1
     max_grid_cells: int = 20000
+    min_component_pixels: int = 1
+    fill_hole_pixels: int = 0
+    mask_smooth_iterations: int = 0
 
 
 @dataclass(frozen=True)
