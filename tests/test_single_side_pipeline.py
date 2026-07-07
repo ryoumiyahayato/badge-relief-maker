@@ -1,6 +1,7 @@
 import numpy as np
 from PIL import Image
 
+from badge_relief_maker.app.core.mask_processing import crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
 from badge_relief_maker.app.core.mesh_optimize import optimize_mesh
 from badge_relief_maker.app.core.relief_parameters import ReliefParameters
@@ -32,9 +33,29 @@ def test_optimize_mesh_deduplicates_vertices():
     assert len(new_faces) == 2
 
 
+def test_crop_to_mask_returns_bbox():
+    mask = np.zeros((6, 6), dtype=bool)
+    mask[2:4, 2:5] = True
+    heightmap = np.ones((6, 6), dtype=np.float32)
+    new_mask, new_heightmap, box = crop_to_mask(mask, heightmap, padding=0)
+    assert box == (2, 2, 5, 4)
+    assert new_mask.shape == (2, 3)
+    assert new_heightmap.shape == (2, 3)
+
+
+def test_resize_mask_and_heightmap_limits_cells():
+    mask = np.ones((100, 100), dtype=bool)
+    heightmap = np.ones((100, 100), dtype=np.float32)
+    new_mask, new_heightmap, scale = resize_mask_and_heightmap(mask, heightmap, max_cells=2500)
+    assert new_mask.size <= 2500
+    assert new_heightmap.shape == new_mask.shape
+    assert scale < 1.0
+
+
 def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
-    image = Image.new("RGBA", (4, 4), (0, 0, 0, 0))
-    image.putpixel((1, 1), (255, 255, 255, 255))
+    image = Image.new("RGBA", (6, 6), (0, 0, 0, 0))
+    image.putpixel((2, 2), (255, 255, 255, 255))
+    image.putpixel((3, 2), (255, 255, 255, 255))
     image_path = tmp_path / "input.png"
     output_path = tmp_path / "output.obj"
     preview_dir = tmp_path / "previews"
@@ -47,6 +68,7 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert result.report["vertex_count"] > 0
     assert result.report["optimized_vertex_count"] <= result.report["raw_vertex_count"]
     assert result.report["footprint_mode"] == "mask"
+    assert result.report["shape_after_crop"][0] <= result.report["original_shape"][0]
     assert (preview_dir / "mask_preview.png").exists()
     assert (preview_dir / "heightmap_preview.png").exists()
     text = output_path.read_text(encoding="utf-8")
