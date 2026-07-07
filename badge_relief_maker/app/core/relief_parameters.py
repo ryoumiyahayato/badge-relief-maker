@@ -14,6 +14,7 @@ class ReliefParameters:
     invert_height: bool = False
     alpha_threshold: int = 1
     minimum_thickness_mm: float = 0.8
+    use_mask_footprint: bool = True
 
 
 @dataclass(frozen=True)
