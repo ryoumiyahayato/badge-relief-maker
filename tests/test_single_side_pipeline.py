@@ -4,6 +4,7 @@ from PIL import Image
 from badge_relief_maker.app.core.manufacturability_check import basic_report
 from badge_relief_maker.app.core.mask_processing import crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
+from badge_relief_maker.app.core.mesh_exporter import export_ascii_stl, implemented_formats
 from badge_relief_maker.app.core.mesh_optimize import optimize_mesh
 from badge_relief_maker.app.core.relief_parameters import ReliefParameters
 from badge_relief_maker.app.core.single_side_pipeline import build_single_side_relief
@@ -44,6 +45,19 @@ def test_basic_report_includes_size_and_warnings():
     assert isinstance(report["warnings"], list)
 
 
+def test_ascii_stl_export_writes_facets(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    faces = np.asarray([[0, 1, 2]], dtype=np.int64)
+    output = tmp_path / "mesh.stl"
+    export_ascii_stl(output, vertices, faces)
+    text = output.read_text(encoding="utf-8")
+    assert text.startswith("solid")
+    assert "facet normal" in text
+    assert "vertex" in text
+    assert "endsolid" in text
+    assert {"obj", "stl"}.issubset(implemented_formats())
+
+
 def test_crop_to_mask_returns_bbox():
     mask = np.zeros((6, 6), dtype=bool)
     mask[2:4, 2:5] = True
@@ -80,6 +94,7 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert result.report["optimized_vertex_count"] <= result.report["raw_vertex_count"]
     assert result.report["footprint_mode"] == "mask"
     assert result.report["shape_after_crop"][0] <= result.report["original_shape"][0]
+    assert result.report["export_format"] == "obj"
     assert "bbox" in result.report
     assert "warnings" in result.report
     assert (preview_dir / "mask_preview.png").exists()
@@ -87,3 +102,18 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     text = output_path.read_text(encoding="utf-8")
     assert "v " in text
     assert "f " in text
+
+
+def test_single_side_pipeline_writes_stl(tmp_path):
+    image = Image.new("RGBA", (4, 4), (255, 255, 255, 255))
+    image_path = tmp_path / "input.png"
+    output_path = tmp_path / "output.stl"
+    image.save(image_path)
+
+    result = build_single_side_relief(image_path, output_path, ReliefParameters(width_mm=5.0, height_mm=5.0))
+
+    assert output_path.exists()
+    assert result.report["export_format"] == "stl"
+    text = output_path.read_text(encoding="utf-8")
+    assert text.startswith("solid")
+    assert "facet normal" in text
