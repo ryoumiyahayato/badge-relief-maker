@@ -8,7 +8,7 @@ from .manufacturability_check import basic_report
 from .mask_generator import alpha_mask, luminance_mask
 from .mask_processing import crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_masked_relief_solid
-from .mesh_exporter import export_obj
+from .mesh_exporter import export_mesh
 from .mesh_optimize import optimize_mesh
 from .preview_exporter import save_heightmap_preview, save_mask_preview
 from .relief_parameters import ReliefBuildResult, ReliefParameters
@@ -92,6 +92,8 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     written = None
     if output_path is not None:
         written = str(Path(output_path))
-        export_obj(written, vertices, faces)
+        export_mesh(written, vertices, faces)
+        report["export_path"] = written
+        report["export_format"] = Path(written).suffix.lower().lstrip(".")
 
     return ReliefBuildResult(vertices=vertices, faces=faces, report=report, output_path=written)
