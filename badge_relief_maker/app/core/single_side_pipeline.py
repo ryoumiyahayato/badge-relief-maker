@@ -8,11 +8,13 @@ from .manufacturability_check import basic_report
 from .mask_generator import alpha_mask, luminance_mask
 from .masked_solid_builder import build_masked_relief_solid
 from .mesh_exporter import export_obj
+from .mesh_optimize import optimize_mesh
+from .preview_exporter import save_heightmap_preview, save_mask_preview
 from .relief_parameters import ReliefBuildResult, ReliefParameters
 from .solid_builder import build_rectangular_relief_solid
 
 
-def build_single_side_relief(image_path, output_path=None, parameters=None):
+def build_single_side_relief(image_path, output_path=None, parameters=None, preview_dir=None):
     """Build a basic solid relief model from one image.
 
     The default path follows the foreground mask so transparent or dark
@@ -26,6 +28,13 @@ def build_single_side_relief(image_path, output_path=None, parameters=None):
         mask = luminance_mask(rgba)
 
     heightmap = grayscale_heightmap(rgba, mask=mask, invert=params.invert_height)
+    preview_paths = {}
+    if preview_dir is not None:
+        preview_base = Path(preview_dir)
+        preview_base.mkdir(parents=True, exist_ok=True)
+        preview_paths["mask_preview"] = save_mask_preview(mask, preview_base / "mask_preview.png")
+        preview_paths["heightmap_preview"] = save_heightmap_preview(heightmap, preview_base / "heightmap_preview.png")
+
     if params.use_mask_footprint:
         vertices, faces = build_masked_relief_solid(
             heightmap,
@@ -43,9 +52,18 @@ def build_single_side_relief(image_path, output_path=None, parameters=None):
             params.base_thickness_mm,
             params.relief_height_mm,
         )
+
+    raw_vertex_count = int(len(vertices))
+    raw_face_count = int(len(faces))
+    vertices, faces = optimize_mesh(vertices, faces)
     report = basic_report(vertices, faces, params.minimum_thickness_mm)
+    report["raw_vertex_count"] = raw_vertex_count
+    report["raw_face_count"] = raw_face_count
+    report["optimized_vertex_count"] = int(len(vertices))
+    report["optimized_face_count"] = int(len(faces))
     report["mask_pixel_count"] = int(mask.sum())
     report["footprint_mode"] = "mask" if params.use_mask_footprint else "rectangle"
+    report["preview_paths"] = preview_paths
 
     written = None
     if output_path is not None:
