@@ -13,11 +13,13 @@ The current runnable path is a simple single-side proof of concept:
 - Load one image.
 - Build a foreground mask.
 - Convert brightness to a heightmap.
-- Build a rectangular solid relief mesh.
+- Build a masked footprint relief solid by default.
 - Add base thickness and side walls.
 - Export OBJ.
 
-The intended MVP still includes contour trimming, stronger mesh repair, STL/GLB export, a desktop GUI and later double-side mode.
+The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
+
+The intended MVP still includes contour smoothing, stronger mesh repair, STL/GLB export, a desktop GUI and later double-side mode.
 
 ## Planned modes
 
@@ -35,12 +37,18 @@ Input one front image and one back image, align both sides, generate relief for 
 python -m badge_relief_maker.app --input input.png --output output.obj --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
 ```
 
-This command currently exports OBJ only. It uses a rectangular footprint and should be treated as a first pipeline test, not a production-grade model.
+Use the rectangular debugging fallback when needed:
+
+```bash
+python -m badge_relief_maker.app --input input.png --output output.obj --rectangle-footprint
+```
+
+This command currently exports OBJ only. It should be treated as a first pipeline test, not a production-grade model.
 
 ## Suggested development order
 
 1. Improve single-side relief generation from a clean PNG.
-2. Add contour-based footprint trimming.
+2. Replace pixel-cell footprint with contour-based side closure.
 3. Add STL and GLB export.
 4. Add mesh repair and manufacturing checks.
 5. Add simple PySide6 GUI.
