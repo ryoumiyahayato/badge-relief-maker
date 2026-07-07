@@ -80,6 +80,15 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["footprint_mode"] = "mask" if params.use_mask_footprint else "rectangle"
     report["preview_paths"] = preview_paths
 
+    if report["mask_pixel_count"] == 0:
+        report["warnings"].append("mask contains no foreground pixels")
+    elif report["mask_pixel_count"] < 4:
+        report["warnings"].append("mask is very small and may produce an unusable model")
+    if resize_scale < 1.0:
+        report["warnings"].append("input was downsampled before mesh generation")
+    if raw_vertex_count > report["optimized_vertex_count"]:
+        report["warnings"].append("duplicate vertices were merged during optimization")
+
     written = None
     if output_path is not None:
         written = str(Path(output_path))
