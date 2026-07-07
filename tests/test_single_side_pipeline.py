@@ -27,6 +27,14 @@ def test_masked_relief_solid_uses_only_foreground_cells():
     assert len(faces) == 12
 
 
+def test_masked_relief_solid_closes_internal_height_steps():
+    heightmap = np.asarray([[0.25, 1.0]], dtype=np.float32)
+    mask = np.asarray([[True, True]], dtype=bool)
+    vertices, faces = build_masked_relief_solid(heightmap, mask, 10.0, 5.0, 1.0, 4.0)
+    assert len(vertices) > 16
+    assert len(faces) > 20
+
+
 def test_optimize_mesh_deduplicates_vertices():
     vertices = np.asarray([[0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
     faces = np.asarray([[0, 2, 3], [1, 2, 3]], dtype=np.int64)
