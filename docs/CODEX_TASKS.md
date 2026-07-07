@@ -16,16 +16,19 @@ Input:
 Output:
 
 - Vertices and faces
-- OBJ file
+- OBJ or STL file
 - Build report
 
 Acceptance:
 
 - A small test image produces a non empty mesh.
 - OBJ file contains vertex and face records.
+- STL file contains facet records.
 - Smoke test passes.
 
 ## Task 2: Add mask preview assets
+
+Status: first version implemented.
 
 Input:
 
@@ -35,6 +38,7 @@ Output:
 
 - Foreground mask
 - Mask preview image
+- Heightmap preview image
 
 Acceptance:
 
@@ -70,6 +74,8 @@ Next refinement:
 
 ## Task 4: Add STL and GLB export
 
+Status: ASCII STL first version implemented. GLB remains pending.
+
 Input:
 
 - Mesh data
@@ -79,14 +85,17 @@ Output:
 
 - OBJ
 - STL
-- GLB
+- GLB later
 
 Acceptance:
 
 - Unsupported extensions fail with clear error.
 - Exported files are written to the selected output folder.
+- ASCII STL starts with solid and contains facet normal records.
 
 ## Task 5: Add manufacturing report
+
+Status: first advisory report implemented.
 
 Report fields:
 
@@ -94,8 +103,10 @@ Report fields:
 - Face count
 - Bounding box size
 - Thickness parameters
-- Open edge warning if available
-- Minimum feature warning if available
+- Crop and resize metadata
+- Early warnings
+- Open edge warning later
+- Minimum feature warning later
 
 Acceptance:
 
