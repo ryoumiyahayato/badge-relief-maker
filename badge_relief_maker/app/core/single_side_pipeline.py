@@ -6,6 +6,7 @@ from .heightmap_generator import grayscale_heightmap
 from .image_preprocess import load_rgba, normalize_alpha_background
 from .manufacturability_check import basic_report
 from .mask_generator import alpha_mask, luminance_mask
+from .mask_processing import crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_masked_relief_solid
 from .mesh_exporter import export_obj
 from .mesh_optimize import optimize_mesh
@@ -27,7 +28,16 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     if not mask.any():
         mask = luminance_mask(rgba)
 
+    original_shape = tuple(mask.shape)
     heightmap = grayscale_heightmap(rgba, mask=mask, invert=params.invert_height)
+    crop_box = None
+    if params.crop_to_foreground:
+        mask, heightmap, crop_box = crop_to_mask(mask, heightmap, padding=params.crop_padding_px)
+
+    shape_after_crop = tuple(mask.shape)
+    mask, heightmap, resize_scale = resize_mask_and_heightmap(mask, heightmap, params.max_grid_cells)
+    shape_after_resize = tuple(mask.shape)
+
     preview_paths = {}
     if preview_dir is not None:
         preview_base = Path(preview_dir)
@@ -62,6 +72,11 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["optimized_vertex_count"] = int(len(vertices))
     report["optimized_face_count"] = int(len(faces))
     report["mask_pixel_count"] = int(mask.sum())
+    report["original_shape"] = original_shape
+    report["shape_after_crop"] = shape_after_crop
+    report["shape_after_resize"] = shape_after_resize
+    report["crop_box"] = crop_box
+    report["resize_scale"] = resize_scale
     report["footprint_mode"] = "mask" if params.use_mask_footprint else "rectangle"
     report["preview_paths"] = preview_paths
 
