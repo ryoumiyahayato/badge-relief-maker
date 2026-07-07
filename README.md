@@ -15,6 +15,8 @@ The current runnable path is a simple single-side proof of concept:
 - Convert brightness to a heightmap.
 - Build a masked footprint relief solid by default.
 - Add base thickness and side walls.
+- Deduplicate repeated vertices.
+- Export optional mask and heightmap previews.
 - Export OBJ.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
@@ -35,6 +37,12 @@ Input one front image and one back image, align both sides, generate relief for 
 
 ```bash
 python -m badge_relief_maker.app --input input.png --output output.obj --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
+```
+
+To export mask and heightmap preview images:
+
+```bash
+python -m badge_relief_maker.app --input input.png --output output.obj --preview-dir previews
 ```
 
 Use the rectangular debugging fallback when needed:
