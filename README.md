@@ -17,12 +17,15 @@ The current runnable path is a simple single-side proof of concept:
 - Convert brightness to a heightmap.
 - Build a masked footprint relief solid by default.
 - Add base thickness and side walls.
+- Add internal vertical walls where neighboring relief cells have different heights.
 - Deduplicate repeated vertices.
 - Export optional mask and heightmap previews.
 - Export OBJ or ASCII STL.
 - Return a basic manufacturing report with size and warning fields.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
+
+Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
 
 The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
