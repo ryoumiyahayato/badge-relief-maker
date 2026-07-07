@@ -1,0 +1,1 @@
+"""Badge Relief Maker package."""
