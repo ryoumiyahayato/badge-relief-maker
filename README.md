@@ -12,6 +12,8 @@ The current runnable path is a simple single-side proof of concept:
 
 - Load one image.
 - Build a foreground mask.
+- Crop to the foreground bounding box.
+- Downsample very large masks before mesh generation.
 - Convert brightness to a heightmap.
 - Build a masked footprint relief solid by default.
 - Add base thickness and side walls.
@@ -45,10 +47,22 @@ To export mask and heightmap preview images:
 python -m badge_relief_maker.app --input input.png --output output.obj --preview-dir previews
 ```
 
+To control crop and grid size:
+
+```bash
+python -m badge_relief_maker.app --input input.png --output output.obj --crop-padding-px 2 --max-grid-cells 20000
+```
+
 Use the rectangular debugging fallback when needed:
 
 ```bash
 python -m badge_relief_maker.app --input input.png --output output.obj --rectangle-footprint
+```
+
+Disable foreground crop when debugging full image scale:
+
+```bash
+python -m badge_relief_maker.app --input input.png --output output.obj --no-crop
 ```
 
 This command currently exports OBJ only. It should be treated as a first pipeline test, not a production-grade model.
