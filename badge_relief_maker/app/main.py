@@ -7,7 +7,7 @@ from .core.single_side_pipeline import build_single_side_relief
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Build a basic badge relief OBJ from one image.")
+    parser = argparse.ArgumentParser(description="Build a basic badge relief OBJ or STL from one image.")
     parser.add_argument("--input", dest="input_path")
     parser.add_argument("--output", dest="output_path")
     parser.add_argument("--width-mm", type=float, default=80.0)
@@ -19,11 +19,14 @@ def main(argv=None) -> int:
     parser.add_argument("--no-crop", action="store_true")
     parser.add_argument("--crop-padding-px", type=int, default=1)
     parser.add_argument("--max-grid-cells", type=int, default=20000)
+    parser.add_argument("--min-component-pixels", type=int, default=1)
+    parser.add_argument("--fill-hole-pixels", type=int, default=0)
+    parser.add_argument("--mask-smooth-iterations", type=int, default=0)
     parser.add_argument("--preview-dir", dest="preview_dir")
     args = parser.parse_args(argv)
 
     if not args.input_path or not args.output_path:
-        print("Badge Relief Maker scaffold is ready. Provide --input and --output to build an OBJ.")
+        print("Badge Relief Maker scaffold is ready. Provide --input and --output to build an OBJ or STL.")
         return 0
 
     params = ReliefParameters(
@@ -36,6 +39,9 @@ def main(argv=None) -> int:
         crop_to_foreground=not args.no_crop,
         crop_padding_px=args.crop_padding_px,
         max_grid_cells=args.max_grid_cells,
+        min_component_pixels=args.min_component_pixels,
+        fill_hole_pixels=args.fill_hole_pixels,
+        mask_smooth_iterations=args.mask_smooth_iterations,
     )
     result = build_single_side_relief(args.input_path, args.output_path, params, preview_dir=args.preview_dir)
     print(result.report)
