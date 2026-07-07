@@ -12,6 +12,9 @@ The current runnable path is a simple single-side proof of concept:
 
 - Load one image.
 - Build a foreground mask.
+- Remove small isolated mask fragments.
+- Fill small enclosed mask holes.
+- Optionally smooth mask noise with a small majority filter.
 - Crop to the foreground bounding box.
 - Downsample very large masks before mesh generation.
 - Convert brightness to a heightmap.
@@ -27,7 +30,7 @@ The masked footprint mode follows transparent foreground pixels, so it is closer
 
 Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
 
-The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata and early warnings. It does not yet prove that a model is watertight or production safe.
+The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
 The intended MVP still includes contour smoothing, stronger mesh repair, GLB export, a desktop GUI and later double-side mode.
 
@@ -61,10 +64,10 @@ To export mask and heightmap preview images:
 python -m badge_relief_maker.app --input input.png --output output.obj --preview-dir previews
 ```
 
-To control crop and grid size:
+To control crop, grid size and mask cleanup:
 
 ```bash
-python -m badge_relief_maker.app --input input.png --output output.obj --crop-padding-px 2 --max-grid-cells 20000
+python -m badge_relief_maker.app --input input.png --output output.obj --crop-padding-px 2 --max-grid-cells 20000 --min-component-pixels 8 --fill-hole-pixels 16 --mask-smooth-iterations 1
 ```
 
 Use the rectangular debugging fallback when needed:
