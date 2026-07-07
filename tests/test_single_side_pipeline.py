@@ -1,6 +1,7 @@
 import numpy as np
 from PIL import Image
 
+from badge_relief_maker.app.core.manufacturability_check import basic_report
 from badge_relief_maker.app.core.mask_processing import crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
 from badge_relief_maker.app.core.mesh_optimize import optimize_mesh
@@ -31,6 +32,16 @@ def test_optimize_mesh_deduplicates_vertices():
     new_vertices, new_faces = optimize_mesh(vertices, faces)
     assert len(new_vertices) == 3
     assert len(new_faces) == 2
+
+
+def test_basic_report_includes_size_and_warnings():
+    vertices = np.asarray([[0, 0, -1], [10, 0, 2], [0, 5, 2]], dtype=float)
+    faces = np.asarray([[0, 1, 2]], dtype=np.int64)
+    report = basic_report(vertices, faces, minimum_thickness_mm=1.0)
+    assert report["bbox"]["size_x"] == 10.0
+    assert report["bbox"]["size_y"] == 5.0
+    assert report["estimated_total_thickness_mm"] == 3.0
+    assert isinstance(report["warnings"], list)
 
 
 def test_crop_to_mask_returns_bbox():
@@ -69,6 +80,8 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert result.report["optimized_vertex_count"] <= result.report["raw_vertex_count"]
     assert result.report["footprint_mode"] == "mask"
     assert result.report["shape_after_crop"][0] <= result.report["original_shape"][0]
+    assert "bbox" in result.report
+    assert "warnings" in result.report
     assert (preview_dir / "mask_preview.png").exists()
     assert (preview_dir / "heightmap_preview.png").exists()
     text = output_path.read_text(encoding="utf-8")
