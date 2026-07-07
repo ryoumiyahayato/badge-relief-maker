@@ -15,6 +15,7 @@ def main(argv=None) -> int:
     parser.add_argument("--base-mm", type=float, default=2.0)
     parser.add_argument("--relief-mm", type=float, default=3.0)
     parser.add_argument("--invert", action="store_true")
+    parser.add_argument("--rectangle-footprint", action="store_true")
     args = parser.parse_args(argv)
 
     if not args.input_path or not args.output_path:
@@ -27,6 +28,7 @@ def main(argv=None) -> int:
         base_thickness_mm=args.base_mm,
         relief_height_mm=args.relief_mm,
         invert_height=args.invert,
+        use_mask_footprint=not args.rectangle_footprint,
     )
     result = build_single_side_relief(args.input_path, args.output_path, params)
     print(result.report)
