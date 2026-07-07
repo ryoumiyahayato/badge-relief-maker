@@ -6,18 +6,18 @@ The project is not intended to be a general-purpose AI image-to-3D system. Its f
 
 ## Current scope
 
-The first implementation should prioritize local/offline processing so that it can run on ordinary Windows laptops. Heavy image-to-3D AI models, cloud APIs and GPU servers are intentionally outside the MVP.
+The first implementation prioritizes local/offline processing so it can run on ordinary Windows laptops. Heavy image-to-3D AI models, cloud APIs and GPU servers are intentionally outside the MVP.
 
-The intended MVP focuses on:
+The current runnable path is a simple single-side proof of concept:
 
-- JPG/PNG import.
-- Foreground mask generation.
-- Contour and region extraction.
-- Heightmap generation from image brightness or region layers.
-- Single-face relief mesh creation.
-- Base thickness and simple side closure.
-- Mesh repair checks.
-- STL/OBJ/GLB export.
+- Load one image.
+- Build a foreground mask.
+- Convert brightness to a heightmap.
+- Build a rectangular solid relief mesh.
+- Add base thickness and side walls.
+- Export OBJ.
+
+The intended MVP still includes contour trimming, stronger mesh repair, STL/GLB export, a desktop GUI and later double-side mode.
 
 ## Planned modes
 
@@ -29,23 +29,21 @@ Input one front image and generate a raised relief surface with a flat back, bas
 
 Input one front image and one back image, align both sides, generate relief for each side, connect them by a controlled thickness, and output a closed solid.
 
-## Repository status
+## CLI proof of concept
 
-This repository currently contains the project scaffold, module layout, placeholder implementations and planning documents. It is not a finished application yet.
+```bash
+python -m badge_relief_maker.app --input input.png --output output.obj --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
+```
+
+This command currently exports OBJ only. It uses a rectangular footprint and should be treated as a first pipeline test, not a production-grade model.
 
 ## Suggested development order
 
-1. Single-side relief generation from a clean PNG.
-2. Mesh export and basic manufacturing checks.
-3. Simple PySide6 GUI.
-4. Double-side alignment and solid generation.
-5. Region-based manual height editing.
-6. Optional AI-assisted segmentation or cleanup.
-
-## Run placeholder entry point
-
-```bash
-python -m badge_relief_maker.app
-```
-
-At this stage, the command only verifies that the package entry point exists.
+1. Improve single-side relief generation from a clean PNG.
+2. Add contour-based footprint trimming.
+3. Add STL and GLB export.
+4. Add mesh repair and manufacturing checks.
+5. Add simple PySide6 GUI.
+6. Add double-side alignment and solid generation.
+7. Add region-based manual height editing.
+8. Add optional AI-assisted segmentation or cleanup.
