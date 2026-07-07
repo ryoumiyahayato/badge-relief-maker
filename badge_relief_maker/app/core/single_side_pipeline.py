@@ -6,7 +6,7 @@ from .heightmap_generator import grayscale_heightmap
 from .image_preprocess import load_rgba, normalize_alpha_background
 from .manufacturability_check import basic_report
 from .mask_generator import alpha_mask, luminance_mask
-from .mask_processing import crop_to_mask, resize_mask_and_heightmap
+from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_masked_relief_solid
 from .mesh_exporter import export_mesh
 from .mesh_optimize import optimize_mesh
@@ -29,6 +29,13 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         mask = luminance_mask(rgba)
 
     original_shape = tuple(mask.shape)
+    original_mask_pixel_count = int(mask.sum())
+    mask, cleanup_report = clean_mask(
+        mask,
+        min_component_pixels=params.min_component_pixels,
+        fill_hole_pixels=params.fill_hole_pixels,
+        smooth_iterations=params.mask_smooth_iterations,
+    )
     heightmap = grayscale_heightmap(rgba, mask=mask, invert=params.invert_height)
     crop_box = None
     if params.crop_to_foreground:
@@ -71,7 +78,9 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["raw_face_count"] = raw_face_count
     report["optimized_vertex_count"] = int(len(vertices))
     report["optimized_face_count"] = int(len(faces))
+    report["original_mask_pixel_count"] = original_mask_pixel_count
     report["mask_pixel_count"] = int(mask.sum())
+    report["mask_cleanup"] = cleanup_report
     report["original_shape"] = original_shape
     report["shape_after_crop"] = shape_after_crop
     report["shape_after_resize"] = shape_after_resize
@@ -84,6 +93,12 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         report["warnings"].append("mask contains no foreground pixels")
     elif report["mask_pixel_count"] < 4:
         report["warnings"].append("mask is very small and may produce an unusable model")
+    if cleanup_report["removed_small_component_pixels"] > 0:
+        report["warnings"].append("small isolated mask fragments were removed")
+    if cleanup_report["filled_hole_pixels"] > 0:
+        report["warnings"].append("small mask holes were filled")
+    if cleanup_report["smooth_iterations"] > 0:
+        report["warnings"].append("mask smoothing was applied")
     if resize_scale < 1.0:
         report["warnings"].append("input was downsampled before mesh generation")
     if raw_vertex_count > report["optimized_vertex_count"]:
