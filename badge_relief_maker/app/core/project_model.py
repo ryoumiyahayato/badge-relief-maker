@@ -1,6 +1,6 @@
 """Project data model for medal relief projects."""
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 
 
@@ -10,6 +10,15 @@ PROJECT_FILE_VERSION = 1
 def utc_now_iso():
     """Return a stable UTC timestamp string."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _dataclass_from_dict(model_type, data, **defaults):
+    """Create a dataclass instance while ignoring unknown saved fields."""
+    raw = dict(defaults)
+    if isinstance(data, dict):
+        raw.update(data)
+    allowed = {item.name for item in fields(model_type)}
+    return model_type(**{key: value for key, value in raw.items() if key in allowed})
 
 
 @dataclass
@@ -132,15 +141,15 @@ class MedalProject:
         project.same_physical_object = bool(data.get("same_physical_object", True))
 
         if data.get("front_image"):
-            project.front_image = ImageRecord(**data["front_image"])
+            project.front_image = _dataclass_from_dict(ImageRecord, data["front_image"])
         if data.get("back_image"):
-            project.back_image = ImageRecord(**data["back_image"])
-        project.reference_images = [ImageRecord(**item) for item in data.get("reference_images", [])]
-        project.outline = OutlineData(**data.get("outline", {}))
-        project.dimensions = DimensionParameters(**data.get("dimensions", {}))
-        project.edge = EdgeParameters(**data.get("edge", {}))
-        project.front_relief = ReliefSideParameters(**data.get("front_relief", {}))
-        project.back_relief = ReliefSideParameters(**data.get("back_relief", {"enabled": False}))
-        project.manual_markers = [ManualMarker(**item) for item in data.get("manual_markers", [])]
-        project.export_history = [ExportRecord(**item) for item in data.get("export_history", [])]
+            project.back_image = _dataclass_from_dict(ImageRecord, data["back_image"])
+        project.reference_images = [_dataclass_from_dict(ImageRecord, item) for item in data.get("reference_images", [])]
+        project.outline = _dataclass_from_dict(OutlineData, data.get("outline", {}))
+        project.dimensions = _dataclass_from_dict(DimensionParameters, data.get("dimensions", {}))
+        project.edge = _dataclass_from_dict(EdgeParameters, data.get("edge", {}))
+        project.front_relief = _dataclass_from_dict(ReliefSideParameters, data.get("front_relief", {}))
+        project.back_relief = _dataclass_from_dict(ReliefSideParameters, data.get("back_relief", {}), enabled=False)
+        project.manual_markers = [_dataclass_from_dict(ManualMarker, item) for item in data.get("manual_markers", [])]
+        project.export_history = [_dataclass_from_dict(ExportRecord, item) for item in data.get("export_history", [])]
         return project
