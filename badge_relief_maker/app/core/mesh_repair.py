@@ -4,17 +4,29 @@ import numpy as np
 
 
 def _as_vertices(vertices):
-    vertices = np.asarray(vertices, dtype=float)
+    try:
+        vertices = np.asarray(vertices, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("vertices must be an Nx3 array") from exc
     if vertices.size == 0:
         return np.zeros((0, 3), dtype=float)
-    return vertices.reshape((-1, 3))
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError("vertices must be an Nx3 array")
+    return vertices
 
 
 def _as_faces(faces):
-    faces = np.asarray(faces, dtype=np.int64)
-    if faces.size == 0:
+    try:
+        face_values = np.asarray(faces, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("faces must be an Nx3 array") from exc
+    if face_values.size == 0:
         return np.zeros((0, 3), dtype=np.int64)
-    return faces.reshape((-1, 3))
+    if face_values.ndim != 2 or face_values.shape[1] != 3:
+        raise ValueError("faces must be an Nx3 array")
+    if not np.isfinite(face_values).all() or not np.equal(face_values, np.rint(face_values)).all():
+        raise ValueError("faces must contain finite integer indices")
+    return face_values.astype(np.int64)
 
 
 def face_count(faces):
@@ -38,7 +50,7 @@ def remove_invalid_faces(vertices, faces):
 def triangle_areas(vertices, faces):
     """Return triangle areas for triangular faces."""
     vertices = _as_vertices(vertices)
-    faces = _as_faces(faces)
+    faces, _ = remove_invalid_faces(vertices, faces)
     if len(faces) == 0:
         return np.zeros((0,), dtype=float)
     a = vertices[faces[:, 0]]
@@ -52,9 +64,12 @@ def remove_zero_area_faces(vertices, faces, epsilon=1e-12):
     faces = _as_faces(faces)
     if len(faces) == 0:
         return faces, 0
-    areas = triangle_areas(vertices, faces)
+    valid_faces, invalid_removed = remove_invalid_faces(vertices, faces)
+    if len(valid_faces) == 0:
+        return valid_faces, int(invalid_removed)
+    areas = triangle_areas(vertices, valid_faces)
     keep = areas > float(epsilon)
-    return faces[keep], int(len(faces) - int(keep.sum()))
+    return valid_faces[keep], int(invalid_removed + len(valid_faces) - int(keep.sum()))
 
 
 def remove_duplicate_faces(faces):
@@ -69,9 +84,9 @@ def remove_duplicate_faces(faces):
 
 
 def remove_unreferenced_vertices(vertices, faces):
-    """Remove vertices that are not used by any face and remap faces."""
+    """Remove vertices that are not used by valid faces and remap faces."""
     vertices = _as_vertices(vertices)
-    faces = _as_faces(faces)
+    faces, _ = remove_invalid_faces(vertices, faces)
     if len(vertices) == 0 or len(faces) == 0:
         return np.zeros((0, 3), dtype=float), np.zeros((0, 3), dtype=np.int64), int(len(vertices))
 
