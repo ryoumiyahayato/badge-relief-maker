@@ -15,7 +15,7 @@ The project now has these layers:
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
 - A split OBJ exporter for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
-- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, mesh repair pass and topology report for early warnings.
+- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, outer rim height boost, mesh repair pass and topology report for early warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
 
@@ -26,6 +26,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Optionally smooth mask noise with a small majority filter.
 - Crop to the foreground bounding box.
 - Downsample very large masks before mesh generation.
+- Optionally apply an outer rim height boost along the foreground boundary.
 - Extract outline boundary metrics from the final mask.
 - Trace boundary loops, remove collinear contour points and calculate smoothed-loop metrics.
 - Convert brightness to a heightmap.
@@ -37,7 +38,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Run basic mesh repair to remove invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
 - Export optional mask and heightmap previews.
 - Export OBJ or ASCII STL.
-- Return a basic manufacturing report with size, outline, topology, repair metadata and warning fields.
+- Return a basic manufacturing report with size, outline, rim, topology, repair metadata and warning fields.
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
 
@@ -49,13 +50,15 @@ The double-side placeholder workflow requires both front and back images. It com
 
 The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder uses the external mask boundary as a separate side-wall layer. The optional smoothed side wall path can already export experimental smoother walls, but it may need Blender cleanup because it does not yet share vertices perfectly with the pixel-cell top surface.
 
+The outer rim height boost raises foreground cells near the mask boundary before mesh generation. This is a simple way to create a badge-like raised border; it is not yet a true bevelled or rounded rim mesh.
+
 The topology report counts unique edges, boundary edges and non-manifold edges. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
 Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
 
-The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
+The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, rim metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
 The intended MVP still includes stronger side/rim generation, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
 
@@ -167,6 +170,12 @@ Use experimental smoothed side walls:
 python -m badge_relief_maker.app --input input.png --output output.obj --smoothed-side-walls --contour-smoothing-iterations 1
 ```
 
+Add a simple raised outer rim:
+
+```bash
+python -m badge_relief_maker.app --input input.png --output output.obj --rim-width-px 2 --rim-height-mm 1.0
+```
+
 To export mask and heightmap preview images:
 
 ```bash
@@ -195,7 +204,7 @@ These commands should be treated as first pipeline tests, not production-grade m
 
 ## Suggested development order
 
-1. Add bevel/rim parameters.
+1. Add bevel/rim mesh parameters beyond heightmap boosting.
 2. Add stronger mesh repair and hole-fill actions.
 3. Add GLB export.
 4. Expand PySide6 UI panels.
