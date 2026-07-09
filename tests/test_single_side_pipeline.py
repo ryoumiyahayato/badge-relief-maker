@@ -1,6 +1,7 @@
 import numpy as np
 from PIL import Image
 
+from badge_relief_maker.app.core.contour_side_builder import build_contour_side_walls
 from badge_relief_maker.app.core.manufacturability_check import basic_report, edge_usage_report
 from badge_relief_maker.app.core.mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
@@ -53,6 +54,26 @@ def test_outline_report_counts_single_cell_boundary():
     assert report["vertical_boundary_edge_count"] == 2
     assert report["boundary_length_mm"] == 12.0
     assert report["foreground_pixel_count"] == 1
+
+
+def test_contour_side_walls_follow_single_cell_boundary():
+    heightmap = np.zeros((3, 3), dtype=np.float32)
+    heightmap[1, 1] = 1.0
+    mask = np.zeros((3, 3), dtype=bool)
+    mask[1, 1] = True
+    vertices, faces = build_contour_side_walls(heightmap, mask, 9.0, 9.0, 1.0, 2.0)
+    assert vertices.shape == (16, 3)
+    assert faces.shape == (8, 3)
+    assert float(vertices[:, 2].min()) == -1.0
+    assert float(vertices[:, 2].max()) == 2.0
+
+
+def test_contour_side_walls_returns_stable_empty_arrays():
+    heightmap = np.zeros((3, 3), dtype=np.float32)
+    mask = np.zeros((3, 3), dtype=bool)
+    vertices, faces = build_contour_side_walls(heightmap, mask, 9.0, 9.0, 1.0, 2.0)
+    assert vertices.shape == (0, 3)
+    assert faces.shape == (0, 3)
 
 
 def test_masked_relief_solid_closes_internal_height_steps():
