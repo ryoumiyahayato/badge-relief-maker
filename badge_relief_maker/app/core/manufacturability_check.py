@@ -1,5 +1,7 @@
 """Basic manufacturability report helpers."""
 
+from collections import Counter
+
 import numpy as np
 
 
@@ -38,6 +40,37 @@ def mesh_bounds(vertices):
     }
 
 
+def edge_usage_report(faces):
+    """Return simple open-edge and non-manifold edge diagnostics.
+
+    The check assumes triangular faces. It is intentionally lightweight and is
+    suitable for warnings, not for proving production-grade mesh validity.
+    """
+    faces = np.asarray(faces, dtype=np.int64)
+    if len(faces) == 0:
+        return {
+            "unique_edge_count": 0,
+            "boundary_edge_count": 0,
+            "non_manifold_edge_count": 0,
+            "closed_edge_manifold": False,
+        }
+
+    counter = Counter()
+    for a, b, c in faces:
+        for u, v in [(a, b), (b, c), (c, a)]:
+            edge = tuple(sorted((int(u), int(v))))
+            counter[edge] += 1
+
+    boundary_edges = sum(1 for count in counter.values() if count == 1)
+    non_manifold_edges = sum(1 for count in counter.values() if count > 2)
+    return {
+        "unique_edge_count": int(len(counter)),
+        "boundary_edge_count": int(boundary_edges),
+        "non_manifold_edge_count": int(non_manifold_edges),
+        "closed_edge_manifold": bool(boundary_edges == 0 and non_manifold_edges == 0 and len(counter) > 0),
+    }
+
+
 def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_faces=200000):
     """Return a simple mesh diagnostic report.
 
@@ -48,6 +81,7 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
     vertex_count = int(len(vertices))
     face_count = int(len(faces))
     bounds = mesh_bounds(vertices)
+    topology = edge_usage_report(faces)
     warnings = []
 
     if vertex_count == 0 or face_count == 0:
@@ -56,6 +90,10 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         warnings.append("face count is high for the MVP pipeline")
     if minimum_thickness_mm is not None and bounds["size_z"] < float(minimum_thickness_mm):
         warnings.append("estimated total thickness is below the minimum thickness setting")
+    if topology["boundary_edge_count"] > 0:
+        warnings.append("open boundary edges detected")
+    if topology["non_manifold_edge_count"] > 0:
+        warnings.append("non-manifold edges detected")
 
     return {
         "vertex_count": vertex_count,
@@ -68,7 +106,8 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         },
         "estimated_total_thickness_mm": bounds["size_z"],
         "minimum_thickness_mm": minimum_thickness_mm,
+        "topology": topology,
         "warnings": warnings,
-        "watertight_check": "not implemented",
+        "watertight_check": "edge manifold heuristic only",
         "thin_region_check": "not implemented",
     }
