@@ -17,6 +17,7 @@ from badge_relief_maker.app.core.outline_extractor import (
     trace_boundary_loops,
 )
 from badge_relief_maker.app.core.relief_parameters import ReliefParameters
+from badge_relief_maker.app.core.rim_builder import apply_outer_rim_to_heightmap, boundary_cell_mask, inner_rim_mask
 from badge_relief_maker.app.core.single_side_pipeline import build_single_side_relief
 from badge_relief_maker.app.core.solid_builder import build_rectangular_relief_solid
 
@@ -88,6 +89,29 @@ def test_smooth_closed_loop_and_scale_to_mm():
     assert smoothed[0] == smoothed[-1]
     assert scaled[0] == (5.0, 0.0)
     assert scaled[-1] == scaled[0]
+
+
+def test_outer_rim_masks_expand_inward():
+    mask = np.ones((3, 3), dtype=bool)
+    boundary = boundary_cell_mask(mask)
+    rim_width_one = inner_rim_mask(mask, width_px=1)
+    rim_width_two = inner_rim_mask(mask, width_px=2)
+    assert int(boundary.sum()) == 8
+    assert int(rim_width_one.sum()) == 8
+    assert int(rim_width_two.sum()) == 9
+    assert not rim_width_one[1, 1]
+    assert rim_width_two[1, 1]
+
+
+def test_apply_outer_rim_to_heightmap_boosts_boundary_only():
+    heightmap = np.zeros((3, 3), dtype=np.float32)
+    mask = np.ones((3, 3), dtype=bool)
+    boosted, report = apply_outer_rim_to_heightmap(heightmap, mask, width_px=1, rim_height_mm=1.0, relief_height_mm=2.0)
+    assert report["enabled"] is True
+    assert report["rim_pixel_count"] == 8
+    assert report["boost_normalized"] == 0.5
+    assert float(boosted[0, 0]) == 0.5
+    assert float(boosted[1, 1]) == 0.0
 
 
 def test_contour_side_walls_follow_single_cell_boundary():
@@ -299,6 +323,7 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert "mesh_repair" in result.report
     assert "topology" in result.report
     assert "outline" in result.report
+    assert "rim" in result.report
     assert result.report["outline"]["boundary_edge_count"] > 0
     assert (preview_dir / "mask_preview.png").exists()
     assert (preview_dir / "heightmap_preview.png").exists()
@@ -329,6 +354,28 @@ def test_single_side_pipeline_can_use_smoothed_side_walls(tmp_path):
     assert result.report["side_wall_mode"] == "smoothed_contour"
     assert result.report["outline"]["smoothing_iterations"] == 1
     assert "smoothed contour side walls are experimental and may need Blender cleanup" in result.report["warnings"]
+
+
+def test_single_side_pipeline_can_apply_outer_rim(tmp_path):
+    image = Image.new("RGBA", (5, 5), (255, 255, 255, 255))
+    image_path = tmp_path / "rim.png"
+    output_path = tmp_path / "rim.obj"
+    image.save(image_path)
+
+    params = ReliefParameters(
+        width_mm=5.0,
+        height_mm=5.0,
+        relief_height_mm=2.0,
+        rim_width_px=1,
+        rim_height_mm=1.0,
+        crop_to_foreground=False,
+    )
+    result = build_single_side_relief(image_path, output_path, params)
+
+    assert output_path.exists()
+    assert result.report["rim"]["enabled"] is True
+    assert result.report["rim"]["rim_pixel_count"] == 16
+    assert "outer rim height boost was applied" in result.report["warnings"]
 
 
 def test_single_side_pipeline_rectangle_ignores_smoothed_side_wall_flag(tmp_path):
