@@ -13,7 +13,7 @@ The project now has these layers:
 - A project layer that can create, save and open `.medalproj` JSON files with a sibling asset folder.
 - A project-aware side relief workflow that imports front or back images, builds rough side meshes and records export history.
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL/GLB for Blender inspection.
-- A split OBJ exporter for Blender-friendly front/back object separation.
+- Split OBJ/GLB exporters for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ, ASCII STL or binary GLB from one image.
 - A lightweight outline report, contour side wall builder, optional smoothed side wall builder, outer rim height boost with flat/linear/smooth profiles, mesh repair pass, topology report and face-geometry diagnostics for early warnings.
 
@@ -50,9 +50,9 @@ Quality modes are available for project builds: preview, standard and high. They
 
 The back-side workflow is currently incremental but independent: a back image can be added to an existing project and exported as its own back relief OBJ/STL/GLB.
 
-The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately. GLB placeholder export currently writes one combined mesh and does not preserve named front/back object separation.
+The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately. GLB placeholder export now writes named glTF nodes and meshes for the same two parts.
 
-The GLB exporter writes a minimal binary glTF 2.0 mesh with positions, vertex normals and triangle indices. It does not yet write materials, UVs, textures or split object metadata.
+The GLB exporter writes a minimal binary glTF 2.0 mesh with positions, vertex normals and triangle indices. Multi-object GLB export can preserve named mesh nodes. It does not yet write materials, UVs or textures.
 
 The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder uses the external mask boundary as a separate side-wall layer. The optional smoothed side wall path can already export experimental smoother walls, but it may need Blender cleanup because it does not yet share vertices perfectly with the pixel-cell top surface.
 
@@ -136,7 +136,13 @@ Build a combined front/back placeholder assembly:
 python -m badge_relief_maker.app --project-path test.medalproj --build-double-placeholder --project-export-format obj --quality preview
 ```
 
-The placeholder assembly is useful for Blender inspection and layout checking. It is not a finished fused double-side production model. When the placeholder is exported as OBJ, the file contains named object sections for `front_relief` and `back_relief`.
+Build the same placeholder assembly as split-node GLB:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --build-double-placeholder --project-export-format glb --quality preview
+```
+
+The placeholder assembly is useful for Blender inspection and layout checking. It is not a finished fused double-side production model. OBJ and GLB placeholder output preserve named `front_relief` and `back_relief` parts.
 
 A generic side build form is also available:
 
