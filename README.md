@@ -15,7 +15,7 @@ The project now has these layers:
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
 - A split OBJ exporter for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
-- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, outer rim height boost with flat/linear/smooth profiles, mesh repair pass and topology report for early warnings.
+- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, outer rim height boost with flat/linear/smooth profiles, mesh repair pass, topology report and face-geometry diagnostics for early warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
 
@@ -37,9 +37,10 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Add internal vertical walls where neighboring relief cells have different heights.
 - Deduplicate repeated vertices.
 - Run basic mesh repair to remove invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
+- Report face area and face normal orientation diagnostics.
 - Export optional mask and heightmap previews.
 - Export OBJ or ASCII STL.
-- Return a basic manufacturing report with size, outline, rim, topology, repair metadata and warning fields.
+- Return a basic manufacturing report with size, outline, rim, topology, face-geometry, repair metadata and warning fields.
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
 
@@ -55,13 +56,13 @@ The outline report counts mask boundary edges, horizontal and vertical boundary 
 
 The outer rim height boost raises foreground cells near the mask boundary before mesh generation. Flat profile raises all rim cells equally; linear profile tapers the rim inward with a straight ramp; smooth profile uses a smoothstep ramp for a softer rounded-looking transition. This is a simple way to create a badge-like raised border; it is not yet a true bevelled or rounded rim mesh.
 
-The topology report counts unique edges, boundary edges and non-manifold edges. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
+The topology report counts unique edges, boundary edges and non-manifold edges. Face-geometry diagnostics report valid and invalid faces, zero-area faces, total surface area and rough up/down/side face-normal counts. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
 Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
 
-The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, rim metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
+The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, rim metadata, face-geometry metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
 The intended MVP still includes stronger side/rim generation, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
 
