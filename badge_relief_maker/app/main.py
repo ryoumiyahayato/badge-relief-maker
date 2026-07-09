@@ -26,6 +26,15 @@ def run_gui() -> int:
 
 
 def main(argv=None) -> int:
+    """Run the CLI entry point.
+
+    Passing argv explicitly keeps tests and embedded callers isolated from
+    external process arguments such as pytest flags. The package __main__ module
+    passes sys.argv[1:] for normal command-line usage.
+    """
+    if argv is None:
+        argv = []
+
     parser = argparse.ArgumentParser(description="Build a basic badge relief OBJ or STL from one image.")
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--new-project", dest="new_project_name")
