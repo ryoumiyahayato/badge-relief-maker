@@ -11,7 +11,7 @@ The first implementation prioritizes local/offline processing so it can run on o
 The project now has two layers:
 
 - A project layer that can create, save and open `.medalproj` JSON files with a sibling asset folder.
-- A project-aware front relief workflow that imports a front image, builds a rough front mesh and records export history.
+- A project-aware side relief workflow that imports front or back images, builds rough side meshes and records export history.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
 
 The current runnable mesh path is a simple single-side proof of concept:
@@ -36,13 +36,15 @@ The `.medalproj` file stores project name, front image, back image, reference im
 
 Quality modes are available for project builds: preview, standard and high. They currently map to different grid-size and mask-cleanup presets, not to a full sculpting engine.
 
+The back-side workflow is currently incremental but independent: a back image can be added to an existing project and exported as its own back relief OBJ/STL. A true fused front/back solid remains a later phase.
+
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
 Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
 
 The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
-The intended MVP still includes contour smoothing, stronger mesh repair, GLB export, richer desktop UI and later double-side mode.
+The intended MVP still includes contour smoothing, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
 
 ## Planned modes
 
@@ -88,10 +90,28 @@ Build front relief from the project and record export history:
 python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format obj --quality preview
 ```
 
-Export STL from the same project:
+Add a back image later to the same project:
 
 ```bash
-python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format stl --quality high
+python -m badge_relief_maker.app --project-path test.medalproj --import-back back.png
+```
+
+Build back relief from the same project and record export history:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --build-back --project-export-format stl --quality preview
+```
+
+A generic side build form is also available:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --build-side front --project-export-format obj --quality standard
+```
+
+Import a reference image without treating it as the same physical object:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --import-reference ref.png --reference-role same_type_front
 ```
 
 Run the GUI skeleton if PySide6 is installed:
@@ -148,11 +168,11 @@ These commands should be treated as first pipeline tests, not production-grade m
 
 ## Suggested development order
 
-1. Improve project-based front image workflow.
+1. Improve project-based side image workflow.
 2. Replace pixel-cell footprint with contour-based side closure.
 3. Add GLB export.
 4. Add mesh repair and manufacturing checks.
 5. Expand PySide6 UI panels.
-6. Add double-side alignment and solid generation.
+6. Add fused double-side alignment and solid generation.
 7. Add region-based manual height editing.
 8. Add optional AI-assisted segmentation or cleanup.
