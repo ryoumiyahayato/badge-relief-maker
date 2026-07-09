@@ -121,24 +121,38 @@ def _mesh_arrays(vertices, faces):
     return verts, faces
 
 
+def _clamp01(value, default):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = float(default)
+    if not np.isfinite(number):
+        number = float(default)
+    return float(min(max(number, 0.0), 1.0))
+
+
 def _base_color(item):
     raw = item.get("base_color", item.get("color", _DEFAULT_BASE_COLOR))
     if isinstance(raw, str):
         raw = raw.strip().lstrip("#")
         if len(raw) in {6, 8}:
-            values = [int(raw[index : index + 2], 16) / 255.0 for index in range(0, len(raw), 2)]
+            try:
+                values = [int(raw[index : index + 2], 16) / 255.0 for index in range(0, len(raw), 2)]
+            except ValueError:
+                return list(_DEFAULT_BASE_COLOR)
             if len(values) == 3:
                 values.append(1.0)
-            return values
+            return [_clamp01(value, default) for value, default in zip(values, _DEFAULT_BASE_COLOR)]
+        return list(_DEFAULT_BASE_COLOR)
     try:
         values = [float(value) for value in raw]
-    except TypeError:
+    except (TypeError, ValueError):
         return list(_DEFAULT_BASE_COLOR)
     if len(values) == 3:
         values.append(1.0)
     if len(values) != 4:
         return list(_DEFAULT_BASE_COLOR)
-    return [float(min(max(value, 0.0), 1.0)) for value in values]
+    return [_clamp01(value, default) for value, default in zip(values, _DEFAULT_BASE_COLOR)]
 
 
 def _material_from_item(item, name):
@@ -146,8 +160,8 @@ def _material_from_item(item, name):
         "name": f"{name}_material",
         "pbrMetallicRoughness": {
             "baseColorFactor": _base_color(item),
-            "metallicFactor": float(item.get("metallic", 0.0)),
-            "roughnessFactor": float(item.get("roughness", 0.65)),
+            "metallicFactor": _clamp01(item.get("metallic", 0.0), 0.0),
+            "roughnessFactor": _clamp01(item.get("roughness", 0.65), 0.65),
         },
     }
 
