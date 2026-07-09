@@ -28,6 +28,19 @@ def test_masked_relief_solid_uses_only_foreground_cells():
     assert len(faces) == 12
 
 
+def test_masked_relief_solid_returns_stable_empty_arrays():
+    heightmap = np.zeros((3, 3), dtype=np.float32)
+    mask = np.zeros((3, 3), dtype=bool)
+    vertices, faces = build_masked_relief_solid(heightmap, mask, 9.0, 9.0, 1.0, 2.0)
+    assert vertices.shape == (0, 3)
+    assert faces.shape == (0, 3)
+    optimized_vertices, optimized_faces = optimize_mesh(vertices, faces)
+    repaired_vertices, repaired_faces, repair_report = repair_mesh_basic(optimized_vertices, optimized_faces)
+    assert repaired_vertices.shape == (0, 3)
+    assert repaired_faces.shape == (0, 3)
+    assert repair_report["invalid_faces_removed"] == 0
+
+
 def test_masked_relief_solid_closes_internal_height_steps():
     heightmap = np.asarray([[0.25, 1.0]], dtype=np.float32)
     mask = np.asarray([[True, True]], dtype=bool)
@@ -189,6 +202,24 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     text = output_path.read_text(encoding="utf-8")
     assert "v " in text
     assert "f " in text
+
+
+def test_single_side_pipeline_handles_empty_foreground(tmp_path):
+    image = Image.new("RGBA", (4, 4), (0, 0, 0, 0))
+    image_path = tmp_path / "empty.png"
+    output_path = tmp_path / "empty.obj"
+    image.save(image_path)
+
+    result = build_single_side_relief(image_path, output_path, ReliefParameters(width_mm=5.0, height_mm=5.0))
+
+    assert output_path.exists()
+    assert result.vertices.shape == (0, 3)
+    assert result.faces.shape == (0, 3)
+    assert result.report["vertex_count"] == 0
+    assert result.report["face_count"] == 0
+    assert result.report["mask_pixel_count"] == 0
+    assert "empty mesh" in result.report["warnings"]
+    assert "mask contains no foreground pixels" in result.report["warnings"]
 
 
 def test_single_side_pipeline_writes_stl(tmp_path):
