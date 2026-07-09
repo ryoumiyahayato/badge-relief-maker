@@ -13,7 +13,7 @@ from badge_relief_maker.app.core.project_io import (
     load_project,
     save_project,
 )
-from badge_relief_maker.app.core.project_model import MedalProject
+from badge_relief_maker.app.core.project_model import ManualMarker, MedalProject
 
 
 def test_project_save_load_roundtrip(tmp_path):
@@ -62,6 +62,30 @@ def test_project_load_ignores_unknown_future_fields():
     assert loaded.export_history[0].export_format == "obj"
 
 
+def test_project_load_ignores_malformed_nested_records():
+    data = {
+        "name": "Malformed Project",
+        "front_image": "not-a-record",
+        "reference_images": ["bad", {"role": "reference", "path": "assets/ref.png"}, {"role": "reference"}],
+        "manual_markers": [
+            "bad",
+            {"marker_type": "height", "target": "front", "data": ["not", "dict"]},
+            {"marker_type": "height"},
+        ],
+        "export_history": ["bad", {"path": "exports/a.obj", "export_format": "obj"}, {"path": "exports/missing_format"}],
+    }
+
+    loaded = MedalProject.from_dict(data)
+
+    assert loaded.front_image is None
+    assert len(loaded.reference_images) == 1
+    assert loaded.reference_images[0].path == "assets/ref.png"
+    assert len(loaded.manual_markers) == 1
+    assert loaded.manual_markers[0].data == {}
+    assert len(loaded.export_history) == 1
+    assert loaded.export_history[0].export_format == "obj"
+
+
 def test_import_front_back_and_reference_assets(tmp_path):
     image_path = tmp_path / "source.png"
     Image.new("RGBA", (4, 4), (255, 255, 255, 255)).save(image_path)
@@ -103,6 +127,23 @@ def test_build_front_relief_from_project_file(tmp_path):
     assert result.report["project_quality_mode"] == "preview"
     assert len(loaded.export_history) == 1
     assert loaded.export_history[0].export_format == "obj"
+
+
+def test_project_build_ignores_malformed_manual_marker_data(tmp_path):
+    image_path = tmp_path / "front.png"
+    Image.new("RGBA", (6, 6), (255, 255, 255, 255)).save(image_path)
+
+    project = create_project("Malformed Marker Build")
+    project.manual_markers.append(ManualMarker(marker_type="height", target="front", data=["not", "dict"]))
+    project_path = tmp_path / "malformed_marker_build.medalproj"
+    save_project(project, project_path)
+    import_image_asset(project, project_path, image_path, "front")
+    save_project(project, project_path)
+
+    result = build_front_relief_from_project_file(project_path, export_format="obj", quality_mode="preview")
+
+    assert result.report["manual_height"]["enabled"] is False
+    assert result.report["manual_height"]["requested_marker_count"] == 0
 
 
 def test_project_edge_settings_are_used_for_side_build(tmp_path):
