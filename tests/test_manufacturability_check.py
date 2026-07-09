@@ -102,6 +102,27 @@ def test_basic_report_warns_about_non_triangular_face_rows():
     assert "malformed face array detected" in report["warnings"]
 
 
+def test_basic_report_counts_ragged_face_rows():
+    vertices = np.asarray(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+    faces = [[0, 1, 2], [0, 1, 2, 3]]
+
+    report = basic_report(vertices, faces)
+
+    assert report["face_count"] == 2
+    assert report["topology"]["malformed_face_array"] is True
+    assert report["face_geometry"]["malformed_face_array"] is True
+    assert report["face_geometry"]["invalid_face_count"] == 2
+    assert "malformed face array detected" in report["warnings"]
+
+
 def test_edge_usage_report_handles_malformed_faces_without_crashing():
     report = edge_usage_report(np.asarray([0, 1, 2], dtype=np.int64))
 
