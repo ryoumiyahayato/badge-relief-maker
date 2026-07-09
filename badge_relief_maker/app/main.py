@@ -61,7 +61,7 @@ def main(argv=None) -> int:
     parser.add_argument("--contour-smoothing-iterations", type=int, default=1)
     parser.add_argument("--rim-width-px", type=int, default=0)
     parser.add_argument("--rim-height-mm", type=float, default=0.0)
-    parser.add_argument("--rim-profile", default="flat", choices=["flat", "linear"])
+    parser.add_argument("--rim-profile", default="flat", choices=["flat", "linear", "smooth"])
     parser.add_argument("--no-crop", action="store_true")
     parser.add_argument("--crop-padding-px", type=int, default=1)
     parser.add_argument("--max-grid-cells", type=int, default=20000)
