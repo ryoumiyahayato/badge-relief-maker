@@ -113,9 +113,23 @@ def _append_binary_blob(binary_blob, payload):
     return binary_blob, offset
 
 
+def _as_nx3_array(values, dtype, name):
+    try:
+        data = np.asarray(values, dtype=dtype)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an Nx3 array") from exc
+    if data.size == 0:
+        return np.zeros((0, 3), dtype=dtype)
+    if data.ndim != 2 or data.shape[1] != 3:
+        raise ValueError(f"{name} must be an Nx3 array")
+    return data
+
+
 def _mesh_arrays(vertices, faces):
-    verts = np.asarray(vertices, dtype=np.float32).reshape((-1, 3))
-    faces = np.asarray(faces, dtype=np.int64).reshape((-1, 3))
+    verts = _as_nx3_array(vertices, np.float32, "vertices")
+    faces = _as_nx3_array(faces, np.int64, "faces")
+    if not np.isfinite(verts).all():
+        raise ValueError("vertices contain non-finite coordinates")
     if len(verts) > 0 and len(faces) > 0 and (faces.min() < 0 or faces.max() >= len(verts)):
         raise ValueError("faces contain vertex indices outside the vertex array")
     return verts, faces
