@@ -56,7 +56,10 @@ def _manual_height_markers_from_project(project, side_name):
         target = str(getattr(marker, "target", "")).lower()
         if marker_type not in _HEIGHT_MARKER_TYPES or target not in allowed_targets:
             continue
-        data = dict(getattr(marker, "data", {}) or {})
+        raw_data = getattr(marker, "data", {}) or {}
+        if not isinstance(raw_data, dict):
+            continue
+        data = dict(raw_data)
         data["marker_type"] = marker_type
         data["target"] = target
         result.append(data)
@@ -265,52 +268,25 @@ def build_back_relief_from_project(project, project_path, export_format="obj", q
     )
 
 
-def build_side_relief_from_project_file(project_path, side_name="front", export_format="obj", quality_mode=None, export_name=None):
-    """Load a project, build one side relief, save project and return the result."""
+def build_front_relief_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
+    """Load a project file and build the front relief."""
     project = load_project(project_path)
-    result = build_side_relief_from_project(
-        project,
-        project_path,
-        side_name=side_name,
-        export_format=export_format,
-        quality_mode=quality_mode,
-        export_name=export_name,
-    )
+    result = build_front_relief_from_project(project, project_path, export_format, quality_mode, export_name)
     save_project(project, project_path)
     return result
 
 
-def build_front_relief_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Load a project, build front relief, save project and return the build result."""
-    return build_side_relief_from_project_file(
-        project_path,
-        side_name="front",
-        export_format=export_format,
-        quality_mode=quality_mode,
-        export_name=export_name,
-    )
-
-
 def build_back_relief_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Load a project, build back relief, save project and return the build result."""
-    return build_side_relief_from_project_file(
-        project_path,
-        side_name="back",
-        export_format=export_format,
-        quality_mode=quality_mode,
-        export_name=export_name,
-    )
+    """Load a project file and build the back relief."""
+    project = load_project(project_path)
+    result = build_back_relief_from_project(project, project_path, export_format, quality_mode, export_name)
+    save_project(project, project_path)
+    return result
 
 
 def build_double_side_placeholder_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Load a project, build double-side placeholder, save project and return result."""
+    """Load a project file and build a double-side placeholder assembly."""
     project = load_project(project_path)
-    result = build_double_side_placeholder_from_project(
-        project,
-        project_path,
-        export_format=export_format,
-        quality_mode=quality_mode,
-        export_name=export_name,
-    )
+    result = build_double_side_placeholder_from_project(project, project_path, export_format, quality_mode, export_name)
     save_project(project, project_path)
     return result
