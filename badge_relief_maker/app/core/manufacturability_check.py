@@ -71,6 +71,70 @@ def edge_usage_report(faces):
     }
 
 
+def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
+    """Return lightweight triangle area and normal-orientation diagnostics."""
+    vertices = np.asarray(vertices, dtype=float)
+    faces = np.asarray(faces, dtype=np.int64)
+    if len(vertices) == 0 or len(faces) == 0:
+        return {
+            "valid_face_count": 0,
+            "invalid_face_count": 0,
+            "zero_area_face_count": 0,
+            "total_surface_area_mm2": 0.0,
+            "min_face_area_mm2": 0.0,
+            "max_face_area_mm2": 0.0,
+            "up_facing_face_count": 0,
+            "down_facing_face_count": 0,
+            "side_facing_face_count": 0,
+        }
+
+    valid_mask = np.all((faces >= 0) & (faces < len(vertices)), axis=1)
+    valid_faces = faces[valid_mask]
+    invalid_count = int(len(faces) - len(valid_faces))
+    if len(valid_faces) == 0:
+        return {
+            "valid_face_count": 0,
+            "invalid_face_count": invalid_count,
+            "zero_area_face_count": 0,
+            "total_surface_area_mm2": 0.0,
+            "min_face_area_mm2": 0.0,
+            "max_face_area_mm2": 0.0,
+            "up_facing_face_count": 0,
+            "down_facing_face_count": 0,
+            "side_facing_face_count": 0,
+        }
+
+    p0 = vertices[valid_faces[:, 0]]
+    p1 = vertices[valid_faces[:, 1]]
+    p2 = vertices[valid_faces[:, 2]]
+    normals = np.cross(p1 - p0, p2 - p0)
+    double_areas = np.linalg.norm(normals, axis=1)
+    areas = double_areas * 0.5
+    nonzero = double_areas > float(zero_area_epsilon)
+    zero_area_count = int(np.count_nonzero(~nonzero))
+
+    up_count = 0
+    down_count = 0
+    side_count = 0
+    if np.any(nonzero):
+        unit_z = normals[nonzero, 2] / double_areas[nonzero]
+        up_count = int(np.count_nonzero(unit_z > 0.5))
+        down_count = int(np.count_nonzero(unit_z < -0.5))
+        side_count = int(np.count_nonzero((unit_z >= -0.5) & (unit_z <= 0.5)))
+
+    return {
+        "valid_face_count": int(len(valid_faces)),
+        "invalid_face_count": invalid_count,
+        "zero_area_face_count": zero_area_count,
+        "total_surface_area_mm2": float(areas.sum()),
+        "min_face_area_mm2": float(areas.min()) if len(areas) else 0.0,
+        "max_face_area_mm2": float(areas.max()) if len(areas) else 0.0,
+        "up_facing_face_count": up_count,
+        "down_facing_face_count": down_count,
+        "side_facing_face_count": side_count,
+    }
+
+
 def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_faces=200000):
     """Return a simple mesh diagnostic report.
 
@@ -82,6 +146,7 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
     face_count = int(len(faces))
     bounds = mesh_bounds(vertices)
     topology = edge_usage_report(faces)
+    face_geometry = face_geometry_report(vertices, faces)
     warnings = []
 
     if vertex_count == 0 or face_count == 0:
@@ -94,6 +159,10 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         warnings.append("open boundary edges detected")
     if topology["non_manifold_edge_count"] > 0:
         warnings.append("non-manifold edges detected")
+    if face_geometry["invalid_face_count"] > 0:
+        warnings.append("invalid face references detected")
+    if face_geometry["zero_area_face_count"] > 0:
+        warnings.append("zero-area faces detected")
 
     return {
         "vertex_count": vertex_count,
@@ -107,6 +176,7 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         "estimated_total_thickness_mm": bounds["size_z"],
         "minimum_thickness_mm": minimum_thickness_mm,
         "topology": topology,
+        "face_geometry": face_geometry,
         "warnings": warnings,
         "watertight_check": "edge manifold heuristic only",
         "thin_region_check": "not implemented",
