@@ -61,6 +61,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         width_px=params.rim_width_px,
         rim_height_mm=params.rim_height_mm,
         relief_height_mm=params.relief_height_mm,
+        profile=params.rim_profile,
     )
     outline = outline_report(
         mask,
