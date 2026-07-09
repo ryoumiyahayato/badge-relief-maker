@@ -15,7 +15,7 @@ The project now has these layers:
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
 - A split OBJ exporter for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
-- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, outer rim height boost with flat/linear profiles, mesh repair pass and topology report for early warnings.
+- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, outer rim height boost with flat/linear/smooth profiles, mesh repair pass and topology report for early warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
 
@@ -27,7 +27,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Crop to the foreground bounding box.
 - Downsample very large masks before mesh generation.
 - Optionally apply an outer rim height boost along the foreground boundary.
-- Support flat or linear rim height profiles.
+- Support flat, linear or smooth rim height profiles.
 - Extract outline boundary metrics from the final mask.
 - Trace boundary loops, remove collinear contour points and calculate smoothed-loop metrics.
 - Convert brightness to a heightmap.
@@ -51,7 +51,7 @@ The double-side placeholder workflow requires both front and back images. It com
 
 The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder uses the external mask boundary as a separate side-wall layer. The optional smoothed side wall path can already export experimental smoother walls, but it may need Blender cleanup because it does not yet share vertices perfectly with the pixel-cell top surface.
 
-The outer rim height boost raises foreground cells near the mask boundary before mesh generation. Flat profile raises all rim cells equally; linear profile tapers the rim inward. This is a simple way to create a badge-like raised border; it is not yet a true bevelled or rounded rim mesh.
+The outer rim height boost raises foreground cells near the mask boundary before mesh generation. Flat profile raises all rim cells equally; linear profile tapers the rim inward with a straight ramp; smooth profile uses a smoothstep ramp for a softer rounded-looking transition. This is a simple way to create a badge-like raised border; it is not yet a true bevelled or rounded rim mesh.
 
 The topology report counts unique edges, boundary edges and non-manifold edges. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
@@ -174,7 +174,7 @@ python -m badge_relief_maker.app --input input.png --output output.obj --smoothe
 Add a simple raised outer rim:
 
 ```bash
-python -m badge_relief_maker.app --input input.png --output output.obj --rim-width-px 2 --rim-height-mm 1.0 --rim-profile linear
+python -m badge_relief_maker.app --input input.png --output output.obj --rim-width-px 2 --rim-height-mm 1.0 --rim-profile smooth
 ```
 
 To export mask and heightmap preview images:
