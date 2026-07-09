@@ -54,7 +54,11 @@ class EdgeParameters:
     radius_mm: float = 0.0
     rim_enabled: bool = False
     rim_width_mm: float = 0.0
+    rim_width_px: int = 0
     rim_height_mm: float = 0.0
+    rim_profile: str = "flat"
+    use_smoothed_side_walls: bool = False
+    contour_smoothing_iterations: int = 1
 
 
 @dataclass
