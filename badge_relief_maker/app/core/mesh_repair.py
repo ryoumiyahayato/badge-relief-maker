@@ -3,18 +3,32 @@
 import numpy as np
 
 
+def _as_vertices(vertices):
+    vertices = np.asarray(vertices, dtype=float)
+    if vertices.size == 0:
+        return np.zeros((0, 3), dtype=float)
+    return vertices.reshape((-1, 3))
+
+
+def _as_faces(faces):
+    faces = np.asarray(faces, dtype=np.int64)
+    if faces.size == 0:
+        return np.zeros((0, 3), dtype=np.int64)
+    return faces.reshape((-1, 3))
+
+
 def face_count(faces):
     """Return the number of mesh faces.
 
     Kept for compatibility with the earlier placeholder module.
     """
-    return int(len(faces))
+    return int(len(_as_faces(faces)))
 
 
 def remove_invalid_faces(vertices, faces):
     """Remove faces that do not reference valid vertex indices."""
-    vertices = np.asarray(vertices, dtype=float)
-    faces = np.asarray(faces, dtype=np.int64)
+    vertices = _as_vertices(vertices)
+    faces = _as_faces(faces)
     if len(faces) == 0:
         return faces, 0
     valid = np.all((faces >= 0) & (faces < len(vertices)), axis=1)
@@ -23,8 +37,8 @@ def remove_invalid_faces(vertices, faces):
 
 def triangle_areas(vertices, faces):
     """Return triangle areas for triangular faces."""
-    vertices = np.asarray(vertices, dtype=float)
-    faces = np.asarray(faces, dtype=np.int64)
+    vertices = _as_vertices(vertices)
+    faces = _as_faces(faces)
     if len(faces) == 0:
         return np.zeros((0,), dtype=float)
     a = vertices[faces[:, 0]]
@@ -35,7 +49,7 @@ def triangle_areas(vertices, faces):
 
 def remove_zero_area_faces(vertices, faces, epsilon=1e-12):
     """Remove faces whose geometric area is effectively zero."""
-    faces = np.asarray(faces, dtype=np.int64)
+    faces = _as_faces(faces)
     if len(faces) == 0:
         return faces, 0
     areas = triangle_areas(vertices, faces)
@@ -45,7 +59,7 @@ def remove_zero_area_faces(vertices, faces, epsilon=1e-12):
 
 def remove_duplicate_faces(faces):
     """Remove duplicate triangles regardless of winding order."""
-    faces = np.asarray(faces, dtype=np.int64)
+    faces = _as_faces(faces)
     if len(faces) == 0:
         return faces, 0
     keys = np.sort(faces, axis=1)
@@ -56,10 +70,10 @@ def remove_duplicate_faces(faces):
 
 def remove_unreferenced_vertices(vertices, faces):
     """Remove vertices that are not used by any face and remap faces."""
-    vertices = np.asarray(vertices, dtype=float)
-    faces = np.asarray(faces, dtype=np.int64)
+    vertices = _as_vertices(vertices)
+    faces = _as_faces(faces)
     if len(vertices) == 0 or len(faces) == 0:
-        return vertices[:0], faces[:0], int(len(vertices))
+        return np.zeros((0, 3), dtype=float), np.zeros((0, 3), dtype=np.int64), int(len(vertices))
 
     used = np.unique(faces.reshape(-1))
     remap = np.full(len(vertices), -1, dtype=np.int64)
@@ -72,12 +86,12 @@ def remove_duplicate_vertices(vertices, faces):
 
     Kept for compatibility with the earlier placeholder module.
     """
-    vertices = np.asarray(vertices, dtype=float)
-    faces = np.asarray(faces, dtype=np.int64)
+    vertices = _as_vertices(vertices)
+    faces = _as_faces(faces)
     if len(vertices) == 0:
         return vertices, faces
     unique, inverse = np.unique(vertices, axis=0, return_inverse=True)
-    return unique, inverse[faces]
+    return unique, inverse[faces] if len(faces) else faces
 
 
 def repair_mesh_basic(vertices, faces):
@@ -86,8 +100,8 @@ def repair_mesh_basic(vertices, faces):
     This does not fill holes or solve complex self-intersections. It only removes
     invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
     """
-    vertices = np.asarray(vertices, dtype=float)
-    faces = np.asarray(faces, dtype=np.int64)
+    vertices = _as_vertices(vertices)
+    faces = _as_faces(faces)
 
     faces, invalid_faces_removed = remove_invalid_faces(vertices, faces)
     faces, zero_area_faces_removed = remove_zero_area_faces(vertices, faces)
