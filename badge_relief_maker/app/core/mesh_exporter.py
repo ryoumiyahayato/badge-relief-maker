@@ -79,10 +79,34 @@ def export_ascii_stl(path, vertices, faces, solid_name="badge_relief"):
         fh.write(f"endsolid {solid_name}\n")
 
 
+def _vertex_normals(vertices, faces):
+    """Return area-weighted per-vertex normals for GLB export."""
+    vertices = np.asarray(vertices, dtype=np.float32).reshape((-1, 3))
+    faces = np.asarray(faces, dtype=np.int64).reshape((-1, 3))
+    normals = np.zeros_like(vertices, dtype=np.float32)
+    for a, b, c in faces:
+        p0 = vertices[int(a)]
+        p1 = vertices[int(b)]
+        p2 = vertices[int(c)]
+        normal = np.cross(p1 - p0, p2 - p0)
+        length = float(np.linalg.norm(normal))
+        if length == 0.0:
+            continue
+        normals[int(a)] += normal
+        normals[int(b)] += normal
+        normals[int(c)] += normal
+
+    lengths = np.linalg.norm(normals, axis=1)
+    valid = lengths > 0.0
+    normals[valid] = normals[valid] / lengths[valid, None]
+    normals[~valid] = np.asarray([0.0, 0.0, 1.0], dtype=np.float32)
+    return np.ascontiguousarray(normals, dtype=np.float32)
+
+
 def export_glb(path, vertices, faces):
     """Export a minimal binary glTF 2.0 GLB mesh.
 
-    The exporter writes positions and triangle indices only. Materials, normals,
+    The exporter writes positions, vertex normals and triangle indices. Materials,
     texture coordinates and object splitting are intentionally outside this MVP
     path.
     """
@@ -98,10 +122,13 @@ def export_glb(path, vertices, faces):
         raise ValueError("faces contain vertex indices outside the vertex array")
 
     positions = np.ascontiguousarray(verts, dtype=np.float32)
+    normals = _vertex_normals(positions, faces)
     indices = np.ascontiguousarray(faces.reshape(-1), dtype=np.uint32)
     position_bytes = positions.tobytes()
-    index_offset = _aligned_length(len(position_bytes))
-    binary_blob = _pad_bytes(position_bytes, b"\x00") + indices.tobytes()
+    normal_offset = _aligned_length(len(position_bytes))
+    normal_bytes = normals.tobytes()
+    index_offset = _aligned_length(normal_offset + len(normal_bytes))
+    binary_blob = _pad_bytes(position_bytes, b"\x00") + _pad_bytes(normal_bytes, b"\x00") + indices.tobytes()
     binary_blob = _pad_bytes(binary_blob, b"\x00")
 
     mins = positions.min(axis=0).astype(float).tolist()
@@ -116,8 +143,8 @@ def export_glb(path, vertices, faces):
                 "name": "badge_relief",
                 "primitives": [
                     {
-                        "attributes": {"POSITION": 0},
-                        "indices": 1,
+                        "attributes": {"POSITION": 0, "NORMAL": 1},
+                        "indices": 2,
                         "mode": 4,
                     }
                 ],
@@ -126,6 +153,7 @@ def export_glb(path, vertices, faces):
         "buffers": [{"byteLength": len(binary_blob)}],
         "bufferViews": [
             {"buffer": 0, "byteOffset": 0, "byteLength": len(position_bytes), "target": 34962},
+            {"buffer": 0, "byteOffset": normal_offset, "byteLength": len(normal_bytes), "target": 34962},
             {"buffer": 0, "byteOffset": index_offset, "byteLength": indices.nbytes, "target": 34963},
         ],
         "accessors": [
@@ -140,6 +168,13 @@ def export_glb(path, vertices, faces):
             },
             {
                 "bufferView": 1,
+                "byteOffset": 0,
+                "componentType": 5126,
+                "count": int(len(normals)),
+                "type": "VEC3",
+            },
+            {
+                "bufferView": 2,
                 "byteOffset": 0,
                 "componentType": 5125,
                 "count": int(indices.size),
