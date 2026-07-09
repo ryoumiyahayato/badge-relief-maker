@@ -88,3 +88,34 @@ def test_project_manual_height_markers_are_passed_to_side_build(tmp_path):
     assert result.report["manual_height"]["enabled"] is True
     assert result.report["manual_height"]["requested_marker_count"] == 1
     assert result.report["manual_height"]["affected_pixel_count"] > 0
+
+
+def test_project_manual_marker_outer_metadata_overrides_conflicting_data(tmp_path):
+    image_path = tmp_path / "front.png"
+    Image.new("RGBA", (6, 6), (255, 255, 255, 255)).save(image_path)
+
+    project = create_project("Conflicting Manual Marker Project")
+    project.manual_markers.append(
+        ManualMarker(
+            marker_type="height_override",
+            target="front",
+            data={
+                "marker_type": "note",
+                "target": "back",
+                "x": 0.5,
+                "y": 0.5,
+                "radius_px": 1,
+                "height_normalized": 0.2,
+            },
+        )
+    )
+    project_path = tmp_path / "conflicting_manual_marker.medalproj"
+    save_project(project, project_path)
+    import_image_asset(project, project_path, image_path, "front")
+    save_project(project, project_path)
+
+    result = build_front_relief_from_project_file(project_path, export_format="obj", quality_mode="preview")
+
+    assert result.report["manual_height"]["enabled"] is True
+    assert result.report["manual_height"]["applied_marker_count"] == 1
+    assert result.report["manual_height"]["ignored_marker_count"] == 0
