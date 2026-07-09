@@ -75,12 +75,24 @@ def _faces_array(faces):
         return None
 
 
+def _is_row_like(value):
+    if isinstance(value, (str, bytes)):
+        return False
+    try:
+        len(value)
+    except TypeError:
+        return False
+    return True
+
+
 def _face_row_count(faces):
     faces = np.asarray(faces, dtype=object)
     if faces.ndim == 0:
         return 0
     if faces.ndim == 1:
-        return 1 if faces.size else 0
+        if faces.size == 0:
+            return 0
+        return int(len(faces)) if _is_row_like(faces[0]) else 1
     return int(len(faces))
 
 
