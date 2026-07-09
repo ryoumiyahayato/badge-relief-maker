@@ -11,6 +11,7 @@ from .masked_solid_builder import build_masked_relief_solid
 from .mesh_exporter import export_mesh
 from .mesh_optimize import optimize_mesh
 from .mesh_repair import repair_mesh_basic
+from .outline_extractor import outline_report
 from .preview_exporter import save_heightmap_preview, save_mask_preview
 from .relief_parameters import ReliefBuildResult, ReliefParameters
 from .solid_builder import build_rectangular_relief_solid
@@ -45,6 +46,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     shape_after_crop = tuple(mask.shape)
     mask, heightmap, resize_scale = resize_mask_and_heightmap(mask, heightmap, params.max_grid_cells)
     shape_after_resize = tuple(mask.shape)
+    outline = outline_report(mask, params.width_mm, params.height_mm)
 
     preview_paths = {}
     if preview_dir is not None:
@@ -85,6 +87,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["repaired_vertex_count"] = int(len(vertices))
     report["repaired_face_count"] = int(len(faces))
     report["mesh_repair"] = repair_report
+    report["outline"] = outline
     report["original_mask_pixel_count"] = original_mask_pixel_count
     report["mask_pixel_count"] = int(mask.sum())
     report["mask_cleanup"] = cleanup_report
