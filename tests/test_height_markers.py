@@ -35,6 +35,24 @@ def test_apply_manual_height_marker_sets_normalized_region():
     assert float(result[0, 0]) == 1.0
 
 
+def test_apply_manual_height_marker_accepts_single_dictionary():
+    heightmap = np.ones((5, 5), dtype=float)
+    mask = np.ones((5, 5), dtype=bool)
+
+    result, report = apply_manual_height_markers(
+        heightmap,
+        mask,
+        {"marker_type": "height", "x": 0.5, "y": 0.5, "radius_px": 1, "height_normalized": 0.4},
+    )
+
+    assert report["enabled"] is True
+    assert report["requested_marker_count"] == 1
+    assert report["applied_marker_count"] == 1
+    assert report["ignored_marker_count"] == 0
+    assert float(result[2, 2]) == 0.4
+    assert float(result[0, 0]) == 1.0
+
+
 def test_apply_manual_height_marker_ignores_invalid_marker():
     heightmap = np.ones((3, 3), dtype=float)
     mask = np.ones((3, 3), dtype=bool)
