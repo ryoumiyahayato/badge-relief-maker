@@ -9,6 +9,20 @@ using a full rectangle.
 import numpy as np
 
 
+def _mesh_arrays(vertices, faces):
+    """Return mesh arrays with stable two-dimensional shapes."""
+    if len(vertices) == 0:
+        vertices_array = np.zeros((0, 3), dtype=float)
+    else:
+        vertices_array = np.asarray(vertices, dtype=float).reshape((-1, 3))
+
+    if len(faces) == 0:
+        faces_array = np.zeros((0, 3), dtype=np.int64)
+    else:
+        faces_array = np.asarray(faces, dtype=np.int64).reshape((-1, 3))
+    return vertices_array, faces_array
+
+
 def build_masked_relief_solid(heightmap, mask, width_mm, height_mm, base_thickness_mm, relief_height_mm):
     """Create a relief solid whose footprint follows a boolean mask.
 
@@ -20,6 +34,9 @@ def build_masked_relief_solid(heightmap, mask, width_mm, height_mm, base_thickne
         raise ValueError("heightmap and mask must have the same shape")
 
     rows, cols = heightmap.shape
+    if rows <= 0 or cols <= 0:
+        raise ValueError("heightmap and mask must be non-empty 2D arrays")
+
     cell_w = float(width_mm) / float(cols)
     cell_h = float(height_mm) / float(rows)
     top_z_values = heightmap.astype(float) * float(relief_height_mm)
@@ -87,4 +104,4 @@ def build_masked_relief_solid(heightmap, mask, width_mm, height_mm, base_thickne
             elif z_top > float(top_z_values[r, c + 1]):
                 add_vertical_quad(x1, y0, x1, y1, float(top_z_values[r, c + 1]), z_top)
 
-    return np.asarray(vertices, dtype=float), np.asarray(faces, dtype=np.int64)
+    return _mesh_arrays(vertices, faces)
