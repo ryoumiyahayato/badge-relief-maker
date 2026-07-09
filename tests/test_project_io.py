@@ -115,11 +115,15 @@ def test_build_double_placeholder_from_project_file(tmp_path):
 
     result = build_double_side_placeholder_from_project_file(project_path, export_format="obj", quality_mode="preview")
     loaded = load_project(project_path)
+    text = open(result.output_path, "r", encoding="utf-8").read()
 
     assert result.output_path.endswith(".obj")
     assert result.report["project_source_role"] == "double_placeholder"
     assert result.report["assembly_mode"] == "front_back_placeholder_not_fused"
+    assert result.report["split_objects"] == ["front_relief", "back_relief"]
     assert "front_report" in result.report
     assert "back_report" in result.report
+    assert "o front_relief" in text
+    assert "o back_relief" in text
     assert len(loaded.export_history) == 1
     assert loaded.export_history[0].export_format == "obj"
