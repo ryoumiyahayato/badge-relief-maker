@@ -15,7 +15,7 @@ The project now has these layers:
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
 - A split OBJ exporter for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
-- A lightweight outline report, contour side wall builder, mesh repair pass and topology report for early warnings.
+- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, mesh repair pass and topology report for early warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
 
@@ -31,6 +31,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Convert brightness to a heightmap.
 - Build a masked footprint relief solid by default.
 - Add base thickness and contour-driven external side walls.
+- Optionally use experimental smoothed contour side walls.
 - Add internal vertical walls where neighboring relief cells have different heights.
 - Deduplicate repeated vertices.
 - Run basic mesh repair to remove invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
@@ -46,7 +47,7 @@ The back-side workflow is currently incremental but independent: a back image ca
 
 The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately.
 
-The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder now uses the external mask boundary as a separate side-wall layer, which is the foundation for later smoothing, bevels and rim generation.
+The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder uses the external mask boundary as a separate side-wall layer. The optional smoothed side wall path can already export experimental smoother walls, but it may need Blender cleanup because it does not yet share vertices perfectly with the pixel-cell top surface.
 
 The topology report counts unique edges, boundary edges and non-manifold edges. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
@@ -56,7 +57,7 @@ Internal height step closure is now included so adjacent high and low relief cel
 
 The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
-The intended MVP still includes using smoothed contours for side-wall mesh, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
+The intended MVP still includes stronger side/rim generation, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
 
 ## Planned modes
 
@@ -160,6 +161,12 @@ Export ASCII STL without a project file:
 python -m badge_relief_maker.app --input input.png --output output.stl --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
 ```
 
+Use experimental smoothed side walls:
+
+```bash
+python -m badge_relief_maker.app --input input.png --output output.obj --smoothed-side-walls --contour-smoothing-iterations 1
+```
+
 To export mask and heightmap preview images:
 
 ```bash
@@ -188,10 +195,9 @@ These commands should be treated as first pipeline tests, not production-grade m
 
 ## Suggested development order
 
-1. Use smoothed contours in side-wall mesh generation.
-2. Add bevel/rim parameters.
-3. Add stronger mesh repair and hole-fill actions.
-4. Add GLB export.
-5. Expand PySide6 UI panels.
-6. Add fused double-side alignment and solid generation.
-7. Add region-based manual height editing.
+1. Add bevel/rim parameters.
+2. Add stronger mesh repair and hole-fill actions.
+3. Add GLB export.
+4. Expand PySide6 UI panels.
+5. Add fused double-side alignment and solid generation.
+6. Add region-based manual height editing.
