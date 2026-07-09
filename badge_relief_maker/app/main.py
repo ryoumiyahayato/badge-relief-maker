@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from .core.project_build import build_side_relief_from_project_file
+from .core.project_build import build_double_side_placeholder_from_project_file, build_side_relief_from_project_file
 from .core.project_io import create_project, import_image_asset, load_project, save_project
 from .core.relief_parameters import ReliefParameters
 from .core.single_side_pipeline import build_single_side_relief
@@ -37,6 +37,7 @@ def main(argv=None) -> int:
     parser.add_argument("--build-front", action="store_true")
     parser.add_argument("--build-back", action="store_true")
     parser.add_argument("--build-side", choices=["front", "back"])
+    parser.add_argument("--build-double-placeholder", action="store_true")
     parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl"])
     parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
     parser.add_argument("--input", dest="input_path")
@@ -90,6 +91,18 @@ def main(argv=None) -> int:
             message = f"Imported reference image: {record.path}"
         save_project(project, args.project_path)
         print(message)
+        return 0
+
+    if args.build_double_placeholder:
+        if not args.project_path:
+            print("Provide --project-path when building a double-side placeholder.")
+            return 2
+        result = build_double_side_placeholder_from_project_file(
+            args.project_path,
+            export_format=args.project_export_format,
+            quality_mode=args.quality,
+        )
+        print(result.report)
         return 0
 
     requested_side = args.build_side
