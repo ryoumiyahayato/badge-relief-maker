@@ -8,6 +8,8 @@ _SUPPORTED_TARGETS = {"heightmap", "relief", "front", "back", "both"}
 _SET_OPERATIONS = {"set", "replace", "override", "height_override", "set_height"}
 _ADD_OPERATIONS = {"add", "raise", "increase"}
 _SUBTRACT_OPERATIONS = {"subtract", "sub", "lower", "decrease"}
+_POLYGON_SHAPES = {"polygon", "poly", "freeform", "free_form"}
+_RECTANGLE_SHAPES = {"rectangle", "rect", "box"}
 
 
 def apply_manual_height_markers(heightmap, mask, markers=()):
@@ -17,9 +19,11 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
     - marker_type/type/kind: height, height_override or set_height.
     - target: front, back, both, heightmap or relief. Filtering by side is done
       by project_build; this helper only rejects unrelated target values.
-    - shape/shape_type/brush_shape/region_shape: circle/brush or rectangle/rect/box.
+    - shape/shape_type/brush_shape/region_shape: circle/brush, rectangle/rect/box
+      or polygon/poly/freeform.
     - x, y: normalized coordinates by default, or pixel coordinates when
-      coordinate_space is pixel/pixels.
+      coordinate_space is pixel/pixels. Required for circle and rectangle.
+    - points/vertices/polygon_points: polygon points for polygon markers.
     - height_normalized/normalized_height/value/height: target height in 0..1.
     - delta/delta_height: additive height change for add/subtract operations.
     - operation/mode: set, add or subtract.
@@ -89,6 +93,23 @@ def _normalize_marker(marker, default_shape):
     if target not in _SUPPORTED_TARGETS:
         return None
 
+    operation = _operation(marker)
+    value = _operation_value(marker, operation)
+    if value is None:
+        return None
+
+    marker_shape = _marker_shape(marker)
+    if marker_shape in _POLYGON_SHAPES:
+        points = _polygon_points_px(marker, default_shape)
+        if points is None:
+            return None
+        return {
+            "shape": "polygon",
+            "points": points,
+            "operation": operation,
+            "value": float(value),
+        }
+
     x = _float_or_none(marker.get("x", marker.get("center_x")))
     y = _float_or_none(marker.get("y", marker.get("center_y")))
     if x is None or y is None:
@@ -103,13 +124,7 @@ def _normalize_marker(marker, default_shape):
         cx = x * max(cols - 1, 1)
         cy = y * max(rows - 1, 1)
 
-    operation = _operation(marker)
-    value = _operation_value(marker, operation)
-    if value is None:
-        return None
-
-    marker_shape = _marker_shape(marker)
-    if marker_shape in {"rectangle", "rect", "box"}:
+    if marker_shape in _RECTANGLE_SHAPES:
         width_px, height_px = _rectangle_size_px(marker, default_shape)
         if width_px is None or height_px is None or width_px < 0.0 or height_px < 0.0:
             return None
@@ -173,9 +188,27 @@ def _marker_region(mask, marker):
         half_w = marker["width_px"] / 2.0
         half_h = marker["height_px"] / 2.0
         region = (np.abs(xx - marker["cx"]) <= half_w) & (np.abs(yy - marker["cy"]) <= half_h)
+    elif marker["shape"] == "polygon":
+        region = _polygon_region(rows, cols, marker["points"])
     else:
         region = (xx - marker["cx"]) ** 2 + (yy - marker["cy"]) ** 2 <= marker["radius_px"] ** 2
     return region & mask
+
+
+def _polygon_region(rows, cols, points):
+    yy, xx = np.mgrid[:rows, :cols]
+    inside = np.zeros((rows, cols), dtype=bool)
+    x_points = points[:, 0]
+    y_points = points[:, 1]
+    count = len(points)
+    for index in range(count):
+        next_index = (index + 1) % count
+        x1, y1 = x_points[index], y_points[index]
+        x2, y2 = x_points[next_index], y_points[next_index]
+        crosses = (y1 > yy) != (y2 > yy)
+        x_at_y = (x2 - x1) * (yy - y1) / ((y2 - y1) if y2 != y1 else 1e-12) + x1
+        inside ^= crosses & (xx < x_at_y)
+    return inside
 
 
 def _apply_operation(values, marker):
@@ -276,6 +309,37 @@ def _dimension_keys(prefix, normalized):
         "box_height_normalized",
         "height_size_normalized",
     ]
+
+
+def _polygon_points_px(marker, default_shape):
+    points = marker.get("points", marker.get("vertices", marker.get("polygon_points")))
+    try:
+        points = list(points)
+    except TypeError:
+        return None
+    if len(points) < 3:
+        return None
+
+    coordinate_space = str(marker.get("coordinate_space", marker.get("space", "normalized"))).lower()
+    rows, cols = _grid_shape(marker, default_shape)
+    result = []
+    for point in points:
+        if isinstance(point, dict):
+            x = _float_or_none(point.get("x"))
+            y = _float_or_none(point.get("y"))
+        else:
+            try:
+                x = _float_or_none(point[0])
+                y = _float_or_none(point[1])
+            except (TypeError, IndexError):
+                return None
+        if x is None or y is None:
+            return None
+        if coordinate_space not in {"pixel", "pixels", "image_pixel"}:
+            x = x * max(cols - 1, 1)
+            y = y * max(rows - 1, 1)
+        result.append((float(x), float(y)))
+    return np.asarray(result, dtype=float)
 
 
 def _float_or_none(value):
