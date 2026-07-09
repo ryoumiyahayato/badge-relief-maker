@@ -13,6 +13,7 @@ from badge_relief_maker.app.core.project_io import (
     load_project,
     save_project,
 )
+from badge_relief_maker.app.core.project_model import MedalProject
 
 
 def test_project_save_load_roundtrip(tmp_path):
@@ -35,6 +36,30 @@ def test_project_save_load_roundtrip(tmp_path):
     assert loaded.edge.rim_profile == "smooth"
     assert loaded.edge.use_smoothed_side_walls is True
     assert asset_root_for(project_path).exists()
+
+
+def test_project_load_ignores_unknown_future_fields():
+    data = {
+        "name": "Future Project",
+        "front_image": {"role": "front", "path": "assets/front.png", "future_image_field": True},
+        "edge": {"rim_enabled": True, "rim_profile": "smooth", "future_edge_field": 123},
+        "dimensions": {"width_mm": 90.0, "future_dimension_field": "ignored"},
+        "front_relief": {"relief_height_mm": 4.0, "future_relief_field": "ignored"},
+        "manual_markers": [{"marker_type": "note", "target": "rim", "future_marker_field": "ignored"}],
+        "export_history": [{"path": "exports/a.obj", "export_format": "obj", "future_export_field": "ignored"}],
+        "future_project_field": "ignored",
+    }
+
+    loaded = MedalProject.from_dict(data)
+
+    assert loaded.name == "Future Project"
+    assert loaded.front_image.path == "assets/front.png"
+    assert loaded.edge.rim_enabled is True
+    assert loaded.edge.rim_profile == "smooth"
+    assert loaded.dimensions.width_mm == 90.0
+    assert loaded.front_relief.relief_height_mm == 4.0
+    assert loaded.manual_markers[0].target == "rim"
+    assert loaded.export_history[0].export_format == "obj"
 
 
 def test_import_front_back_and_reference_assets(tmp_path):
