@@ -1,13 +1,34 @@
 """Application entry point."""
 
 import argparse
+import sys
 
+from .core.project_io import create_project, save_project
 from .core.relief_parameters import ReliefParameters
 from .core.single_side_pipeline import build_single_side_relief
 
 
+def run_gui() -> int:
+    """Run the optional PySide6 GUI."""
+    try:
+        from PySide6.QtWidgets import QApplication
+    except Exception:
+        print("PySide6 is not installed. Install GUI dependencies before using --gui.")
+        return 2
+
+    from .ui.main_window import MainWindow
+
+    app = QApplication(sys.argv[:1])
+    window = MainWindow()
+    window.show()
+    return int(app.exec())
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Build a basic badge relief OBJ or STL from one image.")
+    parser.add_argument("--gui", action="store_true")
+    parser.add_argument("--new-project", dest="new_project_name")
+    parser.add_argument("--project-path", dest="project_path")
     parser.add_argument("--input", dest="input_path")
     parser.add_argument("--output", dest="output_path")
     parser.add_argument("--width-mm", type=float, default=80.0)
@@ -24,6 +45,18 @@ def main(argv=None) -> int:
     parser.add_argument("--mask-smooth-iterations", type=int, default=0)
     parser.add_argument("--preview-dir", dest="preview_dir")
     args = parser.parse_args(argv)
+
+    if args.gui:
+        return run_gui()
+
+    if args.new_project_name:
+        if not args.project_path:
+            print("Provide --project-path when using --new-project.")
+            return 2
+        project = create_project(args.new_project_name)
+        path = save_project(project, args.project_path)
+        print(f"Created project: {path}")
+        return 0
 
     if not args.input_path or not args.output_path:
         print("Badge Relief Maker scaffold is ready. Provide --input and --output to build an OBJ or STL.")
