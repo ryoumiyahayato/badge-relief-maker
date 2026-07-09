@@ -5,7 +5,15 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from badge_relief_maker.app.core.mesh_exporter import export_glb, export_glb_objects, export_mesh, implemented_formats
+from badge_relief_maker.app.core.mesh_exporter import (
+    export_ascii_stl,
+    export_glb,
+    export_glb_objects,
+    export_mesh,
+    export_obj,
+    export_obj_objects,
+    implemented_formats,
+)
 from badge_relief_maker.app.core.project_build import build_double_side_placeholder_from_project_file, build_front_relief_from_project_file
 from badge_relief_maker.app.core.project_io import create_project, import_image_asset, save_project
 
@@ -151,6 +159,22 @@ def test_export_glb_rejects_invalid_face_indices(tmp_path):
 
     with pytest.raises(ValueError, match="faces contain vertex indices outside the vertex array"):
         export_glb(output, vertices, [[0, 1, 99]])
+
+
+def test_export_obj_and_stl_use_shared_mesh_validation(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+
+    with pytest.raises(ValueError, match="faces must contain finite integer indices"):
+        export_obj(tmp_path / "bad.obj", vertices, [[0.0, 1.5, 2.0]])
+    with pytest.raises(ValueError, match="faces contain vertex indices outside the vertex array"):
+        export_ascii_stl(tmp_path / "bad.stl", vertices, [[0, 1, 99]])
+
+
+def test_export_obj_objects_uses_shared_mesh_validation(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+
+    with pytest.raises(ValueError, match="faces must be an Nx3 array"):
+        export_obj_objects(tmp_path / "bad-objects.obj", [{"name": "bad", "vertices": vertices, "faces": [[0, 1, 2, 0]]}])
 
 
 def test_export_mesh_dispatches_glb(tmp_path):
