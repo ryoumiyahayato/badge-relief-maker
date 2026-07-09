@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
 
-from badge_relief_maker.app.core.contour_side_builder import build_contour_side_walls
+from badge_relief_maker.app.core.contour_side_builder import build_contour_side_walls, build_smoothed_contour_side_walls
 from badge_relief_maker.app.core.manufacturability_check import basic_report, edge_usage_report
 from badge_relief_maker.app.core.mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
@@ -102,6 +102,18 @@ def test_contour_side_walls_follow_single_cell_boundary():
     assert float(vertices[:, 2].max()) == 2.0
 
 
+def test_smoothed_contour_side_walls_follow_smoothed_boundary():
+    heightmap = np.zeros((3, 3), dtype=np.float32)
+    heightmap[1, 1] = 1.0
+    mask = np.zeros((3, 3), dtype=bool)
+    mask[1, 1] = True
+    vertices, faces = build_smoothed_contour_side_walls(heightmap, mask, 9.0, 9.0, 1.0, 2.0, smoothing_iterations=1)
+    assert vertices.shape == (32, 3)
+    assert faces.shape == (16, 3)
+    assert float(vertices[:, 2].min()) == -1.0
+    assert float(vertices[:, 2].max()) == 2.0
+
+
 def test_contour_side_walls_returns_stable_empty_arrays():
     heightmap = np.zeros((3, 3), dtype=np.float32)
     mask = np.zeros((3, 3), dtype=bool)
@@ -116,6 +128,25 @@ def test_masked_relief_solid_closes_internal_height_steps():
     vertices, faces = build_masked_relief_solid(heightmap, mask, 10.0, 5.0, 1.0, 4.0)
     assert len(vertices) > 16
     assert len(faces) > 20
+
+
+def test_masked_relief_solid_can_use_smoothed_side_walls():
+    heightmap = np.zeros((3, 3), dtype=np.float32)
+    heightmap[1, 1] = 1.0
+    mask = np.zeros((3, 3), dtype=bool)
+    mask[1, 1] = True
+    vertices, faces = build_masked_relief_solid(
+        heightmap,
+        mask,
+        9.0,
+        9.0,
+        1.0,
+        2.0,
+        use_smoothed_side_walls=True,
+        contour_smoothing_iterations=1,
+    )
+    assert len(vertices) == 40
+    assert len(faces) == 20
 
 
 def test_optimize_mesh_deduplicates_vertices():
@@ -261,6 +292,7 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert result.report["footprint_mode"] == "mask"
     assert result.report["shape_after_crop"][0] <= result.report["original_shape"][0]
     assert result.report["export_format"] == "obj"
+    assert result.report["side_wall_mode"] == "grid_contour"
     assert "bbox" in result.report
     assert "warnings" in result.report
     assert "mask_cleanup" in result.report
@@ -273,6 +305,30 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     text = output_path.read_text(encoding="utf-8")
     assert "v " in text
     assert "f " in text
+
+
+def test_single_side_pipeline_can_use_smoothed_side_walls(tmp_path):
+    image = Image.new("RGBA", (6, 6), (0, 0, 0, 0))
+    image.putpixel((2, 2), (255, 255, 255, 255))
+    image.putpixel((3, 2), (255, 255, 255, 255))
+    image_path = tmp_path / "input.png"
+    output_path = tmp_path / "output.obj"
+    image.save(image_path)
+
+    params = ReliefParameters(
+        width_mm=10.0,
+        height_mm=10.0,
+        base_thickness_mm=1.0,
+        relief_height_mm=2.0,
+        use_smoothed_side_walls=True,
+        contour_smoothing_iterations=1,
+    )
+    result = build_single_side_relief(image_path, output_path, params)
+
+    assert output_path.exists()
+    assert result.report["side_wall_mode"] == "smoothed_contour"
+    assert result.report["outline"]["smoothing_iterations"] == 1
+    assert "smoothed contour side walls are experimental and may need Blender cleanup" in result.report["warnings"]
 
 
 def test_single_side_pipeline_handles_empty_foreground(tmp_path):
