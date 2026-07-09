@@ -57,6 +57,8 @@ def main(argv=None) -> int:
     parser.add_argument("--relief-mm", type=float, default=3.0)
     parser.add_argument("--invert", action="store_true")
     parser.add_argument("--rectangle-footprint", action="store_true")
+    parser.add_argument("--smoothed-side-walls", action="store_true")
+    parser.add_argument("--contour-smoothing-iterations", type=int, default=1)
     parser.add_argument("--no-crop", action="store_true")
     parser.add_argument("--crop-padding-px", type=int, default=1)
     parser.add_argument("--max-grid-cells", type=int, default=20000)
@@ -150,6 +152,8 @@ def main(argv=None) -> int:
         min_component_pixels=args.min_component_pixels,
         fill_hole_pixels=args.fill_hole_pixels,
         mask_smooth_iterations=args.mask_smooth_iterations,
+        use_smoothed_side_walls=args.smoothed_side_walls,
+        contour_smoothing_iterations=args.contour_smoothing_iterations,
     )
     result = build_single_side_relief(args.input_path, args.output_path, params, preview_dir=args.preview_dir)
     print(result.report)
