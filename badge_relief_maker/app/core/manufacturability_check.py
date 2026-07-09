@@ -5,6 +5,9 @@ from collections import Counter
 import numpy as np
 
 
+_MALFORMED_FACE_WARNING = "malformed face array detected"
+
+
 def _empty_bbox():
     return {
         "min_x": None,
@@ -40,20 +43,64 @@ def mesh_bounds(vertices):
     }
 
 
+def _empty_topology_report(malformed_face_array=False):
+    return {
+        "unique_edge_count": 0,
+        "boundary_edge_count": 0,
+        "non_manifold_edge_count": 0,
+        "closed_edge_manifold": False,
+        "malformed_face_array": bool(malformed_face_array),
+    }
+
+
+def _empty_face_geometry_report(invalid_face_count=0, malformed_face_array=False):
+    return {
+        "valid_face_count": 0,
+        "invalid_face_count": int(invalid_face_count),
+        "zero_area_face_count": 0,
+        "total_surface_area_mm2": 0.0,
+        "min_face_area_mm2": 0.0,
+        "max_face_area_mm2": 0.0,
+        "up_facing_face_count": 0,
+        "down_facing_face_count": 0,
+        "side_facing_face_count": 0,
+        "malformed_face_array": bool(malformed_face_array),
+    }
+
+
+def _faces_array(faces):
+    try:
+        return np.asarray(faces, dtype=np.int64)
+    except (TypeError, ValueError):
+        return None
+
+
+def _face_row_count(faces):
+    faces = np.asarray(faces, dtype=object)
+    if faces.ndim == 0:
+        return 0
+    if faces.ndim == 1:
+        return 1 if faces.size else 0
+    return int(len(faces))
+
+
+def _is_triangular_face_array(faces):
+    return faces is not None and faces.ndim == 2 and faces.shape[1] == 3
+
+
 def edge_usage_report(faces):
     """Return simple open-edge and non-manifold edge diagnostics.
 
     The check assumes triangular faces. It is intentionally lightweight and is
     suitable for warnings, not for proving production-grade mesh validity.
     """
-    faces = np.asarray(faces, dtype=np.int64)
-    if len(faces) == 0:
-        return {
-            "unique_edge_count": 0,
-            "boundary_edge_count": 0,
-            "non_manifold_edge_count": 0,
-            "closed_edge_manifold": False,
-        }
+    faces = _faces_array(faces)
+    if faces is None:
+        return _empty_topology_report(malformed_face_array=True)
+    if faces.size == 0:
+        return _empty_topology_report()
+    if not _is_triangular_face_array(faces):
+        return _empty_topology_report(malformed_face_array=True)
 
     counter = Counter()
     for a, b, c in faces:
@@ -68,41 +115,26 @@ def edge_usage_report(faces):
         "boundary_edge_count": int(boundary_edges),
         "non_manifold_edge_count": int(non_manifold_edges),
         "closed_edge_manifold": bool(boundary_edges == 0 and non_manifold_edges == 0 and len(counter) > 0),
+        "malformed_face_array": False,
     }
 
 
 def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
     """Return lightweight triangle area and normal-orientation diagnostics."""
     vertices = np.asarray(vertices, dtype=float)
-    faces = np.asarray(faces, dtype=np.int64)
-    if len(vertices) == 0 or len(faces) == 0:
-        return {
-            "valid_face_count": 0,
-            "invalid_face_count": 0,
-            "zero_area_face_count": 0,
-            "total_surface_area_mm2": 0.0,
-            "min_face_area_mm2": 0.0,
-            "max_face_area_mm2": 0.0,
-            "up_facing_face_count": 0,
-            "down_facing_face_count": 0,
-            "side_facing_face_count": 0,
-        }
+    faces = _faces_array(faces)
+    if faces is None:
+        return _empty_face_geometry_report(invalid_face_count=1, malformed_face_array=True)
+    if len(vertices) == 0 or faces.size == 0:
+        return _empty_face_geometry_report()
+    if not _is_triangular_face_array(faces):
+        return _empty_face_geometry_report(invalid_face_count=_face_row_count(faces), malformed_face_array=True)
 
     valid_mask = np.all((faces >= 0) & (faces < len(vertices)), axis=1)
     valid_faces = faces[valid_mask]
     invalid_count = int(len(faces) - len(valid_faces))
     if len(valid_faces) == 0:
-        return {
-            "valid_face_count": 0,
-            "invalid_face_count": invalid_count,
-            "zero_area_face_count": 0,
-            "total_surface_area_mm2": 0.0,
-            "min_face_area_mm2": 0.0,
-            "max_face_area_mm2": 0.0,
-            "up_facing_face_count": 0,
-            "down_facing_face_count": 0,
-            "side_facing_face_count": 0,
-        }
+        return _empty_face_geometry_report(invalid_face_count=invalid_count)
 
     p0 = vertices[valid_faces[:, 0]]
     p1 = vertices[valid_faces[:, 1]]
@@ -132,6 +164,7 @@ def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
         "up_facing_face_count": up_count,
         "down_facing_face_count": down_count,
         "side_facing_face_count": side_count,
+        "malformed_face_array": False,
     }
 
 
@@ -143,7 +176,7 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
     CLI to warn about obvious risks.
     """
     vertex_count = int(len(vertices))
-    face_count = int(len(faces))
+    face_count = _face_row_count(faces)
     bounds = mesh_bounds(vertices)
     topology = edge_usage_report(faces)
     face_geometry = face_geometry_report(vertices, faces)
@@ -159,6 +192,8 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         warnings.append("open boundary edges detected")
     if topology["non_manifold_edge_count"] > 0:
         warnings.append("non-manifold edges detected")
+    if topology.get("malformed_face_array") or face_geometry.get("malformed_face_array"):
+        warnings.append(_MALFORMED_FACE_WARNING)
     if face_geometry["invalid_face_count"] > 0:
         warnings.append("invalid face references detected")
     if face_geometry["zero_area_face_count"] > 0:
