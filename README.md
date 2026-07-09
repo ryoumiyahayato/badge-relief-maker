@@ -15,7 +15,7 @@ The project now has these layers:
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
 - A split OBJ exporter for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
-- A lightweight outline report, mesh repair pass and topology report for early warnings.
+- A lightweight outline report, contour side wall builder, mesh repair pass and topology report for early warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
 
@@ -29,7 +29,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Extract outline boundary metrics from the final mask.
 - Convert brightness to a heightmap.
 - Build a masked footprint relief solid by default.
-- Add base thickness and side walls.
+- Add base thickness and contour-driven external side walls.
 - Add internal vertical walls where neighboring relief cells have different heights.
 - Deduplicate repeated vertices.
 - Run basic mesh repair to remove invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
@@ -45,7 +45,7 @@ The back-side workflow is currently incremental but independent: a back image ca
 
 The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately.
 
-The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length and a rough outline type label. This is the foundation for replacing pixel-cell side closure with smoother contour-based side closure.
+The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length and a rough outline type label. The contour side wall builder now uses the external mask boundary as a separate side-wall layer, which is the foundation for later smoothing, bevels and rim generation.
 
 The topology report counts unique edges, boundary edges and non-manifold edges. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
@@ -187,7 +187,7 @@ These commands should be treated as first pipeline tests, not production-grade m
 
 ## Suggested development order
 
-1. Replace pixel-cell footprint with contour-based side closure.
+1. Add contour smoothing and bevel/rim parameters.
 2. Add stronger mesh repair and hole-fill actions.
 3. Add GLB export.
 4. Expand PySide6 UI panels.
