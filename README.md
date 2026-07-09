@@ -11,6 +11,7 @@ The first implementation prioritizes local/offline processing so it can run on o
 The project now has two layers:
 
 - A project layer that can create, save and open `.medalproj` JSON files with a sibling asset folder.
+- A project-aware front relief workflow that imports a front image, builds a rough front mesh and records export history.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
 
 The current runnable mesh path is a simple single-side proof of concept:
@@ -32,6 +33,8 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Return a basic manufacturing report with size and warning fields.
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
+
+Quality modes are available for project builds: preview, standard and high. They currently map to different grid-size and mask-cleanup presets, not to a full sculpting engine.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
@@ -73,6 +76,24 @@ test_assets/
   exports/
 ```
 
+Import a front image into the project:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --import-front front.png
+```
+
+Build front relief from the project and record export history:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format obj --quality preview
+```
+
+Export STL from the same project:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format stl --quality high
+```
+
 Run the GUI skeleton if PySide6 is installed:
 
 ```bash
@@ -85,15 +106,15 @@ Install optional GUI dependency:
 pip install -r requirements-gui.txt
 ```
 
-## CLI proof of concept
+## Direct CLI proof of concept
 
-Export OBJ:
+Export OBJ without a project file:
 
 ```bash
 python -m badge_relief_maker.app --input input.png --output output.obj --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
 ```
 
-Export ASCII STL:
+Export ASCII STL without a project file:
 
 ```bash
 python -m badge_relief_maker.app --input input.png --output output.stl --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
