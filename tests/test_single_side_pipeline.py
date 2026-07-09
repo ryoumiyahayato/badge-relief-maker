@@ -11,7 +11,9 @@ from badge_relief_maker.app.core.mesh_repair import repair_mesh_basic
 from badge_relief_maker.app.core.outline_extractor import (
     boundary_edges_from_mask,
     outline_report,
+    scale_loop_to_mm,
     simplify_collinear_points,
+    smooth_closed_loop,
     trace_boundary_loops,
 )
 from badge_relief_maker.app.core.relief_parameters import ReliefParameters
@@ -61,6 +63,7 @@ def test_outline_report_counts_single_cell_boundary():
     assert report["foreground_pixel_count"] == 1
     assert report["loop_count"] == 1
     assert report["simplified_loop_point_count"] == 5
+    assert report["smoothed_loop_point_count"] == 9
 
 
 def test_trace_boundary_loops_simplifies_collinear_grid_points():
@@ -75,6 +78,16 @@ def test_trace_boundary_loops_simplifies_collinear_grid_points():
     assert len(simplified[0]) == 5
     assert report["loop_point_count"] == 7
     assert report["simplified_loop_point_count"] == 5
+
+
+def test_smooth_closed_loop_and_scale_to_mm():
+    loop = [(0, 0), (2, 0), (2, 1), (0, 1), (0, 0)]
+    smoothed = smooth_closed_loop(loop, iterations=1)
+    scaled = scale_loop_to_mm(smoothed, width_mm=20.0, height_mm=10.0, grid_shape=(1, 2))
+    assert len(smoothed) == 9
+    assert smoothed[0] == smoothed[-1]
+    assert scaled[0] == (5.0, 0.0)
+    assert scaled[-1] == scaled[0]
 
 
 def test_contour_side_walls_follow_single_cell_boundary():
