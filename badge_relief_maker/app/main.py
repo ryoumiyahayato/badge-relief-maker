@@ -3,7 +3,8 @@
 import argparse
 import sys
 
-from .core.project_io import create_project, save_project
+from .core.project_build import build_front_relief_from_project_file
+from .core.project_io import create_project, import_image_asset, load_project, save_project
 from .core.relief_parameters import ReliefParameters
 from .core.single_side_pipeline import build_single_side_relief
 
@@ -29,6 +30,10 @@ def main(argv=None) -> int:
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--new-project", dest="new_project_name")
     parser.add_argument("--project-path", dest="project_path")
+    parser.add_argument("--import-front", dest="import_front_path")
+    parser.add_argument("--build-front", action="store_true")
+    parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl"])
+    parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
     parser.add_argument("--input", dest="input_path")
     parser.add_argument("--output", dest="output_path")
     parser.add_argument("--width-mm", type=float, default=80.0)
@@ -56,6 +61,28 @@ def main(argv=None) -> int:
         project = create_project(args.new_project_name)
         path = save_project(project, args.project_path)
         print(f"Created project: {path}")
+        return 0
+
+    if args.import_front_path:
+        if not args.project_path:
+            print("Provide --project-path when using --import-front.")
+            return 2
+        project = load_project(args.project_path)
+        record = import_image_asset(project, args.project_path, args.import_front_path, "front")
+        save_project(project, args.project_path)
+        print(f"Imported front image: {record.path}")
+        return 0
+
+    if args.build_front:
+        if not args.project_path:
+            print("Provide --project-path when using --build-front.")
+            return 2
+        result = build_front_relief_from_project_file(
+            args.project_path,
+            export_format=args.project_export_format,
+            quality_mode=args.quality,
+        )
+        print(result.report)
         return 0
 
     if not args.input_path or not args.output_path:
