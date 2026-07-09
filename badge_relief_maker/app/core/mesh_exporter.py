@@ -5,6 +5,12 @@ from pathlib import Path
 import numpy as np
 
 
+def _safe_obj_name(name):
+    text = str(name or "object").strip()
+    text = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in text)
+    return text or "object"
+
+
 def export_obj(path, vertices, faces):
     """Export a minimal OBJ file."""
     path = Path(path)
@@ -13,6 +19,28 @@ def export_obj(path, vertices, faces):
             fh.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
         for a, b, c in faces:
             fh.write(f"f {a + 1} {b + 1} {c + 1}\n")
+
+
+def export_obj_objects(path, objects):
+    """Export multiple named mesh objects to one OBJ file.
+
+    Each object item should contain name, vertices and faces. Blender imports
+    OBJ object markers as separate editable objects or mesh groups depending on
+    import settings, which is useful for the rough-base workflow.
+    """
+    path = Path(path)
+    vertex_offset = 0
+    with path.open("w", encoding="utf-8") as fh:
+        for item in objects:
+            name = _safe_obj_name(item["name"])
+            vertices = np.asarray(item["vertices"], dtype=float)
+            faces = np.asarray(item["faces"], dtype=np.int64)
+            fh.write(f"o {name}\n")
+            for x, y, z in vertices:
+                fh.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
+            for a, b, c in faces:
+                fh.write(f"f {a + 1 + vertex_offset} {b + 1 + vertex_offset} {c + 1 + vertex_offset}\n")
+            vertex_offset += len(vertices)
 
 
 def _facet_normal(a, b, c):
