@@ -4,8 +4,8 @@ import struct
 import numpy as np
 from PIL import Image
 
-from badge_relief_maker.app.core.mesh_exporter import export_glb, export_mesh, implemented_formats
-from badge_relief_maker.app.core.project_build import build_front_relief_from_project_file
+from badge_relief_maker.app.core.mesh_exporter import export_glb, export_glb_objects, export_mesh, implemented_formats
+from badge_relief_maker.app.core.project_build import build_double_side_placeholder_from_project_file, build_front_relief_from_project_file
 from badge_relief_maker.app.core.project_io import create_project, import_image_asset, save_project
 
 
@@ -49,6 +49,29 @@ def test_export_glb_writes_binary_gltf_header_and_mesh(tmp_path):
     assert binary_length > 0
 
 
+def test_export_glb_objects_writes_named_nodes_and_meshes(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    faces = np.asarray([[0, 1, 2]], dtype=np.int64)
+    output = tmp_path / "split.glb"
+
+    export_glb_objects(
+        output,
+        [
+            {"name": "front relief", "vertices": vertices, "faces": faces},
+            {"name": "back relief", "vertices": vertices + np.asarray([0, 0, -1]), "faces": faces},
+        ],
+    )
+    document, binary_length = _read_glb(output)
+
+    assert [node["name"] for node in document["nodes"]] == ["front_relief", "back_relief"]
+    assert [mesh["name"] for mesh in document["meshes"]] == ["front_relief", "back_relief"]
+    assert document["scenes"][0]["nodes"] == [0, 1]
+    assert len(document["meshes"]) == 2
+    assert len(document["bufferViews"]) == 6
+    assert len(document["accessors"]) == 6
+    assert binary_length > 0
+
+
 def test_export_mesh_dispatches_glb(tmp_path):
     vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
     faces = np.asarray([[0, 1, 2]], dtype=np.int64)
@@ -75,3 +98,25 @@ def test_project_front_build_can_export_glb(tmp_path):
     assert result.output_path.endswith(".glb")
     assert result.report["export_format"] == "glb"
     assert open(result.output_path, "rb").read(4) == b"glTF"
+
+
+def test_project_double_placeholder_glb_preserves_split_nodes(tmp_path):
+    front_path = tmp_path / "front.png"
+    back_path = tmp_path / "back.png"
+    Image.new("RGBA", (6, 6), (255, 255, 255, 255)).save(front_path)
+    Image.new("RGBA", (6, 6), (128, 128, 128, 255)).save(back_path)
+
+    project = create_project("GLB Double Project")
+    project_path = tmp_path / "glb_double_project.medalproj"
+    save_project(project, project_path)
+    import_image_asset(project, project_path, front_path, "front")
+    import_image_asset(project, project_path, back_path, "back")
+    save_project(project, project_path)
+
+    result = build_double_side_placeholder_from_project_file(project_path, export_format="glb", quality_mode="preview")
+    document, _ = _read_glb(result.output_path)
+
+    assert result.output_path.endswith(".glb")
+    assert result.report["export_format"] == "glb"
+    assert result.report["split_objects"] == ["front_relief", "back_relief"]
+    assert [node["name"] for node in document["nodes"]] == ["front_relief", "back_relief"]
