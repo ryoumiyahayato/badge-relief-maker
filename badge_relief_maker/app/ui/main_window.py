@@ -19,7 +19,7 @@ except Exception:
     QVBoxLayout = None
     QWidget = object
 
-from ..core.project_build import build_side_relief_from_project
+from ..core.project_build import build_double_side_placeholder_from_project, build_side_relief_from_project
 from ..core.project_io import create_project, import_image_asset, load_project, save_project
 
 
@@ -61,6 +61,8 @@ class MainWindow(QMainWindow):
             ("Build Front STL", self.build_front_stl),
             ("Build Back OBJ", self.build_back_obj),
             ("Build Back STL", self.build_back_stl),
+            ("Build Double Placeholder OBJ", self.build_double_placeholder_obj),
+            ("Build Double Placeholder STL", self.build_double_placeholder_stl),
         ]:
             button = QPushButton(title)
             button.clicked.connect(handler)
@@ -140,6 +142,21 @@ class MainWindow(QMainWindow):
         save_project(self.project, self.project_path)
         self._log(f"Built {side_name} relief: {result.output_path}")
 
+    def _build_double_placeholder(self, export_format):
+        if not self._ensure_saved_project():
+            return
+        if self.project.front_image is None or self.project.back_image is None:
+            self._log("Import both front and back images before building a double placeholder.")
+            return
+        result = build_double_side_placeholder_from_project(
+            self.project,
+            self.project_path,
+            export_format=export_format,
+            quality_mode=self.project.front_relief.quality_mode,
+        )
+        save_project(self.project, self.project_path)
+        self._log(f"Built double placeholder: {result.output_path}")
+
     def import_front_image(self):
         self._import_image("front", is_reference=False)
 
@@ -160,3 +177,9 @@ class MainWindow(QMainWindow):
 
     def build_back_stl(self):
         self._build_side("back", "stl")
+
+    def build_double_placeholder_obj(self):
+        self._build_double_placeholder("obj")
+
+    def build_double_placeholder_stl(self):
+        self._build_double_placeholder("stl")
