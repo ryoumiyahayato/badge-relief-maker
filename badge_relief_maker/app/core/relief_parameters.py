@@ -21,6 +21,8 @@ class ReliefParameters:
     min_component_pixels: int = 1
     fill_hole_pixels: int = 0
     mask_smooth_iterations: int = 0
+    use_smoothed_side_walls: bool = False
+    contour_smoothing_iterations: int = 1
 
 
 @dataclass(frozen=True)
