@@ -8,10 +8,11 @@ The project is not intended to be a general-purpose AI image-to-3D system. Its f
 
 The first implementation prioritizes local/offline processing so it can run on ordinary Windows laptops. Heavy image-to-3D AI models, cloud APIs and GPU servers are intentionally outside the MVP.
 
-The project now has two layers:
+The project now has three layers:
 
 - A project layer that can create, save and open `.medalproj` JSON files with a sibling asset folder.
 - A project-aware side relief workflow that imports front or back images, builds rough side meshes and records export history.
+- A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
 
 The current runnable mesh path is a simple single-side proof of concept:
@@ -36,7 +37,9 @@ The `.medalproj` file stores project name, front image, back image, reference im
 
 Quality modes are available for project builds: preview, standard and high. They currently map to different grid-size and mask-cleanup presets, not to a full sculpting engine.
 
-The back-side workflow is currently incremental but independent: a back image can be added to an existing project and exported as its own back relief OBJ/STL. A true fused front/back solid remains a later phase.
+The back-side workflow is currently incremental but independent: a back image can be added to an existing project and exported as its own back relief OBJ/STL.
+
+The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
@@ -101,6 +104,14 @@ Build back relief from the same project and record export history:
 ```bash
 python -m badge_relief_maker.app --project-path test.medalproj --build-back --project-export-format stl --quality preview
 ```
+
+Build a combined front/back placeholder assembly:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --build-double-placeholder --project-export-format obj --quality preview
+```
+
+The placeholder assembly is useful for Blender inspection and layout checking. It is not a finished fused double-side production model.
 
 A generic side build form is also available:
 
@@ -170,9 +181,9 @@ These commands should be treated as first pipeline tests, not production-grade m
 
 1. Improve project-based side image workflow.
 2. Replace pixel-cell footprint with contour-based side closure.
-3. Add GLB export.
-4. Add mesh repair and manufacturing checks.
-5. Expand PySide6 UI panels.
-6. Add fused double-side alignment and solid generation.
-7. Add region-based manual height editing.
-8. Add optional AI-assisted segmentation or cleanup.
+3. Add Blender-friendly split OBJ export.
+4. Add GLB export.
+5. Add mesh repair and manufacturing checks.
+6. Expand PySide6 UI panels.
+7. Add fused double-side alignment and solid generation.
+8. Add region-based manual height editing.
