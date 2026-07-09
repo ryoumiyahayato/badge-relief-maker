@@ -1,8 +1,9 @@
 """Mask outline extraction helpers.
 
-These functions do not yet build a smoothed contour mesh. They extract the grid
-boundary of a foreground mask so the pipeline can report outline complexity and
-later replace pixel-cell side closure with contour-based side closure.
+These functions extract the grid boundary of a foreground mask, trace it into
+contour loops and provide simplified/smoothed outline metrics. The current mesh
+builder still uses grid-contour side walls, but these helpers prepare the data
+needed for smoother contour side closure and later bevel/rim generation.
 """
 
 from collections import defaultdict
@@ -113,7 +114,51 @@ def simplify_collinear_points(points):
     return simplified
 
 
-def outline_report(mask, width_mm, height_mm):
+def smooth_closed_loop(points, iterations=1, corner_cut=0.25):
+    """Return a Chaikin-smoothed closed loop.
+
+    The returned loop is closed when the input loop is closed. Coordinates are
+    floats in the same coordinate space as the input points.
+    """
+    pts = [_float_point_tuple(item) for item in points]
+    if len(pts) <= 3 or iterations <= 0:
+        return pts
+
+    closed = _points_close(pts[0], pts[-1])
+    if not closed:
+        return pts
+
+    work = pts[:-1]
+    if len(work) <= 2:
+        return pts
+
+    cut = min(max(float(corner_cut), 0.01), 0.49)
+    for _ in range(int(iterations)):
+        next_points = []
+        count = len(work)
+        for index, p0 in enumerate(work):
+            p1 = work[(index + 1) % count]
+            q = ((1.0 - cut) * p0[0] + cut * p1[0], (1.0 - cut) * p0[1] + cut * p1[1])
+            r = (cut * p0[0] + (1.0 - cut) * p1[0], cut * p0[1] + (1.0 - cut) * p1[1])
+            next_points.extend([q, r])
+        work = next_points
+
+    if work and not _points_close(work[0], work[-1]):
+        work.append(work[0])
+    return work
+
+
+def scale_loop_to_mm(points, width_mm, height_mm, grid_shape):
+    """Scale grid-coordinate loop points into millimeters."""
+    rows, cols = grid_shape
+    if rows <= 0 or cols <= 0:
+        raise ValueError("grid_shape must be non-empty")
+    scale_x = float(width_mm) / float(cols)
+    scale_y = float(height_mm) / float(rows)
+    return [(float(x) * scale_x, float(y) * scale_y) for x, y in points]
+
+
+def outline_report(mask, width_mm, height_mm, smoothing_iterations=1):
     """Return lightweight outline metrics for a mask footprint."""
     mask = np.asarray(mask, dtype=bool)
     if mask.ndim != 2:
@@ -125,6 +170,7 @@ def outline_report(mask, width_mm, height_mm):
     edges = boundary_edges_from_mask(mask)
     loops = trace_boundary_loops(edges)
     simplified_loops = [simplify_collinear_points(loop) for loop in loops]
+    smoothed_loops = [smooth_closed_loop(loop, iterations=smoothing_iterations) for loop in simplified_loops]
     cell_w = float(width_mm) / float(cols)
     cell_h = float(height_mm) / float(rows)
     horizontal_count = 0
@@ -156,11 +202,22 @@ def outline_report(mask, width_mm, height_mm):
         "simplified_loop_point_count": int(sum(len(loop) for loop in simplified_loops)),
         "largest_loop_point_count": int(max((len(loop) for loop in loops), default=0)),
         "largest_simplified_loop_point_count": int(max((len(loop) for loop in simplified_loops), default=0)),
+        "smoothing_iterations": int(max(0, smoothing_iterations)),
+        "smoothed_loop_point_count": int(sum(len(loop) for loop in smoothed_loops)),
+        "largest_smoothed_loop_point_count": int(max((len(loop) for loop in smoothed_loops), default=0)),
     }
 
 
 def _point_tuple(point):
     return (int(point[0]), int(point[1]))
+
+
+def _float_point_tuple(point):
+    return (float(point[0]), float(point[1]))
+
+
+def _points_close(a, b, epsilon=1e-9):
+    return abs(float(a[0]) - float(b[0])) <= epsilon and abs(float(a[1]) - float(b[1])) <= epsilon
 
 
 def _is_collinear(a, b, c):
