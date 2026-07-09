@@ -45,7 +45,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
 
-Project manual markers can now drive simple height edits during side builds. Supported marker types are `height`, `height_override` and `set_height`; target can be `front`, `back`, `both`, `heightmap` or `relief`. Marker data supports normalized or pixel x/y coordinates, circular radius, rectangular width/height, normalized height, and set/add/subtract operation modes.
+Project manual markers can now drive simple height edits during side builds. Supported marker types are `height`, `height_override` and `set_height`; target can be `front`, `back`, `both`, `heightmap` or `relief`. Marker data supports normalized or pixel x/y coordinates, circular radius, rectangular width/height, normalized height, and set/add/subtract operation modes. For rectangle size, use pixel dimensions or explicit normalized region keys such as `width_normalized` plus `region_height_normalized`, `rect_height_normalized` or `box_height_normalized`; `height_normalized` remains the target height value.
 
 Project edge settings are now used by project builds. The project can store rim enablement, rim width in pixels or millimeters, rim height, rim profile, smoothed side-wall mode and contour smoothing iterations. When rim width is supplied in millimeters, project export converts it to an approximate pixel width using the selected quality preset.
 
