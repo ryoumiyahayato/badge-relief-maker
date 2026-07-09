@@ -27,7 +27,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Crop to the foreground bounding box.
 - Downsample very large masks before mesh generation.
 - Extract outline boundary metrics from the final mask.
-- Trace boundary loops and remove collinear contour points for simpler outline metrics.
+- Trace boundary loops, remove collinear contour points and calculate smoothed-loop metrics.
 - Convert brightness to a heightmap.
 - Build a masked footprint relief solid by default.
 - Add base thickness and contour-driven external side walls.
@@ -46,7 +46,7 @@ The back-side workflow is currently incremental but independent: a back image ca
 
 The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately.
 
-The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts and a rough outline type label. The contour side wall builder now uses the external mask boundary as a separate side-wall layer, which is the foundation for later smoothing, bevels and rim generation.
+The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder now uses the external mask boundary as a separate side-wall layer, which is the foundation for later smoothing, bevels and rim generation.
 
 The topology report counts unique edges, boundary edges and non-manifold edges. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
@@ -56,7 +56,7 @@ Internal height step closure is now included so adjacent high and low relief cel
 
 The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
-The intended MVP still includes contour smoothing, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
+The intended MVP still includes using smoothed contours for side-wall mesh, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
 
 ## Planned modes
 
@@ -188,9 +188,10 @@ These commands should be treated as first pipeline tests, not production-grade m
 
 ## Suggested development order
 
-1. Add contour smoothing and bevel/rim parameters.
-2. Add stronger mesh repair and hole-fill actions.
-3. Add GLB export.
-4. Expand PySide6 UI panels.
-5. Add fused double-side alignment and solid generation.
-6. Add region-based manual height editing.
+1. Use smoothed contours in side-wall mesh generation.
+2. Add bevel/rim parameters.
+3. Add stronger mesh repair and hole-fill actions.
+4. Add GLB export.
+5. Expand PySide6 UI panels.
+6. Add fused double-side alignment and solid generation.
+7. Add region-based manual height editing.
