@@ -2,6 +2,7 @@ from PIL import Image
 
 from badge_relief_maker.app.core.project_build import (
     build_back_relief_from_project_file,
+    build_double_side_placeholder_from_project_file,
     build_front_relief_from_project_file,
 )
 from badge_relief_maker.app.core.project_io import (
@@ -97,3 +98,28 @@ def test_build_back_relief_from_existing_project(tmp_path):
     assert loaded.back_relief.enabled is True
     assert len(loaded.export_history) == 2
     assert loaded.export_history[-1].export_format == "stl"
+
+
+def test_build_double_placeholder_from_project_file(tmp_path):
+    front_path = tmp_path / "front.png"
+    back_path = tmp_path / "back.png"
+    Image.new("RGBA", (6, 6), (255, 255, 255, 255)).save(front_path)
+    Image.new("RGBA", (6, 6), (128, 128, 128, 255)).save(back_path)
+
+    project = create_project("Double Placeholder Test")
+    project_path = tmp_path / "double_placeholder.medalproj"
+    save_project(project, project_path)
+    import_image_asset(project, project_path, front_path, "front")
+    import_image_asset(project, project_path, back_path, "back")
+    save_project(project, project_path)
+
+    result = build_double_side_placeholder_from_project_file(project_path, export_format="obj", quality_mode="preview")
+    loaded = load_project(project_path)
+
+    assert result.output_path.endswith(".obj")
+    assert result.report["project_source_role"] == "double_placeholder"
+    assert result.report["assembly_mode"] == "front_back_placeholder_not_fused"
+    assert "front_report" in result.report
+    assert "back_report" in result.report
+    assert len(loaded.export_history) == 1
+    assert loaded.export_history[0].export_format == "obj"
