@@ -79,6 +79,32 @@ def test_export_glb_objects_writes_named_nodes_meshes_and_materials(tmp_path):
     assert binary_length > 0
 
 
+def test_export_glb_materials_handle_invalid_values(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    faces = np.asarray([[0, 1, 2]], dtype=np.int64)
+    output = tmp_path / "invalid-material.glb"
+
+    export_glb_objects(
+        output,
+        [
+            {
+                "name": "bad material",
+                "vertices": vertices,
+                "faces": faces,
+                "base_color": "not-a-color",
+                "metallic": "bad",
+                "roughness": 2.0,
+            }
+        ],
+    )
+    document, _ = _read_glb(output)
+    pbr = document["materials"][0]["pbrMetallicRoughness"]
+
+    assert pbr["baseColorFactor"] == [0.8, 0.8, 0.8, 1.0]
+    assert pbr["metallicFactor"] == 0.0
+    assert pbr["roughnessFactor"] == 1.0
+
+
 def test_export_mesh_dispatches_glb(tmp_path):
     vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
     faces = np.asarray([[0, 1, 2]], dtype=np.int64)
