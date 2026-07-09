@@ -17,6 +17,14 @@ from .relief_parameters import ReliefBuildResult, ReliefParameters
 from .solid_builder import build_rectangular_relief_solid
 
 
+def _side_wall_mode(params):
+    if not params.use_mask_footprint:
+        return "rectangle"
+    if params.use_smoothed_side_walls:
+        return "smoothed_contour"
+    return "grid_contour"
+
+
 def build_single_side_relief(image_path, output_path=None, parameters=None, preview_dir=None):
     """Build a basic solid relief model from one image.
 
@@ -95,7 +103,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["repaired_face_count"] = int(len(faces))
     report["mesh_repair"] = repair_report
     report["outline"] = outline
-    report["side_wall_mode"] = "smoothed_contour" if params.use_smoothed_side_walls else "grid_contour"
+    report["side_wall_mode"] = _side_wall_mode(params)
     report["original_mask_pixel_count"] = original_mask_pixel_count
     report["mask_pixel_count"] = int(mask.sum())
     report["mask_cleanup"] = cleanup_report
@@ -123,7 +131,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         report["warnings"].append("duplicate vertices were merged during optimization")
     if any(value > 0 for value in repair_report.values()):
         report["warnings"].append("basic mesh repair removed invalid or redundant geometry")
-    if params.use_smoothed_side_walls:
+    if params.use_mask_footprint and params.use_smoothed_side_walls:
         report["warnings"].append("smoothed contour side walls are experimental and may need Blender cleanup")
 
     written = None
