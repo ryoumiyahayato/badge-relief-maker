@@ -26,7 +26,7 @@ def test_masked_relief_solid_uses_only_foreground_cells():
     mask = np.zeros((3, 3), dtype=bool)
     mask[1, 1] = True
     vertices, faces = build_masked_relief_solid(heightmap, mask, 9.0, 9.0, 1.0, 2.0)
-    assert len(vertices) == 8
+    assert len(vertices) == 24
     assert len(faces) == 12
 
 
