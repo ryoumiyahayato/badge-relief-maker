@@ -46,6 +46,56 @@ def test_apply_manual_height_marker_ignores_invalid_marker():
     assert np.allclose(result, heightmap)
 
 
+def test_apply_rectangular_height_marker_uses_shape_string_for_region():
+    heightmap = np.zeros((5, 5), dtype=float)
+    mask = np.ones((5, 5), dtype=bool)
+
+    result, report = apply_manual_height_markers(
+        heightmap,
+        mask,
+        [
+            {
+                "marker_type": "height",
+                "shape": "rectangle",
+                "x": 0.5,
+                "y": 0.5,
+                "width_px": 2,
+                "height_px": 2,
+                "height_normalized": 0.75,
+            }
+        ],
+    )
+
+    assert report["enabled"] is True
+    assert report["applied_marker_count"] == 1
+    assert report["affected_pixel_count"] == 9
+    assert float(result[2, 2]) == 0.75
+    assert float(result[0, 0]) == 0.0
+
+
+def test_apply_manual_height_marker_add_and_subtract_operations():
+    heightmap = np.full((3, 3), 0.5, dtype=float)
+    mask = np.ones((3, 3), dtype=bool)
+
+    raised, raise_report = apply_manual_height_markers(
+        heightmap,
+        mask,
+        [{"marker_type": "height", "x": 0.5, "y": 0.5, "radius_px": 1, "operation": "add", "delta": 0.25}],
+    )
+    lowered, lower_report = apply_manual_height_markers(
+        heightmap,
+        mask,
+        [{"marker_type": "height", "x": 0.5, "y": 0.5, "radius_px": 1, "operation": "subtract", "delta": 0.2}],
+    )
+
+    assert raise_report["applied_marker_count"] == 1
+    assert lower_report["applied_marker_count"] == 1
+    assert float(raised[1, 1]) == 0.75
+    assert float(lowered[1, 1]) == 0.3
+    assert float(raised[0, 0]) == 0.5
+    assert float(lowered[0, 0]) == 0.5
+
+
 def test_single_side_pipeline_reports_manual_height_marker(tmp_path):
     image_path = tmp_path / "front.png"
     Image.new("RGBA", (6, 6), (255, 255, 255, 255)).save(image_path)
