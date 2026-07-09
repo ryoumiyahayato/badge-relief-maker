@@ -12,6 +12,9 @@ from .relief_parameters import ReliefBuildResult, ReliefParameters
 from .single_side_pipeline import build_single_side_relief
 
 
+_HEIGHT_MARKER_TYPES = {"height", "height_override", "set_height"}
+
+
 def _safe_name(value):
     text = str(value or "project").strip().lower()
     text = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in text)
@@ -44,6 +47,22 @@ def _rim_width_px_from_project(project, preset):
     return max(1, int(round(rim_width_mm / approx_cell_mm)))
 
 
+def _manual_height_markers_from_project(project, side_name):
+    """Return saved manual height marker data for one build side."""
+    allowed_targets = {side_name, "both", "heightmap", "relief"}
+    result = []
+    for marker in getattr(project, "manual_markers", []):
+        marker_type = str(getattr(marker, "marker_type", "")).lower()
+        target = str(getattr(marker, "target", "")).lower()
+        if marker_type not in _HEIGHT_MARKER_TYPES or target not in allowed_targets:
+            continue
+        data = dict(getattr(marker, "data", {}) or {})
+        data.setdefault("marker_type", marker_type)
+        data.setdefault("target", target)
+        result.append(data)
+    return tuple(result)
+
+
 def _relief_parameters_from_project(project, side_name="front", quality_mode=None):
     """Create ReliefParameters from saved project settings."""
     _, side = _side_data(project, side_name)
@@ -65,6 +84,7 @@ def _relief_parameters_from_project(project, side_name="front", quality_mode=Non
         rim_width_px=_rim_width_px_from_project(project, preset),
         rim_height_mm=float(edge.rim_height_mm) if rim_enabled else 0.0,
         rim_profile=str(getattr(edge, "rim_profile", "flat") or "flat"),
+        manual_height_markers=_manual_height_markers_from_project(project, side_name),
     ), preset["quality_mode"]
 
 
