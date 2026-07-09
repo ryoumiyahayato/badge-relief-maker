@@ -21,6 +21,33 @@ def _dataclass_from_dict(model_type, data, **defaults):
     return model_type(**{key: value for key, value in raw.items() if key in allowed})
 
 
+def _optional_dataclass_from_dict(model_type, data, *required_keys, **defaults):
+    if not isinstance(data, dict):
+        return None
+    if any(key not in data for key in required_keys):
+        return None
+    return _dataclass_from_dict(model_type, data, **defaults)
+
+
+def _dict_list(value):
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _manual_marker_from_dict(data):
+    marker = _optional_dataclass_from_dict(ManualMarker, data, "marker_type", "target")
+    if marker is None:
+        return None
+    if not isinstance(marker.data, dict):
+        marker.data = {}
+    return marker
+
+
+def _export_record_from_dict(data):
+    return _optional_dataclass_from_dict(ExportRecord, data, "path", "export_format")
+
+
 @dataclass
 class ImageRecord:
     """One image stored inside a project."""
@@ -134,22 +161,24 @@ class MedalProject:
     @staticmethod
     def from_dict(data):
         """Create a project from JSON-compatible data."""
+        if not isinstance(data, dict):
+            data = {}
         project = MedalProject(name=data.get("name", "Untitled"))
         project.file_version = int(data.get("file_version", PROJECT_FILE_VERSION))
         project.created_at = data.get("created_at", project.created_at)
         project.updated_at = data.get("updated_at", project.updated_at)
         project.same_physical_object = bool(data.get("same_physical_object", True))
 
-        if data.get("front_image"):
-            project.front_image = _dataclass_from_dict(ImageRecord, data["front_image"])
-        if data.get("back_image"):
-            project.back_image = _dataclass_from_dict(ImageRecord, data["back_image"])
-        project.reference_images = [_dataclass_from_dict(ImageRecord, item) for item in data.get("reference_images", [])]
+        project.front_image = _optional_dataclass_from_dict(ImageRecord, data.get("front_image"), "role", "path")
+        project.back_image = _optional_dataclass_from_dict(ImageRecord, data.get("back_image"), "role", "path")
+        project.reference_images = [
+            item for item in (_optional_dataclass_from_dict(ImageRecord, item, "role", "path") for item in _dict_list(data.get("reference_images", []))) if item is not None
+        ]
         project.outline = _dataclass_from_dict(OutlineData, data.get("outline", {}))
         project.dimensions = _dataclass_from_dict(DimensionParameters, data.get("dimensions", {}))
         project.edge = _dataclass_from_dict(EdgeParameters, data.get("edge", {}))
         project.front_relief = _dataclass_from_dict(ReliefSideParameters, data.get("front_relief", {}))
         project.back_relief = _dataclass_from_dict(ReliefSideParameters, data.get("back_relief", {}), enabled=False)
-        project.manual_markers = [_dataclass_from_dict(ManualMarker, item) for item in data.get("manual_markers", [])]
-        project.export_history = [_dataclass_from_dict(ExportRecord, item) for item in data.get("export_history", [])]
+        project.manual_markers = [item for item in (_manual_marker_from_dict(item) for item in _dict_list(data.get("manual_markers", []))) if item is not None]
+        project.export_history = [item for item in (_export_record_from_dict(item) for item in _dict_list(data.get("export_history", []))) if item is not None]
         return project
