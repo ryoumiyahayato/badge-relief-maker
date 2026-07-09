@@ -41,15 +41,17 @@ def test_export_glb_writes_binary_gltf_header_and_mesh(tmp_path):
     assert primitive["attributes"]["POSITION"] == 0
     assert primitive["attributes"]["NORMAL"] == 1
     assert primitive["indices"] == 2
+    assert primitive["material"] == 0
     assert document["accessors"][0]["count"] == 3
     assert document["accessors"][1]["count"] == 3
     assert document["accessors"][1]["type"] == "VEC3"
     assert document["accessors"][2]["count"] == 3
+    assert document["materials"][0]["pbrMetallicRoughness"]["baseColorFactor"] == [0.8, 0.8, 0.8, 1.0]
     assert len(document["bufferViews"]) == 3
     assert binary_length > 0
 
 
-def test_export_glb_objects_writes_named_nodes_and_meshes(tmp_path):
+def test_export_glb_objects_writes_named_nodes_meshes_and_materials(tmp_path):
     vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
     faces = np.asarray([[0, 1, 2]], dtype=np.int64)
     output = tmp_path / "split.glb"
@@ -57,8 +59,8 @@ def test_export_glb_objects_writes_named_nodes_and_meshes(tmp_path):
     export_glb_objects(
         output,
         [
-            {"name": "front relief", "vertices": vertices, "faces": faces},
-            {"name": "back relief", "vertices": vertices + np.asarray([0, 0, -1]), "faces": faces},
+            {"name": "front relief", "vertices": vertices, "faces": faces, "base_color": [0.9, 0.8, 0.6, 1.0]},
+            {"name": "back relief", "vertices": vertices + np.asarray([0, 0, -1]), "faces": faces, "base_color": "8080ffff"},
         ],
     )
     document, binary_length = _read_glb(output)
@@ -66,6 +68,11 @@ def test_export_glb_objects_writes_named_nodes_and_meshes(tmp_path):
     assert [node["name"] for node in document["nodes"]] == ["front_relief", "back_relief"]
     assert [mesh["name"] for mesh in document["meshes"]] == ["front_relief", "back_relief"]
     assert document["scenes"][0]["nodes"] == [0, 1]
+    assert document["meshes"][0]["primitives"][0]["material"] == 0
+    assert document["meshes"][1]["primitives"][0]["material"] == 1
+    assert len(document["materials"]) == 2
+    assert document["materials"][0]["pbrMetallicRoughness"]["baseColorFactor"] == [0.9, 0.8, 0.6, 1.0]
+    assert document["materials"][1]["pbrMetallicRoughness"]["baseColorFactor"] == [128 / 255.0, 128 / 255.0, 1.0, 1.0]
     assert len(document["meshes"]) == 2
     assert len(document["bufferViews"]) == 6
     assert len(document["accessors"]) == 6
@@ -120,3 +127,4 @@ def test_project_double_placeholder_glb_preserves_split_nodes(tmp_path):
     assert result.report["export_format"] == "glb"
     assert result.report["split_objects"] == ["front_relief", "back_relief"]
     assert [node["name"] for node in document["nodes"]] == ["front_relief", "back_relief"]
+    assert len(document["materials"]) == 2
