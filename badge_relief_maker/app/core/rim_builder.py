@@ -58,7 +58,13 @@ def inner_rim_mask(mask, width_px=1):
 
 
 def rim_boost_map(mask, width_px=1, boost_normalized=0.0, profile="flat"):
-    """Return a normalized boost map for the requested rim profile."""
+    """Return a normalized boost map for the requested rim profile.
+
+    Supported profiles:
+    - flat: every rim cell receives the same boost.
+    - linear: boost tapers inward in a straight ramp.
+    - smooth: boost uses a smoothstep ramp for a softer rounded-looking rim.
+    """
     distances = rim_distance_map(mask, width_px)
     boost = float(boost_normalized)
     result = np.zeros_like(distances, dtype=float)
@@ -69,12 +75,14 @@ def rim_boost_map(mask, width_px=1, boost_normalized=0.0, profile="flat"):
     normalized_profile = str(profile or "flat").lower()
     if normalized_profile == "flat":
         result[distances >= 0] = boost
-    elif normalized_profile == "linear":
+    elif normalized_profile in {"linear", "smooth"}:
         active = distances >= 0
-        factors = 1.0 - (distances.astype(float) / float(width))
-        result[active] = np.clip(factors[active], 0.0, 1.0) * boost
+        t = np.clip(1.0 - (distances.astype(float) / float(width)), 0.0, 1.0)
+        if normalized_profile == "smooth":
+            t = t * t * (3.0 - 2.0 * t)
+        result[active] = t[active] * boost
     else:
-        raise ValueError("rim profile must be 'flat' or 'linear'")
+        raise ValueError("rim profile must be 'flat', 'linear' or 'smooth'")
     return result
 
 
@@ -90,7 +98,8 @@ def apply_outer_rim_to_heightmap(
 
     The heightmap remains normalized. The requested rim height is converted into
     normalized units by dividing by relief_height_mm, then added to rim cells and
-    clipped to 1.0 for this MVP path. Linear profile tapers the boost inward.
+    clipped to 1.0 for this MVP path. Linear and smooth profiles taper the boost
+    inward.
     """
     heightmap = np.asarray(heightmap, dtype=float)
     mask = np.asarray(mask, dtype=bool)
