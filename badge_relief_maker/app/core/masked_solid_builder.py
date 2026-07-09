@@ -8,6 +8,8 @@ using a full rectangle.
 
 import numpy as np
 
+from .contour_side_builder import build_contour_side_walls
+
 
 def _mesh_arrays(vertices, faces):
     """Return mesh arrays with stable two-dimensional shapes."""
@@ -23,12 +25,22 @@ def _mesh_arrays(vertices, faces):
     return vertices_array, faces_array
 
 
+def _append_mesh(vertices, faces, add_vertices, add_faces):
+    """Append one mesh into vertex and face lists."""
+    if len(add_vertices) == 0:
+        return vertices, faces
+    offset = len(vertices)
+    vertices.extend(np.asarray(add_vertices, dtype=float).tolist())
+    faces.extend((np.asarray(add_faces, dtype=np.int64) + offset).tolist())
+    return vertices, faces
+
+
 def build_masked_relief_solid(heightmap, mask, width_mm, height_mm, base_thickness_mm, relief_height_mm):
     """Create a relief solid whose footprint follows a boolean mask.
 
-    Boundary edges are closed down to the base. Internal edges between two
-    foreground cells are also closed when their top heights differ, so stepped
-    relief levels do not leave open vertical cracks.
+    External boundary walls are generated through the contour side builder.
+    Internal edges between two foreground cells are also closed when their top
+    heights differ, so stepped relief levels do not leave open vertical cracks.
     """
     if heightmap.shape != mask.shape:
         raise ValueError("heightmap and mask must have the same shape")
@@ -84,24 +96,25 @@ def build_masked_relief_solid(heightmap, mask, width_mm, height_mm, base_thickne
             add_quad(t00, t10, t11, t01)
             add_quad(b00, b01, b11, b10)
 
-            if r == 0 or not bool(mask[r - 1, c]):
-                add_quad(t00, b00, b10, t10)
-            elif z_top > float(top_z_values[r - 1, c]):
+            if r > 0 and bool(mask[r - 1, c]) and z_top > float(top_z_values[r - 1, c]):
                 add_vertical_quad(x0, y0, x1, y0, float(top_z_values[r - 1, c]), z_top)
 
-            if r == rows - 1 or not bool(mask[r + 1, c]):
-                add_quad(t01, t11, b11, b01)
-            elif z_top > float(top_z_values[r + 1, c]):
+            if r < rows - 1 and bool(mask[r + 1, c]) and z_top > float(top_z_values[r + 1, c]):
                 add_vertical_quad(x0, y1, x1, y1, float(top_z_values[r + 1, c]), z_top)
 
-            if c == 0 or not bool(mask[r, c - 1]):
-                add_quad(t00, t01, b01, b00)
-            elif z_top > float(top_z_values[r, c - 1]):
+            if c > 0 and bool(mask[r, c - 1]) and z_top > float(top_z_values[r, c - 1]):
                 add_vertical_quad(x0, y0, x0, y1, float(top_z_values[r, c - 1]), z_top)
 
-            if c == cols - 1 or not bool(mask[r, c + 1]):
-                add_quad(t10, b10, b11, t11)
-            elif z_top > float(top_z_values[r, c + 1]):
+            if c < cols - 1 and bool(mask[r, c + 1]) and z_top > float(top_z_values[r, c + 1]):
                 add_vertical_quad(x1, y0, x1, y1, float(top_z_values[r, c + 1]), z_top)
 
+    side_vertices, side_faces = build_contour_side_walls(
+        heightmap,
+        mask,
+        width_mm,
+        height_mm,
+        base_thickness_mm,
+        relief_height_mm,
+    )
+    _append_mesh(vertices, faces, side_vertices, side_faces)
     return _mesh_arrays(vertices, faces)
