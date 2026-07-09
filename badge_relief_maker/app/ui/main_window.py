@@ -19,6 +19,7 @@ except Exception:
     QVBoxLayout = None
     QWidget = object
 
+from ..core.project_build import build_front_relief_from_project
 from ..core.project_io import create_project, import_image_asset, load_project, save_project
 
 
@@ -26,8 +27,8 @@ class MainWindow(QMainWindow):
     """Minimal project-based GUI shell.
 
     This is intentionally simple. It provides the top-level workflow hooks for
-    project creation, save/open and image import. The heavy editor panels will
-    be added later.
+    project creation, save/open, image import and front relief generation. The
+    heavy editor panels will be added later.
     """
 
     def __init__(self):
@@ -56,6 +57,8 @@ class MainWindow(QMainWindow):
             ("Import Front Image", self.import_front_image),
             ("Import Back Image", self.import_back_image),
             ("Import Reference Image", self.import_reference_image),
+            ("Build Front OBJ", self.build_front_obj),
+            ("Build Front STL", self.build_front_stl),
         ]:
             button = QPushButton(title)
             button.clicked.connect(handler)
@@ -117,6 +120,21 @@ class MainWindow(QMainWindow):
         save_project(self.project, self.project_path)
         self._log(f"Imported {role} image: {record.path}")
 
+    def _build_front(self, export_format):
+        if not self._ensure_saved_project():
+            return
+        if self.project.front_image is None:
+            self._log("Import a front image before building relief.")
+            return
+        result = build_front_relief_from_project(
+            self.project,
+            self.project_path,
+            export_format=export_format,
+            quality_mode=self.project.front_relief.quality_mode,
+        )
+        save_project(self.project, self.project_path)
+        self._log(f"Built front relief: {result.output_path}")
+
     def import_front_image(self):
         self._import_image("front", is_reference=False)
 
@@ -125,3 +143,9 @@ class MainWindow(QMainWindow):
 
     def import_reference_image(self):
         self._import_image("reference", is_reference=True)
+
+    def build_front_obj(self):
+        self._build_front("obj")
+
+    def build_front_stl(self):
+        self._build_front("stl")
