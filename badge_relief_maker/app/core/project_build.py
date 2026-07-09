@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from .manufacturability_check import basic_report
-from .mesh_exporter import export_mesh, export_obj_objects
+from .mesh_exporter import export_glb_objects, export_mesh, export_obj_objects
 from .project_io import add_export_record, asset_root_for, load_project, resolve_project_asset, save_project
 from .quality_modes import quality_preset
 from .relief_parameters import ReliefBuildResult, ReliefParameters
@@ -158,8 +158,8 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
 
     This is not a fused production mesh. It places the front relief on the
     positive side and a mirrored back relief on the negative side, then exports
-    one combined mesh for Blender inspection. OBJ output keeps front and back
-    as named objects so they can be selected separately in Blender.
+    one combined mesh for Blender inspection. OBJ and GLB output keep front and
+    back as named objects/nodes for easier selection in Blender.
     """
     if project.front_image is None:
         raise ValueError("project has no front image")
@@ -195,7 +195,7 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
     report["project_source_role"] = "double_placeholder"
     report["assembly_mode"] = "front_back_placeholder_not_fused"
     report["same_physical_object"] = project.same_physical_object
-    report["split_objects"] = [item["name"] for item in split_objects] if export_format == "obj" else []
+    report["split_objects"] = [item["name"] for item in split_objects] if export_format in {"obj", "glb"} else []
     report["front_report"] = front_result.report
     report["back_report"] = back_result.report
     report["warnings"].append("double side placeholder is not fused into one watertight production body")
@@ -204,6 +204,8 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
     output_path = export_dir / f"{name}_double_placeholder_{resolved_quality}.{export_format}"
     if export_format == "obj":
         export_obj_objects(output_path, split_objects)
+    elif export_format == "glb":
+        export_glb_objects(output_path, split_objects)
     else:
         export_mesh(output_path, vertices, faces)
     report["export_path"] = str(output_path)
