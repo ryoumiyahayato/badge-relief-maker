@@ -73,6 +73,56 @@ def test_apply_rectangular_height_marker_uses_shape_string_for_region():
     assert float(result[0, 0]) == 0.0
 
 
+def test_rectangular_marker_uses_explicit_normalized_height_size_key():
+    heightmap = np.zeros((5, 5), dtype=float)
+    mask = np.ones((5, 5), dtype=bool)
+
+    result, report = apply_manual_height_markers(
+        heightmap,
+        mask,
+        [
+            {
+                "marker_type": "height",
+                "shape": "rectangle",
+                "x": 0.5,
+                "y": 0.5,
+                "width_normalized": 0.5,
+                "region_height_normalized": 0.5,
+                "height_normalized": 0.75,
+            }
+        ],
+    )
+
+    assert report["enabled"] is True
+    assert report["applied_marker_count"] == 1
+    assert float(result[2, 2]) == 0.75
+    assert float(result[0, 0]) == 0.0
+
+
+def test_rectangular_marker_does_not_treat_target_height_as_region_height():
+    heightmap = np.zeros((5, 5), dtype=float)
+    mask = np.ones((5, 5), dtype=bool)
+
+    result, report = apply_manual_height_markers(
+        heightmap,
+        mask,
+        [
+            {
+                "marker_type": "height",
+                "shape": "rectangle",
+                "x": 0.5,
+                "y": 0.5,
+                "width_px": 2,
+                "height_normalized": 0.75,
+            }
+        ],
+    )
+
+    assert report["enabled"] is False
+    assert report["ignored_marker_count"] == 1
+    assert np.allclose(result, heightmap)
+
+
 def test_apply_manual_height_marker_add_and_subtract_operations():
     heightmap = np.full((3, 3), 0.5, dtype=float)
     mask = np.ones((3, 3), dtype=bool)
