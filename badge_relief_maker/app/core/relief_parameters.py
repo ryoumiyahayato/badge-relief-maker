@@ -1,6 +1,6 @@
 """Parameter objects for relief building."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,7 @@ class ReliefParameters:
     rim_width_px: int = 0
     rim_height_mm: float = 0.0
     rim_profile: str = "flat"
+    manual_height_markers: tuple = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
