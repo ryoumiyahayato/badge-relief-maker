@@ -129,6 +129,22 @@ def test_export_glb_rejects_non_finite_vertices(tmp_path):
         export_glb(output, vertices, [[0, 1, 2]])
 
 
+def test_export_glb_rejects_non_integer_face_indices(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    output = tmp_path / "float-index.glb"
+
+    with pytest.raises(ValueError, match="faces must contain finite integer indices"):
+        export_glb(output, vertices, [[0.0, 1.5, 2.0]])
+
+
+def test_export_glb_rejects_non_finite_face_indices(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    output = tmp_path / "nan-index.glb"
+
+    with pytest.raises(ValueError, match="faces must contain finite integer indices"):
+        export_glb(output, vertices, [[0, np.nan, 2]])
+
+
 def test_export_glb_rejects_invalid_face_indices(tmp_path):
     vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
     output = tmp_path / "bad-index.glb"
