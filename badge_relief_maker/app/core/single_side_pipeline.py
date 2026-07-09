@@ -14,6 +14,7 @@ from .mesh_repair import repair_mesh_basic
 from .outline_extractor import outline_report
 from .preview_exporter import save_heightmap_preview, save_mask_preview
 from .relief_parameters import ReliefBuildResult, ReliefParameters
+from .rim_builder import apply_outer_rim_to_heightmap
 from .solid_builder import build_rectangular_relief_solid
 
 
@@ -54,6 +55,13 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     shape_after_crop = tuple(mask.shape)
     mask, heightmap, resize_scale = resize_mask_and_heightmap(mask, heightmap, params.max_grid_cells)
     shape_after_resize = tuple(mask.shape)
+    heightmap, rim_report = apply_outer_rim_to_heightmap(
+        heightmap,
+        mask,
+        width_px=params.rim_width_px,
+        rim_height_mm=params.rim_height_mm,
+        relief_height_mm=params.relief_height_mm,
+    )
     outline = outline_report(
         mask,
         params.width_mm,
@@ -103,6 +111,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["repaired_face_count"] = int(len(faces))
     report["mesh_repair"] = repair_report
     report["outline"] = outline
+    report["rim"] = rim_report
     report["side_wall_mode"] = _side_wall_mode(params)
     report["original_mask_pixel_count"] = original_mask_pixel_count
     report["mask_pixel_count"] = int(mask.sum())
@@ -119,6 +128,10 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         report["warnings"].append("mask contains no foreground pixels")
     elif report["mask_pixel_count"] < 4:
         report["warnings"].append("mask is very small and may produce an unusable model")
+    if rim_report["enabled"]:
+        report["warnings"].append("outer rim height boost was applied")
+    elif params.rim_width_px > 0 or params.rim_height_mm > 0.0:
+        report["warnings"].append("outer rim was requested but not applied")
     if cleanup_report["removed_small_component_pixels"] > 0:
         report["warnings"].append("small isolated mask fragments were removed")
     if cleanup_report["filled_hole_pixels"] > 0:
