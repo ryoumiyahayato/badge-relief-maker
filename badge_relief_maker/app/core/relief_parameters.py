@@ -23,6 +23,8 @@ class ReliefParameters:
     mask_smooth_iterations: int = 0
     use_smoothed_side_walls: bool = False
     contour_smoothing_iterations: int = 1
+    rim_width_px: int = 0
+    rim_height_mm: float = 0.0
 
 
 @dataclass(frozen=True)
