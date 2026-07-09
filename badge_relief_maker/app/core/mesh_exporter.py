@@ -7,6 +7,9 @@ from pathlib import Path
 import numpy as np
 
 
+_DEFAULT_BASE_COLOR = [0.8, 0.8, 0.8, 1.0]
+
+
 def _safe_obj_name(name):
     text = str(name or "object").strip()
     text = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in text)
@@ -118,12 +121,43 @@ def _mesh_arrays(vertices, faces):
     return verts, faces
 
 
+def _base_color(item):
+    raw = item.get("base_color", item.get("color", _DEFAULT_BASE_COLOR))
+    if isinstance(raw, str):
+        raw = raw.strip().lstrip("#")
+        if len(raw) in {6, 8}:
+            values = [int(raw[index : index + 2], 16) / 255.0 for index in range(0, len(raw), 2)]
+            if len(values) == 3:
+                values.append(1.0)
+            return values
+    try:
+        values = [float(value) for value in raw]
+    except TypeError:
+        return list(_DEFAULT_BASE_COLOR)
+    if len(values) == 3:
+        values.append(1.0)
+    if len(values) != 4:
+        return list(_DEFAULT_BASE_COLOR)
+    return [float(min(max(value, 0.0), 1.0)) for value in values]
+
+
+def _material_from_item(item, name):
+    return {
+        "name": f"{name}_material",
+        "pbrMetallicRoughness": {
+            "baseColorFactor": _base_color(item),
+            "metallicFactor": float(item.get("metallic", 0.0)),
+            "roughnessFactor": float(item.get("roughness", 0.65)),
+        },
+    }
+
+
 def export_glb(path, vertices, faces):
     """Export a minimal binary glTF 2.0 GLB mesh.
 
-    The exporter writes positions, vertex normals and triangle indices. Materials,
-    texture coordinates and object splitting are intentionally outside this MVP
-    path.
+    The exporter writes positions, vertex normals, triangle indices and one basic
+    material. Texture coordinates and textures are intentionally outside this
+    MVP path.
     """
     export_glb_objects(path, [{"name": "badge_relief", "vertices": vertices, "faces": faces}])
 
@@ -132,12 +166,14 @@ def export_glb_objects(path, objects):
     """Export multiple named mesh objects to one binary glTF 2.0 GLB file.
 
     This preserves rough front/back object separation as separate glTF nodes and
-    meshes. Materials, UVs and textures are intentionally outside this MVP path.
+    meshes. Each mesh receives one simple material. UVs and textures are outside
+    this MVP path.
     """
     nodes = []
     meshes = []
     accessors = []
     buffer_views = []
+    materials = []
     scene_node_indices = []
     binary_blob = b""
 
@@ -204,6 +240,8 @@ def export_glb_objects(path, objects):
             }
         )
 
+        material_index = len(materials)
+        materials.append(_material_from_item(item, name))
         mesh_index = len(meshes)
         meshes.append(
             {
@@ -213,6 +251,7 @@ def export_glb_objects(path, objects):
                         "attributes": {"POSITION": position_accessor, "NORMAL": normal_accessor},
                         "indices": index_accessor,
                         "mode": 4,
+                        "material": material_index,
                     }
                 ],
             }
@@ -228,6 +267,7 @@ def export_glb_objects(path, objects):
     }
     if meshes:
         document["meshes"] = meshes
+        document["materials"] = materials
         document["buffers"] = [{"byteLength": len(binary_blob)}]
         document["bufferViews"] = buffer_views
         document["accessors"] = accessors
