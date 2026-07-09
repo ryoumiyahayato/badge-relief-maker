@@ -46,7 +46,12 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     shape_after_crop = tuple(mask.shape)
     mask, heightmap, resize_scale = resize_mask_and_heightmap(mask, heightmap, params.max_grid_cells)
     shape_after_resize = tuple(mask.shape)
-    outline = outline_report(mask, params.width_mm, params.height_mm)
+    outline = outline_report(
+        mask,
+        params.width_mm,
+        params.height_mm,
+        smoothing_iterations=params.contour_smoothing_iterations,
+    )
 
     preview_paths = {}
     if preview_dir is not None:
@@ -63,6 +68,8 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
             params.height_mm,
             params.base_thickness_mm,
             params.relief_height_mm,
+            use_smoothed_side_walls=params.use_smoothed_side_walls,
+            contour_smoothing_iterations=params.contour_smoothing_iterations,
         )
     else:
         vertices, faces = build_rectangular_relief_solid(
@@ -88,6 +95,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["repaired_face_count"] = int(len(faces))
     report["mesh_repair"] = repair_report
     report["outline"] = outline
+    report["side_wall_mode"] = "smoothed_contour" if params.use_smoothed_side_walls else "grid_contour"
     report["original_mask_pixel_count"] = original_mask_pixel_count
     report["mask_pixel_count"] = int(mask.sum())
     report["mask_cleanup"] = cleanup_report
@@ -115,6 +123,8 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         report["warnings"].append("duplicate vertices were merged during optimization")
     if any(value > 0 for value in repair_report.values()):
         report["warnings"].append("basic mesh repair removed invalid or redundant geometry")
+    if params.use_smoothed_side_walls:
+        report["warnings"].append("smoothed contour side walls are experimental and may need Blender cleanup")
 
     written = None
     if output_path is not None:
