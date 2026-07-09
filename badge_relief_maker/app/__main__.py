@@ -1,3 +1,8 @@
+"""Package command-line entry point."""
+
+import sys
+
 from .main import main
 
-main()
+
+raise SystemExit(main(sys.argv[1:]))
