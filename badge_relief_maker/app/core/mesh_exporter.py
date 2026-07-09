@@ -125,9 +125,18 @@ def _as_nx3_array(values, dtype, name):
     return data
 
 
+def _faces_array(faces):
+    face_values = _as_nx3_array(faces, np.float64, "faces")
+    if not np.isfinite(face_values).all():
+        raise ValueError("faces must contain finite integer indices")
+    if not np.equal(face_values, np.rint(face_values)).all():
+        raise ValueError("faces must contain finite integer indices")
+    return face_values.astype(np.int64)
+
+
 def _mesh_arrays(vertices, faces):
     verts = _as_nx3_array(vertices, np.float32, "vertices")
-    faces = _as_nx3_array(faces, np.int64, "faces")
+    faces = _faces_array(faces)
     if not np.isfinite(verts).all():
         raise ValueError("vertices contain non-finite coordinates")
     if len(verts) > 0 and len(faces) > 0 and (faces.min() < 0 or faces.max() >= len(verts)):
