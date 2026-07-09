@@ -13,7 +13,7 @@ _SUBTRACT_OPERATIONS = {"subtract", "sub", "lower", "decrease"}
 def apply_manual_height_markers(heightmap, mask, markers=()):
     """Apply manual height edits to a normalized heightmap.
 
-    Markers are dictionaries. Supported fields:
+    Markers may be one dictionary or an iterable of dictionaries. Supported fields:
     - marker_type/type/kind: height, height_override or set_height.
     - target: front, back, both, heightmap or relief. Filtering by side is done
       by project_build; this helper only rejects unrelated target values.
@@ -34,7 +34,7 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
         raise ValueError("heightmap must be a 2D array")
 
     result = heightmap.copy()
-    marker_list = list(markers or [])
+    marker_list = _marker_list(markers)
     report = {
         "enabled": False,
         "requested_marker_count": int(len(marker_list)),
@@ -67,6 +67,17 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
     report["affected_pixel_count"] = int(affected_total.sum())
     report["enabled"] = bool(report["applied_marker_count"] > 0)
     return result, report
+
+
+def _marker_list(markers):
+    if markers is None:
+        return []
+    if isinstance(markers, dict):
+        return [markers]
+    try:
+        return list(markers)
+    except TypeError:
+        return [markers]
 
 
 def _normalize_marker(marker, default_shape):
