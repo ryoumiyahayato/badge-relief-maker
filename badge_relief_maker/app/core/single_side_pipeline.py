@@ -10,6 +10,7 @@ from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_masked_relief_solid
 from .mesh_exporter import export_mesh
 from .mesh_optimize import optimize_mesh
+from .mesh_repair import repair_mesh_basic
 from .preview_exporter import save_heightmap_preview, save_mask_preview
 from .relief_parameters import ReliefBuildResult, ReliefParameters
 from .solid_builder import build_rectangular_relief_solid
@@ -73,11 +74,17 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     raw_vertex_count = int(len(vertices))
     raw_face_count = int(len(faces))
     vertices, faces = optimize_mesh(vertices, faces)
+    optimized_vertex_count = int(len(vertices))
+    optimized_face_count = int(len(faces))
+    vertices, faces, repair_report = repair_mesh_basic(vertices, faces)
     report = basic_report(vertices, faces, params.minimum_thickness_mm)
     report["raw_vertex_count"] = raw_vertex_count
     report["raw_face_count"] = raw_face_count
-    report["optimized_vertex_count"] = int(len(vertices))
-    report["optimized_face_count"] = int(len(faces))
+    report["optimized_vertex_count"] = optimized_vertex_count
+    report["optimized_face_count"] = optimized_face_count
+    report["repaired_vertex_count"] = int(len(vertices))
+    report["repaired_face_count"] = int(len(faces))
+    report["mesh_repair"] = repair_report
     report["original_mask_pixel_count"] = original_mask_pixel_count
     report["mask_pixel_count"] = int(mask.sum())
     report["mask_cleanup"] = cleanup_report
@@ -101,8 +108,10 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         report["warnings"].append("mask smoothing was applied")
     if resize_scale < 1.0:
         report["warnings"].append("input was downsampled before mesh generation")
-    if raw_vertex_count > report["optimized_vertex_count"]:
+    if raw_vertex_count > optimized_vertex_count:
         report["warnings"].append("duplicate vertices were merged during optimization")
+    if any(value > 0 for value in repair_report.values()):
+        report["warnings"].append("basic mesh repair removed invalid or redundant geometry")
 
     written = None
     if output_path is not None:
