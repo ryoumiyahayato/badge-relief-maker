@@ -24,7 +24,7 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
     - delta/delta_height: additive height change for add/subtract operations.
     - operation/mode: set, add or subtract.
     - radius_px or radius_normalized: circular edit radius.
-    - width_px/height_px or width_normalized/height_normalized: rectangle size.
+    - width_px/height_px, width_normalized and rect/region normalized dimensions.
     """
     heightmap = np.asarray(heightmap, dtype=float)
     mask = np.asarray(mask, dtype=bool)
@@ -241,18 +241,30 @@ def _rectangle_size_px(marker, default_shape):
 
 
 def _dimension_px(marker, prefix, default_shape):
-    pixel_key = f"{prefix}_px"
-    normalized_key = f"{prefix}_normalized"
-    if pixel_key in marker:
-        return _float_or_none(marker.get(pixel_key))
-    if normalized_key in marker:
-        value = _float_or_none(marker.get(normalized_key))
-        if value is None:
-            return None
-        rows, cols = _grid_shape(marker, default_shape)
-        axis = cols if prefix == "width" else rows
-        return value * max(axis - 1, 1)
+    for key in _dimension_keys(prefix, normalized=False):
+        if key in marker:
+            return _float_or_none(marker.get(key))
+    for key in _dimension_keys(prefix, normalized=True):
+        if key in marker:
+            value = _float_or_none(marker.get(key))
+            if value is None:
+                return None
+            rows, cols = _grid_shape(marker, default_shape)
+            axis = cols if prefix == "width" else rows
+            return value * max(axis - 1, 1)
     return None
+
+
+def _dimension_keys(prefix, normalized):
+    suffix = "normalized" if normalized else "px"
+    if prefix == "width":
+        return [f"width_{suffix}", f"rect_width_{suffix}", f"region_width_{suffix}", f"box_width_{suffix}"]
+    return [f"height_{suffix}", f"rect_height_{suffix}", f"region_height_{suffix}", f"box_height_{suffix}"] if not normalized else [
+        "rect_height_normalized",
+        "region_height_normalized",
+        "box_height_normalized",
+        "height_size_normalized",
+    ]
 
 
 def _float_or_none(value):
