@@ -26,11 +26,31 @@ def _side_data(project, side_name):
     raise ValueError(f"unsupported project side: {side_name}")
 
 
+def _rim_width_px_from_project(project, preset):
+    """Resolve project rim width to pixel units for the current quality preset."""
+    edge = project.edge
+    if not bool(edge.rim_enabled):
+        return 0
+    if int(getattr(edge, "rim_width_px", 0)) > 0:
+        return int(edge.rim_width_px)
+
+    rim_width_mm = float(getattr(edge, "rim_width_mm", 0.0))
+    if rim_width_mm <= 0.0:
+        return 0
+
+    max_grid_cells = max(1, int(preset["max_grid_cells"]))
+    area_mm2 = max(float(project.dimensions.width_mm) * float(project.dimensions.height_mm), 1e-9)
+    approx_cell_mm = (area_mm2 / float(max_grid_cells)) ** 0.5
+    return max(1, int(round(rim_width_mm / approx_cell_mm)))
+
+
 def _relief_parameters_from_project(project, side_name="front", quality_mode=None):
     """Create ReliefParameters from saved project settings."""
     _, side = _side_data(project, side_name)
     mode = quality_mode or side.quality_mode
     preset = quality_preset(mode)
+    edge = project.edge
+    rim_enabled = bool(getattr(edge, "rim_enabled", False))
     return ReliefParameters(
         width_mm=project.dimensions.width_mm,
         height_mm=project.dimensions.height_mm,
@@ -40,6 +60,11 @@ def _relief_parameters_from_project(project, side_name="front", quality_mode=Non
         min_component_pixels=preset["min_component_pixels"],
         fill_hole_pixels=preset["fill_hole_pixels"],
         mask_smooth_iterations=preset["mask_smooth_iterations"],
+        use_smoothed_side_walls=bool(getattr(edge, "use_smoothed_side_walls", False)),
+        contour_smoothing_iterations=int(getattr(edge, "contour_smoothing_iterations", 1)),
+        rim_width_px=_rim_width_px_from_project(project, preset),
+        rim_height_mm=float(edge.rim_height_mm) if rim_enabled else 0.0,
+        rim_profile=str(getattr(edge, "rim_profile", "flat") or "flat"),
     ), preset["quality_mode"]
 
 
