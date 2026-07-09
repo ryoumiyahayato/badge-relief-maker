@@ -43,6 +43,8 @@ The current runnable mesh path is a simple single-side proof of concept:
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
 
+Project edge settings are now used by project builds. The project can store rim enablement, rim width in pixels or millimeters, rim height, rim profile, smoothed side-wall mode and contour smoothing iterations. When rim width is supplied in millimeters, project export converts it to an approximate pixel width using the selected quality preset.
+
 Quality modes are available for project builds: preview, standard and high. They currently map to different grid-size and mask-cleanup presets, not to a full sculpting engine.
 
 The back-side workflow is currently incremental but independent: a back image can be added to an existing project and exported as its own back relief OBJ/STL.
