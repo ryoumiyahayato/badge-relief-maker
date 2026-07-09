@@ -17,7 +17,7 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
     - marker_type/type/kind: height, height_override or set_height.
     - target: front, back, both, heightmap or relief. Filtering by side is done
       by project_build; this helper only rejects unrelated target values.
-    - shape: circle/brush or rectangle/rect/box.
+    - shape/shape_type/brush_shape/region_shape: circle/brush or rectangle/rect/box.
     - x, y: normalized coordinates by default, or pixel coordinates when
       coordinate_space is pixel/pixels.
     - height_normalized/normalized_height/value/height: target height in 0..1.
@@ -84,8 +84,7 @@ def _normalize_marker(marker, default_shape):
         return None
 
     coordinate_space = str(marker.get("coordinate_space", marker.get("space", "normalized"))).lower()
-    shape = marker.get("shape", default_shape)
-    rows, cols = int(shape[0]), int(shape[1]) if _looks_like_shape(shape) else (int(default_shape[0]), int(default_shape[1]))
+    rows, cols = _grid_shape(marker, default_shape)
     if coordinate_space in {"pixel", "pixels", "image_pixel"}:
         cx = x
         cy = y
@@ -98,7 +97,7 @@ def _normalize_marker(marker, default_shape):
     if value is None:
         return None
 
-    marker_shape = str(marker.get("shape_type", marker.get("brush_shape", marker.get("region_shape", "circle")))).lower()
+    marker_shape = _marker_shape(marker)
     if marker_shape in {"rectangle", "rect", "box"}:
         width_px, height_px = _rectangle_size_px(marker, default_shape)
         if width_px is None or height_px is None or width_px < 0.0 or height_px < 0.0:
@@ -126,10 +125,33 @@ def _normalize_marker(marker, default_shape):
     }
 
 
+def _grid_shape(marker, default_shape):
+    for key in ["grid_shape", "heightmap_shape", "image_shape", "mask_shape"]:
+        if _looks_like_shape(marker.get(key)):
+            value = marker.get(key)
+            return int(value[0]), int(value[1])
+    shape_value = marker.get("shape")
+    if _looks_like_shape(shape_value):
+        return int(shape_value[0]), int(shape_value[1])
+    return int(default_shape[0]), int(default_shape[1])
+
+
+def _marker_shape(marker):
+    for key in ["shape", "shape_type", "brush_shape", "region_shape"]:
+        value = marker.get(key)
+        if isinstance(value, str):
+            return value.lower()
+    return "circle"
+
+
 def _looks_like_shape(value):
     try:
-        return len(value) == 2
-    except TypeError:
+        if len(value) != 2:
+            return False
+        int(value[0])
+        int(value[1])
+        return True
+    except (TypeError, ValueError):
         return False
 
 
@@ -203,10 +225,8 @@ def _radius_px(marker, default_shape):
         value = _float_or_none(marker.get("radius_normalized"))
         if value is None:
             return None
-        shape = marker.get("shape", default_shape)
-        if not _looks_like_shape(shape):
-            shape = default_shape
-        return value * min(int(shape[0]), int(shape[1]))
+        rows, cols = _grid_shape(marker, default_shape)
+        return value * min(rows, cols)
     return 0.0
 
 
@@ -229,10 +249,8 @@ def _dimension_px(marker, prefix, default_shape):
         value = _float_or_none(marker.get(normalized_key))
         if value is None:
             return None
-        shape = marker.get("shape", default_shape)
-        if not _looks_like_shape(shape):
-            shape = default_shape
-        axis = int(shape[1]) if prefix == "width" else int(shape[0])
+        rows, cols = _grid_shape(marker, default_shape)
+        axis = cols if prefix == "width" else rows
         return value * max(axis - 1, 1)
     return None
 
