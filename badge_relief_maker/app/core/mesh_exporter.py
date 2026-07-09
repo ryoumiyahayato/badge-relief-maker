@@ -18,6 +18,7 @@ def _safe_obj_name(name):
 
 def export_obj(path, vertices, faces):
     """Export a minimal OBJ file."""
+    vertices, faces = _mesh_arrays(vertices, faces)
     path = Path(path)
     with path.open("w", encoding="utf-8") as fh:
         for x, y, z in vertices:
@@ -37,9 +38,8 @@ def export_obj_objects(path, objects):
     vertex_offset = 0
     with path.open("w", encoding="utf-8") as fh:
         for item in objects:
-            name = _safe_obj_name(item["name"])
-            vertices = np.asarray(item["vertices"], dtype=float)
-            faces = np.asarray(item["faces"], dtype=np.int64)
+            name = _safe_obj_name(item.get("name", "object"))
+            vertices, faces = _mesh_arrays(item.get("vertices", []), item.get("faces", []))
             fh.write(f"o {name}\n")
             for x, y, z in vertices:
                 fh.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
@@ -65,8 +65,8 @@ def export_ascii_stl(path, vertices, faces, solid_name="badge_relief"):
     ASCII STL is larger than binary STL but easy to inspect and sufficient for
     the first local MVP. A binary STL exporter can be added later.
     """
+    verts, faces = _mesh_arrays(vertices, faces)
     path = Path(path)
-    verts = np.asarray(vertices, dtype=float)
     with path.open("w", encoding="utf-8") as fh:
         fh.write(f"solid {solid_name}\n")
         for face in faces:
