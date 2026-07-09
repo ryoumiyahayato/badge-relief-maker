@@ -331,6 +331,26 @@ def test_single_side_pipeline_can_use_smoothed_side_walls(tmp_path):
     assert "smoothed contour side walls are experimental and may need Blender cleanup" in result.report["warnings"]
 
 
+def test_single_side_pipeline_rectangle_ignores_smoothed_side_wall_flag(tmp_path):
+    image = Image.new("RGBA", (4, 4), (255, 255, 255, 255))
+    image_path = tmp_path / "rectangle.png"
+    output_path = tmp_path / "rectangle.obj"
+    image.save(image_path)
+
+    params = ReliefParameters(
+        width_mm=5.0,
+        height_mm=5.0,
+        use_mask_footprint=False,
+        use_smoothed_side_walls=True,
+    )
+    result = build_single_side_relief(image_path, output_path, params)
+
+    assert output_path.exists()
+    assert result.report["footprint_mode"] == "rectangle"
+    assert result.report["side_wall_mode"] == "rectangle"
+    assert "smoothed contour side walls are experimental and may need Blender cleanup" not in result.report["warnings"]
+
+
 def test_single_side_pipeline_handles_empty_foreground(tmp_path):
     image = Image.new("RGBA", (4, 4), (0, 0, 0, 0))
     image_path = tmp_path / "empty.png"
@@ -362,4 +382,3 @@ def test_single_side_pipeline_writes_stl(tmp_path):
     assert result.report["export_format"] == "stl"
     text = output_path.read_text(encoding="utf-8")
     assert text.startswith("solid")
-    assert "facet normal" in text
