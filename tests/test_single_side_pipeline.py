@@ -7,6 +7,7 @@ from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief
 from badge_relief_maker.app.core.mesh_exporter import export_ascii_stl, export_obj_objects, implemented_formats
 from badge_relief_maker.app.core.mesh_optimize import optimize_mesh
 from badge_relief_maker.app.core.mesh_repair import repair_mesh_basic
+from badge_relief_maker.app.core.outline_extractor import boundary_edges_from_mask, outline_report
 from badge_relief_maker.app.core.relief_parameters import ReliefParameters
 from badge_relief_maker.app.core.single_side_pipeline import build_single_side_relief
 from badge_relief_maker.app.core.solid_builder import build_rectangular_relief_solid
@@ -39,6 +40,19 @@ def test_masked_relief_solid_returns_stable_empty_arrays():
     assert repaired_vertices.shape == (0, 3)
     assert repaired_faces.shape == (0, 3)
     assert repair_report["invalid_faces_removed"] == 0
+
+
+def test_outline_report_counts_single_cell_boundary():
+    mask = np.zeros((3, 3), dtype=bool)
+    mask[1, 1] = True
+    edges = boundary_edges_from_mask(mask)
+    report = outline_report(mask, width_mm=9.0, height_mm=9.0)
+    assert len(edges) == 4
+    assert report["boundary_edge_count"] == 4
+    assert report["horizontal_boundary_edge_count"] == 2
+    assert report["vertical_boundary_edge_count"] == 2
+    assert report["boundary_length_mm"] == 12.0
+    assert report["foreground_pixel_count"] == 1
 
 
 def test_masked_relief_solid_closes_internal_height_steps():
@@ -197,6 +211,8 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert "mask_cleanup" in result.report
     assert "mesh_repair" in result.report
     assert "topology" in result.report
+    assert "outline" in result.report
+    assert result.report["outline"]["boundary_edge_count"] > 0
     assert (preview_dir / "mask_preview.png").exists()
     assert (preview_dir / "heightmap_preview.png").exists()
     text = output_path.read_text(encoding="utf-8")
@@ -218,6 +234,7 @@ def test_single_side_pipeline_handles_empty_foreground(tmp_path):
     assert result.report["vertex_count"] == 0
     assert result.report["face_count"] == 0
     assert result.report["mask_pixel_count"] == 0
+    assert result.report["outline"]["outline_guess"] == "empty"
     assert "empty mesh" in result.report["warnings"]
     assert "mask contains no foreground pixels" in result.report["warnings"]
 
