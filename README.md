@@ -15,7 +15,7 @@ The project now has these layers:
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
 - A split OBJ exporter for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
-- A lightweight mesh repair pass and topology report for early warnings.
+- A lightweight outline report, mesh repair pass and topology report for early warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
 
@@ -26,6 +26,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Optionally smooth mask noise with a small majority filter.
 - Crop to the foreground bounding box.
 - Downsample very large masks before mesh generation.
+- Extract outline boundary metrics from the final mask.
 - Convert brightness to a heightmap.
 - Build a masked footprint relief solid by default.
 - Add base thickness and side walls.
@@ -34,7 +35,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Run basic mesh repair to remove invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
 - Export optional mask and heightmap previews.
 - Export OBJ or ASCII STL.
-- Return a basic manufacturing report with size, topology, repair metadata and warning fields.
+- Return a basic manufacturing report with size, outline, topology, repair metadata and warning fields.
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
 
@@ -44,13 +45,15 @@ The back-side workflow is currently incremental but independent: a back image ca
 
 The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately.
 
+The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length and a rough outline type label. This is the foundation for replacing pixel-cell side closure with smoother contour-based side closure.
+
 The topology report counts unique edges, boundary edges and non-manifold edges. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
 Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
 
-The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
+The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
 The intended MVP still includes contour smoothing, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
 
