@@ -52,7 +52,7 @@ The back-side workflow is currently incremental but independent: a back image ca
 
 The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately. GLB placeholder export now writes named glTF nodes and meshes for the same two parts.
 
-The GLB exporter writes a minimal binary glTF 2.0 mesh with positions, vertex normals and triangle indices. Multi-object GLB export can preserve named mesh nodes. It does not yet write materials, UVs or textures.
+The GLB exporter writes a minimal binary glTF 2.0 mesh with positions, vertex normals, triangle indices and simple PBR material records. Multi-object GLB export can preserve named mesh nodes and give each mesh a separate basic material. It does not yet write UVs or textures.
 
 The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder uses the external mask boundary as a separate side-wall layer. The optional smoothed side wall path can already export experimental smoother walls, but it may need Blender cleanup because it does not yet share vertices perfectly with the pixel-cell top surface.
 
