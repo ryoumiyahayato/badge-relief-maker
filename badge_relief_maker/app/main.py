@@ -35,7 +35,7 @@ def main(argv=None) -> int:
     if argv is None:
         argv = []
 
-    parser = argparse.ArgumentParser(description="Build a basic badge relief OBJ or STL from one image.")
+    parser = argparse.ArgumentParser(description="Build a basic badge relief OBJ, STL or GLB from one image.")
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--new-project", dest="new_project_name")
     parser.add_argument("--project-path", dest="project_path")
@@ -47,7 +47,7 @@ def main(argv=None) -> int:
     parser.add_argument("--build-back", action="store_true")
     parser.add_argument("--build-side", choices=["front", "back"])
     parser.add_argument("--build-double-placeholder", action="store_true")
-    parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl"])
+    parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl", "glb"])
     parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
     parser.add_argument("--input", dest="input_path")
     parser.add_argument("--output", dest="output_path")
@@ -139,7 +139,7 @@ def main(argv=None) -> int:
         return 0
 
     if not args.input_path or not args.output_path:
-        print("Badge Relief Maker scaffold is ready. Provide --input and --output to build an OBJ or STL.")
+        print("Badge Relief Maker scaffold is ready. Provide --input and --output to build an OBJ, STL or GLB.")
         return 0
 
     params = ReliefParameters(
