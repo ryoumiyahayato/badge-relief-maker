@@ -6,6 +6,7 @@ from badge_relief_maker.app.core.mask_processing import clean_mask, crop_to_mask
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
 from badge_relief_maker.app.core.mesh_exporter import export_ascii_stl, export_obj_objects, implemented_formats
 from badge_relief_maker.app.core.mesh_optimize import optimize_mesh
+from badge_relief_maker.app.core.mesh_repair import repair_mesh_basic
 from badge_relief_maker.app.core.relief_parameters import ReliefParameters
 from badge_relief_maker.app.core.single_side_pipeline import build_single_side_relief
 from badge_relief_maker.app.core.solid_builder import build_rectangular_relief_solid
@@ -67,6 +68,35 @@ def test_edge_usage_report_detects_non_manifold_edge():
     report = edge_usage_report(faces)
     assert report["non_manifold_edge_count"] == 1
     assert report["closed_edge_manifold"] is False
+
+
+def test_repair_mesh_basic_removes_invalid_duplicate_and_unused_geometry():
+    vertices = np.asarray(
+        [
+            [0, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 0],
+            [2, 2, 2],
+        ],
+        dtype=float,
+    )
+    faces = np.asarray(
+        [
+            [0, 1, 2],
+            [2, 1, 0],
+            [0, 0, 3],
+            [0, 1, 99],
+        ],
+        dtype=np.int64,
+    )
+    new_vertices, new_faces, report = repair_mesh_basic(vertices, faces)
+    assert len(new_vertices) == 3
+    assert len(new_faces) == 1
+    assert report["invalid_faces_removed"] == 1
+    assert report["zero_area_faces_removed"] == 1
+    assert report["duplicate_faces_removed"] == 1
+    assert report["unreferenced_vertices_removed"] == 2
 
 
 def test_clean_mask_removes_tiny_fragments_and_fills_holes():
@@ -152,6 +182,7 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert "bbox" in result.report
     assert "warnings" in result.report
     assert "mask_cleanup" in result.report
+    assert "mesh_repair" in result.report
     assert "topology" in result.report
     assert (preview_dir / "mask_preview.png").exists()
     assert (preview_dir / "heightmap_preview.png").exists()
