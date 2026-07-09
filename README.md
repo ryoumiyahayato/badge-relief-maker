@@ -12,9 +12,9 @@ The project now has these layers:
 
 - A project layer that can create, save and open `.medalproj` JSON files with a sibling asset folder.
 - A project-aware side relief workflow that imports front or back images, builds rough side meshes and records export history.
-- A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
+- A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL/GLB for Blender inspection.
 - A split OBJ exporter for Blender-friendly front/back object separation.
-- A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
+- A single-side relief pipeline that can generate a rough OBJ, ASCII STL or binary GLB from one image.
 - A lightweight outline report, contour side wall builder, optional smoothed side wall builder, outer rim height boost with flat/linear/smooth profiles, mesh repair pass, topology report and face-geometry diagnostics for early warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
@@ -39,7 +39,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Run basic mesh repair to remove invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
 - Report face area and face normal orientation diagnostics.
 - Export optional mask and heightmap previews.
-- Export OBJ or ASCII STL.
+- Export OBJ, ASCII STL or binary GLB.
 - Return a basic manufacturing report with size, outline, rim, topology, face-geometry, repair metadata and warning fields.
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
@@ -48,9 +48,11 @@ Project edge settings are now used by project builds. The project can store rim 
 
 Quality modes are available for project builds: preview, standard and high. They currently map to different grid-size and mask-cleanup presets, not to a full sculpting engine.
 
-The back-side workflow is currently incremental but independent: a back image can be added to an existing project and exported as its own back relief OBJ/STL.
+The back-side workflow is currently incremental but independent: a back image can be added to an existing project and exported as its own back relief OBJ/STL/GLB.
 
-The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately.
+The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately. GLB placeholder export currently writes one combined mesh and does not preserve named front/back object separation.
+
+The GLB exporter writes a minimal binary glTF 2.0 mesh with positions and triangle indices. It does not yet write materials, normals, UVs, textures or split object metadata.
 
 The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder uses the external mask boundary as a separate side-wall layer. The optional smoothed side wall path can already export experimental smoother walls, but it may need Blender cleanup because it does not yet share vertices perfectly with the pixel-cell top surface.
 
@@ -64,7 +66,7 @@ Internal height step closure is now included so adjacent high and low relief cel
 
 The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, rim metadata, face-geometry metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
-The intended MVP still includes stronger side/rim generation, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
+The intended MVP still includes stronger side/rim generation, stronger mesh repair, richer desktop UI and later fused double-side mode.
 
 ## Planned modes
 
@@ -108,6 +110,12 @@ Build front relief from the project and record export history:
 
 ```bash
 python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format obj --quality preview
+```
+
+Build front relief as GLB:
+
+```bash
+python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format glb --quality preview
 ```
 
 Add a back image later to the same project:
@@ -168,6 +176,12 @@ Export ASCII STL without a project file:
 python -m badge_relief_maker.app --input input.png --output output.stl --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
 ```
 
+Export GLB without a project file:
+
+```bash
+python -m badge_relief_maker.app --input input.png --output output.glb --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
+```
+
 Use experimental smoothed side walls:
 
 ```bash
@@ -210,7 +224,6 @@ These commands should be treated as first pipeline tests, not production-grade m
 
 1. Add bevel/rim mesh parameters beyond heightmap boosting.
 2. Add stronger mesh repair and hole-fill actions.
-3. Add GLB export.
-4. Expand PySide6 UI panels.
-5. Add fused double-side alignment and solid generation.
-6. Add region-based manual height editing.
+3. Expand PySide6 UI panels.
+4. Add fused double-side alignment and solid generation.
+5. Add region-based manual height editing.
