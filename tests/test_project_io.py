@@ -18,6 +18,11 @@ from badge_relief_maker.app.core.project_io import (
 def test_project_save_load_roundtrip(tmp_path):
     project = create_project("Test Medal")
     project.same_physical_object = False
+    project.edge.rim_enabled = True
+    project.edge.rim_width_px = 2
+    project.edge.rim_height_mm = 1.0
+    project.edge.rim_profile = "smooth"
+    project.edge.use_smoothed_side_walls = True
     project_path = tmp_path / "test.medalproj"
 
     saved_path = save_project(project, project_path)
@@ -25,6 +30,10 @@ def test_project_save_load_roundtrip(tmp_path):
 
     assert loaded.name == "Test Medal"
     assert loaded.same_physical_object is False
+    assert loaded.edge.rim_enabled is True
+    assert loaded.edge.rim_width_px == 2
+    assert loaded.edge.rim_profile == "smooth"
+    assert loaded.edge.use_smoothed_side_walls is True
     assert asset_root_for(project_path).exists()
 
 
@@ -69,6 +78,49 @@ def test_build_front_relief_from_project_file(tmp_path):
     assert result.report["project_quality_mode"] == "preview"
     assert len(loaded.export_history) == 1
     assert loaded.export_history[0].export_format == "obj"
+
+
+def test_project_edge_settings_are_used_for_side_build(tmp_path):
+    image_path = tmp_path / "front.png"
+    Image.new("RGBA", (6, 6), (255, 255, 255, 255)).save(image_path)
+
+    project = create_project("Project Edge Test")
+    project.edge.rim_enabled = True
+    project.edge.rim_width_px = 1
+    project.edge.rim_height_mm = 1.0
+    project.edge.rim_profile = "smooth"
+    project.edge.use_smoothed_side_walls = True
+    project.edge.contour_smoothing_iterations = 1
+    project_path = tmp_path / "project_edge.medalproj"
+    save_project(project, project_path)
+    import_image_asset(project, project_path, image_path, "front")
+    save_project(project, project_path)
+
+    result = build_front_relief_from_project_file(project_path, export_format="obj", quality_mode="preview")
+
+    assert result.report["rim"]["enabled"] is True
+    assert result.report["rim"]["rim_profile"] == "smooth"
+    assert result.report["side_wall_mode"] == "smoothed_contour"
+    assert "outer rim height boost was applied" in result.report["warnings"]
+
+
+def test_project_rim_width_mm_converts_to_pixel_width(tmp_path):
+    image_path = tmp_path / "front.png"
+    Image.new("RGBA", (6, 6), (255, 255, 255, 255)).save(image_path)
+
+    project = create_project("Project Rim MM Test")
+    project.edge.rim_enabled = True
+    project.edge.rim_width_mm = 10.0
+    project.edge.rim_height_mm = 1.0
+    project_path = tmp_path / "project_rim_mm.medalproj"
+    save_project(project, project_path)
+    import_image_asset(project, project_path, image_path, "front")
+    save_project(project, project_path)
+
+    result = build_front_relief_from_project_file(project_path, export_format="obj", quality_mode="preview")
+
+    assert result.report["rim"]["enabled"] is True
+    assert result.report["rim"]["rim_width_px"] > 0
 
 
 def test_build_back_relief_from_existing_project(tmp_path):
