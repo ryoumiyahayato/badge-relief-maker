@@ -3,6 +3,14 @@
 import numpy as np
 
 
+def face_count(faces):
+    """Return the number of mesh faces.
+
+    Kept for compatibility with the earlier placeholder module.
+    """
+    return int(len(faces))
+
+
 def remove_invalid_faces(vertices, faces):
     """Remove faces that do not reference valid vertex indices."""
     vertices = np.asarray(vertices, dtype=float)
@@ -57,6 +65,19 @@ def remove_unreferenced_vertices(vertices, faces):
     remap = np.full(len(vertices), -1, dtype=np.int64)
     remap[used] = np.arange(len(used), dtype=np.int64)
     return vertices[used], remap[faces], int(len(vertices) - len(used))
+
+
+def remove_duplicate_vertices(vertices, faces):
+    """Remove duplicate vertices and remap faces.
+
+    Kept for compatibility with the earlier placeholder module.
+    """
+    vertices = np.asarray(vertices, dtype=float)
+    faces = np.asarray(faces, dtype=np.int64)
+    if len(vertices) == 0:
+        return vertices, faces
+    unique, inverse = np.unique(vertices, axis=0, return_inverse=True)
+    return unique, inverse[faces]
 
 
 def repair_mesh_basic(vertices, faces):
