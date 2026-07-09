@@ -103,6 +103,21 @@ def _vertex_normals(vertices, faces):
     return np.ascontiguousarray(normals, dtype=np.float32)
 
 
+def _append_binary_blob(binary_blob, payload):
+    """Append one aligned GLB binary payload and return updated blob plus offset."""
+    offset = _aligned_length(len(binary_blob))
+    binary_blob = _pad_bytes(binary_blob, b"\x00") + payload
+    return binary_blob, offset
+
+
+def _mesh_arrays(vertices, faces):
+    verts = np.asarray(vertices, dtype=np.float32).reshape((-1, 3))
+    faces = np.asarray(faces, dtype=np.int64).reshape((-1, 3))
+    if len(verts) > 0 and len(faces) > 0 and (faces.min() < 0 or faces.max() >= len(verts)):
+        raise ValueError("faces contain vertex indices outside the vertex array")
+    return verts, faces
+
+
 def export_glb(path, vertices, faces):
     """Export a minimal binary glTF 2.0 GLB mesh.
 
@@ -110,79 +125,113 @@ def export_glb(path, vertices, faces):
     texture coordinates and object splitting are intentionally outside this MVP
     path.
     """
-    path = Path(path)
-    verts = np.asarray(vertices, dtype=np.float32).reshape((-1, 3))
-    faces = np.asarray(faces, dtype=np.int64).reshape((-1, 3))
+    export_glb_objects(path, [{"name": "badge_relief", "vertices": vertices, "faces": faces}])
 
-    if len(verts) == 0 or len(faces) == 0:
-        _write_glb(path, {"asset": {"version": "2.0", "generator": "Badge Relief Maker"}, "scene": 0, "scenes": [{"nodes": []}]})
-        return
 
-    if faces.min() < 0 or faces.max() >= len(verts):
-        raise ValueError("faces contain vertex indices outside the vertex array")
+def export_glb_objects(path, objects):
+    """Export multiple named mesh objects to one binary glTF 2.0 GLB file.
 
-    positions = np.ascontiguousarray(verts, dtype=np.float32)
-    normals = _vertex_normals(positions, faces)
-    indices = np.ascontiguousarray(faces.reshape(-1), dtype=np.uint32)
-    position_bytes = positions.tobytes()
-    normal_offset = _aligned_length(len(position_bytes))
-    normal_bytes = normals.tobytes()
-    index_offset = _aligned_length(normal_offset + len(normal_bytes))
-    binary_blob = _pad_bytes(position_bytes, b"\x00") + _pad_bytes(normal_bytes, b"\x00") + indices.tobytes()
-    binary_blob = _pad_bytes(binary_blob, b"\x00")
+    This preserves rough front/back object separation as separate glTF nodes and
+    meshes. Materials, UVs and textures are intentionally outside this MVP path.
+    """
+    nodes = []
+    meshes = []
+    accessors = []
+    buffer_views = []
+    scene_node_indices = []
+    binary_blob = b""
 
-    mins = positions.min(axis=0).astype(float).tolist()
-    maxs = positions.max(axis=0).astype(float).tolist()
-    document = {
-        "asset": {"version": "2.0", "generator": "Badge Relief Maker"},
-        "scene": 0,
-        "scenes": [{"nodes": [0]}],
-        "nodes": [{"mesh": 0, "name": "badge_relief"}],
-        "meshes": [
+    for item in objects:
+        name = _safe_obj_name(item.get("name", "object"))
+        vertices, faces = _mesh_arrays(item.get("vertices", []), item.get("faces", []))
+        node_index = len(nodes)
+        scene_node_indices.append(node_index)
+        if len(vertices) == 0 or len(faces) == 0:
+            nodes.append({"name": name})
+            continue
+
+        positions = np.ascontiguousarray(vertices, dtype=np.float32)
+        normals = _vertex_normals(positions, faces)
+        indices = np.ascontiguousarray(faces.reshape(-1), dtype=np.uint32)
+
+        position_bytes = positions.tobytes()
+        binary_blob, position_offset = _append_binary_blob(binary_blob, position_bytes)
+        position_view = len(buffer_views)
+        buffer_views.append({"buffer": 0, "byteOffset": position_offset, "byteLength": len(position_bytes), "target": 34962})
+
+        normal_bytes = normals.tobytes()
+        binary_blob, normal_offset = _append_binary_blob(binary_blob, normal_bytes)
+        normal_view = len(buffer_views)
+        buffer_views.append({"buffer": 0, "byteOffset": normal_offset, "byteLength": len(normal_bytes), "target": 34962})
+
+        index_bytes = indices.tobytes()
+        binary_blob, index_offset = _append_binary_blob(binary_blob, index_bytes)
+        index_view = len(buffer_views)
+        buffer_views.append({"buffer": 0, "byteOffset": index_offset, "byteLength": len(index_bytes), "target": 34963})
+
+        mins = positions.min(axis=0).astype(float).tolist()
+        maxs = positions.max(axis=0).astype(float).tolist()
+        position_accessor = len(accessors)
+        accessors.append(
             {
-                "name": "badge_relief",
-                "primitives": [
-                    {
-                        "attributes": {"POSITION": 0, "NORMAL": 1},
-                        "indices": 2,
-                        "mode": 4,
-                    }
-                ],
-            }
-        ],
-        "buffers": [{"byteLength": len(binary_blob)}],
-        "bufferViews": [
-            {"buffer": 0, "byteOffset": 0, "byteLength": len(position_bytes), "target": 34962},
-            {"buffer": 0, "byteOffset": normal_offset, "byteLength": len(normal_bytes), "target": 34962},
-            {"buffer": 0, "byteOffset": index_offset, "byteLength": indices.nbytes, "target": 34963},
-        ],
-        "accessors": [
-            {
-                "bufferView": 0,
+                "bufferView": position_view,
                 "byteOffset": 0,
                 "componentType": 5126,
                 "count": int(len(positions)),
                 "type": "VEC3",
                 "min": mins,
                 "max": maxs,
-            },
+            }
+        )
+        normal_accessor = len(accessors)
+        accessors.append(
             {
-                "bufferView": 1,
+                "bufferView": normal_view,
                 "byteOffset": 0,
                 "componentType": 5126,
                 "count": int(len(normals)),
                 "type": "VEC3",
-            },
+            }
+        )
+        index_accessor = len(accessors)
+        accessors.append(
             {
-                "bufferView": 2,
+                "bufferView": index_view,
                 "byteOffset": 0,
                 "componentType": 5125,
                 "count": int(indices.size),
                 "type": "SCALAR",
-            },
-        ],
+            }
+        )
+
+        mesh_index = len(meshes)
+        meshes.append(
+            {
+                "name": name,
+                "primitives": [
+                    {
+                        "attributes": {"POSITION": position_accessor, "NORMAL": normal_accessor},
+                        "indices": index_accessor,
+                        "mode": 4,
+                    }
+                ],
+            }
+        )
+        nodes.append({"mesh": mesh_index, "name": name})
+
+    binary_blob = _pad_bytes(binary_blob, b"\x00")
+    document = {
+        "asset": {"version": "2.0", "generator": "Badge Relief Maker"},
+        "scene": 0,
+        "scenes": [{"nodes": scene_node_indices}],
+        "nodes": nodes,
     }
-    _write_glb(path, document, binary_blob)
+    if meshes:
+        document["meshes"] = meshes
+        document["buffers"] = [{"byteLength": len(binary_blob)}]
+        document["bufferViews"] = buffer_views
+        document["accessors"] = accessors
+    _write_glb(path, document, binary_blob if meshes else b"")
 
 
 def _aligned_length(length):
