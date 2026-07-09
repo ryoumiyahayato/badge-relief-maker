@@ -8,7 +8,7 @@ using a full rectangle.
 
 import numpy as np
 
-from .contour_side_builder import build_contour_side_walls
+from .contour_side_builder import build_contour_side_walls, build_smoothed_contour_side_walls
 
 
 def _mesh_arrays(vertices, faces):
@@ -35,7 +35,16 @@ def _append_mesh(vertices, faces, add_vertices, add_faces):
     return vertices, faces
 
 
-def build_masked_relief_solid(heightmap, mask, width_mm, height_mm, base_thickness_mm, relief_height_mm):
+def build_masked_relief_solid(
+    heightmap,
+    mask,
+    width_mm,
+    height_mm,
+    base_thickness_mm,
+    relief_height_mm,
+    use_smoothed_side_walls=False,
+    contour_smoothing_iterations=1,
+):
     """Create a relief solid whose footprint follows a boolean mask.
 
     External boundary walls are generated through the contour side builder.
@@ -108,13 +117,24 @@ def build_masked_relief_solid(heightmap, mask, width_mm, height_mm, base_thickne
             if c < cols - 1 and bool(mask[r, c + 1]) and z_top > float(top_z_values[r, c + 1]):
                 add_vertical_quad(x1, y0, x1, y1, float(top_z_values[r, c + 1]), z_top)
 
-    side_vertices, side_faces = build_contour_side_walls(
-        heightmap,
-        mask,
-        width_mm,
-        height_mm,
-        base_thickness_mm,
-        relief_height_mm,
-    )
+    if use_smoothed_side_walls:
+        side_vertices, side_faces = build_smoothed_contour_side_walls(
+            heightmap,
+            mask,
+            width_mm,
+            height_mm,
+            base_thickness_mm,
+            relief_height_mm,
+            smoothing_iterations=contour_smoothing_iterations,
+        )
+    else:
+        side_vertices, side_faces = build_contour_side_walls(
+            heightmap,
+            mask,
+            width_mm,
+            height_mm,
+            base_thickness_mm,
+            relief_height_mm,
+        )
     _append_mesh(vertices, faces, side_vertices, side_faces)
     return _mesh_arrays(vertices, faces)
