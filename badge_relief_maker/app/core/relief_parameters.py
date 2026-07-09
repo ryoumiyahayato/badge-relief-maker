@@ -25,6 +25,7 @@ class ReliefParameters:
     contour_smoothing_iterations: int = 1
     rim_width_px: int = 0
     rim_height_mm: float = 0.0
+    rim_profile: str = "flat"
 
 
 @dataclass(frozen=True)
