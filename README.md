@@ -15,7 +15,7 @@ The project now has these layers:
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL/GLB for Blender inspection.
 - Split OBJ/GLB exporters for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ, ASCII STL or binary GLB from one image.
-- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, outer rim height boost with flat/linear/smooth profiles, mesh repair pass, topology report and face-geometry diagnostics for early warnings.
+- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, manual height markers, outer rim height boost with flat/linear/smooth profiles, mesh repair pass, topology report and face-geometry diagnostics for early warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
 
@@ -26,6 +26,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Optionally smooth mask noise with a small majority filter.
 - Crop to the foreground bounding box.
 - Downsample very large masks before mesh generation.
+- Optionally apply manual circular height overrides to the normalized heightmap.
 - Optionally apply an outer rim height boost along the foreground boundary.
 - Support flat, linear or smooth rim height profiles.
 - Extract outline boundary metrics from the final mask.
@@ -40,9 +41,11 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Report face area and face normal orientation diagnostics.
 - Export optional mask and heightmap previews.
 - Export OBJ, ASCII STL or binary GLB.
-- Return a basic manufacturing report with size, outline, rim, topology, face-geometry, repair metadata and warning fields.
+- Return a basic manufacturing report with size, outline, manual-height, rim, topology, face-geometry, repair metadata and warning fields.
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
+
+Project manual markers can now drive simple height overrides during side builds. Supported marker types are `height`, `height_override` and `set_height`; target can be `front`, `back`, `both`, `heightmap` or `relief`. Marker data supports normalized or pixel x/y coordinates, radius and normalized height.
 
 Project edge settings are now used by project builds. The project can store rim enablement, rim width in pixels or millimeters, rim height, rim profile, smoothed side-wall mode and contour smoothing iterations. When rim width is supplied in millimeters, project export converts it to an approximate pixel width using the selected quality preset.
 
@@ -64,7 +67,7 @@ The masked footprint mode follows transparent foreground pixels, so it is closer
 
 Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
 
-The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, rim metadata, face-geometry metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
+The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, manual-height metadata, rim metadata, face-geometry metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
 The intended MVP still includes stronger side/rim generation, stronger mesh repair, richer desktop UI and later fused double-side mode.
 
@@ -232,4 +235,4 @@ These commands should be treated as first pipeline tests, not production-grade m
 2. Add stronger mesh repair and hole-fill actions.
 3. Expand PySide6 UI panels.
 4. Add fused double-side alignment and solid generation.
-5. Add region-based manual height editing.
+5. Expand region-based manual height editing.
