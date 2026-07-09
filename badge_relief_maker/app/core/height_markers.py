@@ -45,7 +45,7 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
         if not isinstance(marker, dict):
             report["ignored_marker_count"] += 1
             continue
-        normalized = _normalize_marker(marker)
+        normalized = _normalize_marker(marker, mask.shape)
         if normalized is None:
             report["ignored_marker_count"] += 1
             continue
@@ -65,7 +65,7 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
     return result, report
 
 
-def _normalize_marker(marker):
+def _normalize_marker(marker, default_shape):
     marker_type = str(marker.get("marker_type", marker.get("type", marker.get("kind", "height")))).lower()
     if marker_type not in _SUPPORTED_MARKER_TYPES:
         return None
@@ -84,19 +84,16 @@ def _normalize_marker(marker):
         return None
 
     coordinate_space = str(marker.get("coordinate_space", marker.get("space", "normalized"))).lower()
-    shape = marker.get("shape", None)
+    shape = marker.get("shape", default_shape)
     if coordinate_space in {"pixel", "pixels", "image_pixel"}:
         cx = x
         cy = y
     else:
-        if shape is not None and len(shape) == 2:
-            rows, cols = int(shape[0]), int(shape[1])
-        else:
-            rows, cols = 1, 1
+        rows, cols = int(shape[0]), int(shape[1])
         cx = x * max(cols - 1, 1)
         cy = y * max(rows - 1, 1)
 
-    radius_px = _radius_px(marker)
+    radius_px = _radius_px(marker, default_shape)
     if radius_px is None or radius_px < 0.0:
         return None
     return float(cx), float(cy), float(radius_px), float(height)
@@ -112,7 +109,7 @@ def _height_value(marker):
     return None
 
 
-def _radius_px(marker):
+def _radius_px(marker, default_shape):
     if "radius_px" in marker:
         value = _float_or_none(marker.get("radius_px"))
         if value is None:
@@ -127,10 +124,8 @@ def _radius_px(marker):
         value = _float_or_none(marker.get("radius_normalized"))
         if value is None:
             return None
-        shape = marker.get("shape", None)
-        if shape is not None and len(shape) == 2:
-            return value * min(int(shape[0]), int(shape[1]))
-        return value
+        shape = marker.get("shape", default_shape)
+        return value * min(int(shape[0]), int(shape[1]))
     return 0.0
 
 
