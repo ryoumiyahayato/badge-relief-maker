@@ -15,6 +15,7 @@ The project now has these layers:
 - A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL for Blender inspection.
 - A split OBJ exporter for Blender-friendly front/back object separation.
 - A single-side relief pipeline that can generate a rough OBJ or ASCII STL from one image.
+- A lightweight topology report for open-edge and non-manifold edge warnings.
 
 The current runnable mesh path is a simple single-side proof of concept:
 
@@ -32,7 +33,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Deduplicate repeated vertices.
 - Export optional mask and heightmap previews.
 - Export OBJ or ASCII STL.
-- Return a basic manufacturing report with size and warning fields.
+- Return a basic manufacturing report with size, topology and warning fields.
 
 The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
 
@@ -42,11 +43,13 @@ The back-side workflow is currently incremental but independent: a back image ca
 
 The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately.
 
+The topology report counts unique edges, boundary edges and non-manifold edges. It is a lightweight diagnostic for early warnings, not a proof that a mesh is production-ready.
+
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
 Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
 
-The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata and early warnings. It does not yet prove that a model is watertight or production safe.
+The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
 
 The intended MVP still includes contour smoothing, stronger mesh repair, GLB export, richer desktop UI and later fused double-side mode.
 
@@ -182,7 +185,7 @@ These commands should be treated as first pipeline tests, not production-grade m
 
 1. Improve project-based side image workflow.
 2. Replace pixel-cell footprint with contour-based side closure.
-3. Add basic mesh repair and open-edge diagnostics.
+3. Add basic mesh repair actions.
 4. Add GLB export.
 5. Expand PySide6 UI panels.
 6. Add fused double-side alignment and solid generation.
