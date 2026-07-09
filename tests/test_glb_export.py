@@ -33,12 +33,19 @@ def test_export_glb_writes_binary_gltf_header_and_mesh(tmp_path):
 
     export_glb(output, vertices, faces)
     document, binary_length = _read_glb(output)
+    primitive = document["meshes"][0]["primitives"][0]
 
     assert output.exists()
     assert document["asset"]["version"] == "2.0"
-    assert document["meshes"][0]["primitives"][0]["mode"] == 4
+    assert primitive["mode"] == 4
+    assert primitive["attributes"]["POSITION"] == 0
+    assert primitive["attributes"]["NORMAL"] == 1
+    assert primitive["indices"] == 2
     assert document["accessors"][0]["count"] == 3
     assert document["accessors"][1]["count"] == 3
+    assert document["accessors"][1]["type"] == "VEC3"
+    assert document["accessors"][2]["count"] == 3
+    assert len(document["bufferViews"]) == 3
     assert binary_length > 0
 
 
