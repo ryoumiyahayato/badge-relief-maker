@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from .core.project_build import build_front_relief_from_project_file
+from .core.project_build import build_side_relief_from_project_file
 from .core.project_io import create_project, import_image_asset, load_project, save_project
 from .core.relief_parameters import ReliefParameters
 from .core.single_side_pipeline import build_single_side_relief
@@ -31,7 +31,12 @@ def main(argv=None) -> int:
     parser.add_argument("--new-project", dest="new_project_name")
     parser.add_argument("--project-path", dest="project_path")
     parser.add_argument("--import-front", dest="import_front_path")
+    parser.add_argument("--import-back", dest="import_back_path")
+    parser.add_argument("--import-reference", dest="import_reference_path")
+    parser.add_argument("--reference-role", default="reference")
     parser.add_argument("--build-front", action="store_true")
+    parser.add_argument("--build-back", action="store_true")
+    parser.add_argument("--build-side", choices=["front", "back"])
     parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl"])
     parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
     parser.add_argument("--input", dest="input_path")
@@ -63,22 +68,43 @@ def main(argv=None) -> int:
         print(f"Created project: {path}")
         return 0
 
-    if args.import_front_path:
+    if args.import_front_path or args.import_back_path or args.import_reference_path:
         if not args.project_path:
-            print("Provide --project-path when using --import-front.")
+            print("Provide --project-path when importing project images.")
             return 2
         project = load_project(args.project_path)
-        record = import_image_asset(project, args.project_path, args.import_front_path, "front")
+        if args.import_front_path:
+            record = import_image_asset(project, args.project_path, args.import_front_path, "front")
+            message = f"Imported front image: {record.path}"
+        elif args.import_back_path:
+            record = import_image_asset(project, args.project_path, args.import_back_path, "back")
+            message = f"Imported back image: {record.path}"
+        else:
+            record = import_image_asset(
+                project,
+                args.project_path,
+                args.import_reference_path,
+                args.reference_role,
+                is_reference=True,
+            )
+            message = f"Imported reference image: {record.path}"
         save_project(project, args.project_path)
-        print(f"Imported front image: {record.path}")
+        print(message)
         return 0
 
+    requested_side = args.build_side
     if args.build_front:
+        requested_side = "front"
+    if args.build_back:
+        requested_side = "back"
+
+    if requested_side:
         if not args.project_path:
-            print("Provide --project-path when using --build-front.")
+            print("Provide --project-path when building from a project.")
             return 2
-        result = build_front_relief_from_project_file(
+        result = build_side_relief_from_project_file(
             args.project_path,
+            side_name=requested_side,
             export_format=args.project_export_format,
             quality_mode=args.quality,
         )
