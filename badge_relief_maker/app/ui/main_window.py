@@ -19,7 +19,7 @@ except Exception:
     QVBoxLayout = None
     QWidget = object
 
-from ..core.project_build import build_front_relief_from_project
+from ..core.project_build import build_side_relief_from_project
 from ..core.project_io import create_project, import_image_asset, load_project, save_project
 
 
@@ -27,7 +27,7 @@ class MainWindow(QMainWindow):
     """Minimal project-based GUI shell.
 
     This is intentionally simple. It provides the top-level workflow hooks for
-    project creation, save/open, image import and front relief generation. The
+    project creation, save/open, image import and side relief generation. The
     heavy editor panels will be added later.
     """
 
@@ -59,6 +59,8 @@ class MainWindow(QMainWindow):
             ("Import Reference Image", self.import_reference_image),
             ("Build Front OBJ", self.build_front_obj),
             ("Build Front STL", self.build_front_stl),
+            ("Build Back OBJ", self.build_back_obj),
+            ("Build Back STL", self.build_back_stl),
         ]:
             button = QPushButton(title)
             button.clicked.connect(handler)
@@ -120,20 +122,23 @@ class MainWindow(QMainWindow):
         save_project(self.project, self.project_path)
         self._log(f"Imported {role} image: {record.path}")
 
-    def _build_front(self, export_format):
+    def _build_side(self, side_name, export_format):
         if not self._ensure_saved_project():
             return
-        if self.project.front_image is None:
-            self._log("Import a front image before building relief.")
+        image_record = self.project.front_image if side_name == "front" else self.project.back_image
+        if image_record is None:
+            self._log(f"Import a {side_name} image before building relief.")
             return
-        result = build_front_relief_from_project(
+        side_params = self.project.front_relief if side_name == "front" else self.project.back_relief
+        result = build_side_relief_from_project(
             self.project,
             self.project_path,
+            side_name=side_name,
             export_format=export_format,
-            quality_mode=self.project.front_relief.quality_mode,
+            quality_mode=side_params.quality_mode,
         )
         save_project(self.project, self.project_path)
-        self._log(f"Built front relief: {result.output_path}")
+        self._log(f"Built {side_name} relief: {result.output_path}")
 
     def import_front_image(self):
         self._import_image("front", is_reference=False)
@@ -145,7 +150,13 @@ class MainWindow(QMainWindow):
         self._import_image("reference", is_reference=True)
 
     def build_front_obj(self):
-        self._build_front("obj")
+        self._build_side("front", "obj")
 
     def build_front_stl(self):
-        self._build_front("stl")
+        self._build_side("front", "stl")
+
+    def build_back_obj(self):
+        self._build_side("back", "obj")
+
+    def build_back_stl(self):
+        self._build_side("back", "stl")
