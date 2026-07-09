@@ -91,6 +91,45 @@ def test_apply_rectangular_height_marker_uses_shape_string_for_region():
     assert float(result[0, 0]) == 0.0
 
 
+def test_polygon_height_marker_uses_normalized_points():
+    heightmap = np.zeros((5, 5), dtype=float)
+    mask = np.ones((5, 5), dtype=bool)
+
+    result, report = apply_manual_height_markers(
+        heightmap,
+        mask,
+        [
+            {
+                "marker_type": "height",
+                "shape": "polygon",
+                "points": [(0.2, 0.2), (0.8, 0.2), (0.5, 0.8)],
+                "height_normalized": 0.65,
+            }
+        ],
+    )
+
+    assert report["enabled"] is True
+    assert report["applied_marker_count"] == 1
+    assert report["affected_pixel_count"] > 0
+    assert float(result[2, 2]) == 0.65
+    assert float(result[0, 0]) == 0.0
+
+
+def test_polygon_height_marker_ignores_too_few_points():
+    heightmap = np.zeros((5, 5), dtype=float)
+    mask = np.ones((5, 5), dtype=bool)
+
+    result, report = apply_manual_height_markers(
+        heightmap,
+        mask,
+        {"marker_type": "height", "shape": "polygon", "points": [(0.2, 0.2), (0.8, 0.2)], "height_normalized": 0.65},
+    )
+
+    assert report["enabled"] is False
+    assert report["ignored_marker_count"] == 1
+    assert np.allclose(result, heightmap)
+
+
 def test_rectangular_marker_uses_explicit_normalized_height_size_key():
     heightmap = np.zeros((5, 5), dtype=float)
     mask = np.ones((5, 5), dtype=bool)
