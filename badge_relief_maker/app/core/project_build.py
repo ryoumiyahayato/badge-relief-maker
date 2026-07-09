@@ -57,8 +57,8 @@ def _manual_height_markers_from_project(project, side_name):
         if marker_type not in _HEIGHT_MARKER_TYPES or target not in allowed_targets:
             continue
         data = dict(getattr(marker, "data", {}) or {})
-        data.setdefault("marker_type", marker_type)
-        data.setdefault("target", target)
+        data["marker_type"] = marker_type
+        data["target"] = target
         result.append(data)
     return tuple(result)
 
