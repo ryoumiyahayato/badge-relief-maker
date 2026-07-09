@@ -8,7 +8,12 @@ from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief
 from badge_relief_maker.app.core.mesh_exporter import export_ascii_stl, export_obj_objects, implemented_formats
 from badge_relief_maker.app.core.mesh_optimize import optimize_mesh
 from badge_relief_maker.app.core.mesh_repair import repair_mesh_basic
-from badge_relief_maker.app.core.outline_extractor import boundary_edges_from_mask, outline_report
+from badge_relief_maker.app.core.outline_extractor import (
+    boundary_edges_from_mask,
+    outline_report,
+    simplify_collinear_points,
+    trace_boundary_loops,
+)
 from badge_relief_maker.app.core.relief_parameters import ReliefParameters
 from badge_relief_maker.app.core.single_side_pipeline import build_single_side_relief
 from badge_relief_maker.app.core.solid_builder import build_rectangular_relief_solid
@@ -54,6 +59,22 @@ def test_outline_report_counts_single_cell_boundary():
     assert report["vertical_boundary_edge_count"] == 2
     assert report["boundary_length_mm"] == 12.0
     assert report["foreground_pixel_count"] == 1
+    assert report["loop_count"] == 1
+    assert report["simplified_loop_point_count"] == 5
+
+
+def test_trace_boundary_loops_simplifies_collinear_grid_points():
+    mask = np.asarray([[True, True]], dtype=bool)
+    edges = boundary_edges_from_mask(mask)
+    loops = trace_boundary_loops(edges)
+    simplified = [simplify_collinear_points(loop) for loop in loops]
+    report = outline_report(mask, width_mm=10.0, height_mm=5.0)
+    assert len(edges) == 6
+    assert len(loops) == 1
+    assert len(loops[0]) == 7
+    assert len(simplified[0]) == 5
+    assert report["loop_point_count"] == 7
+    assert report["simplified_loop_point_count"] == 5
 
 
 def test_contour_side_walls_follow_single_cell_boundary():
