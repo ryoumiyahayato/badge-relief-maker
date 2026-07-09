@@ -27,6 +27,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Crop to the foreground bounding box.
 - Downsample very large masks before mesh generation.
 - Extract outline boundary metrics from the final mask.
+- Trace boundary loops and remove collinear contour points for simpler outline metrics.
 - Convert brightness to a heightmap.
 - Build a masked footprint relief solid by default.
 - Add base thickness and contour-driven external side walls.
@@ -45,7 +46,7 @@ The back-side workflow is currently incremental but independent: a back image ca
 
 The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately.
 
-The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length and a rough outline type label. The contour side wall builder now uses the external mask boundary as a separate side-wall layer, which is the foundation for later smoothing, bevels and rim generation.
+The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts and a rough outline type label. The contour side wall builder now uses the external mask boundary as a separate side-wall layer, which is the foundation for later smoothing, bevels and rim generation.
 
 The topology report counts unique edges, boundary edges and non-manifold edges. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
