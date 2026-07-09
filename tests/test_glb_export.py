@@ -2,6 +2,7 @@ import json
 import struct
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from badge_relief_maker.app.core.mesh_exporter import export_glb, export_glb_objects, export_mesh, implemented_formats
@@ -103,6 +104,37 @@ def test_export_glb_materials_handle_invalid_values(tmp_path):
     assert pbr["baseColorFactor"] == [0.8, 0.8, 0.8, 1.0]
     assert pbr["metallicFactor"] == 0.0
     assert pbr["roughnessFactor"] == 1.0
+
+
+def test_export_glb_rejects_malformed_vertex_array(tmp_path):
+    output = tmp_path / "bad-vertices.glb"
+
+    with pytest.raises(ValueError, match="vertices must be an Nx3 array"):
+        export_glb(output, [0, 0, 0], [[0, 1, 2]])
+
+
+def test_export_glb_rejects_malformed_face_array(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    output = tmp_path / "bad-faces.glb"
+
+    with pytest.raises(ValueError, match="faces must be an Nx3 array"):
+        export_glb(output, vertices, [[0, 1, 2, 0]])
+
+
+def test_export_glb_rejects_non_finite_vertices(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [np.nan, 0, 0], [0, 1, 0]], dtype=float)
+    output = tmp_path / "nan-vertices.glb"
+
+    with pytest.raises(ValueError, match="vertices contain non-finite coordinates"):
+        export_glb(output, vertices, [[0, 1, 2]])
+
+
+def test_export_glb_rejects_invalid_face_indices(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    output = tmp_path / "bad-index.glb"
+
+    with pytest.raises(ValueError, match="faces contain vertex indices outside the vertex array"):
+        export_glb(output, vertices, [[0, 1, 99]])
 
 
 def test_export_mesh_dispatches_glb(tmp_path):
