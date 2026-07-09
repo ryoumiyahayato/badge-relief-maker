@@ -70,7 +70,7 @@ def _relief_parameters_from_project(project, side_name="front", quality_mode=Non
 
 def _validate_export_format(export_format):
     export_format = str(export_format or "obj").lower().lstrip(".")
-    if export_format not in {"obj", "stl"}:
+    if export_format not in {"obj", "stl", "glb"}:
         raise ValueError(f"unsupported project export format: {export_format}")
     return export_format
 
