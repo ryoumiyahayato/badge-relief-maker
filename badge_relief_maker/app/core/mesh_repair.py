@@ -12,6 +12,8 @@ def _as_vertices(vertices):
         return np.zeros((0, 3), dtype=float)
     if vertices.ndim != 2 or vertices.shape[1] != 3:
         raise ValueError("vertices must be an Nx3 array")
+    if not np.isfinite(vertices).all():
+        raise ValueError("vertices contain non-finite coordinates")
     return vertices
 
 
@@ -97,12 +99,12 @@ def remove_unreferenced_vertices(vertices, faces):
 
 
 def remove_duplicate_vertices(vertices, faces):
-    """Remove duplicate vertices and remap faces.
+    """Remove duplicate vertices and remap valid faces.
 
     Kept for compatibility with the earlier placeholder module.
     """
     vertices = _as_vertices(vertices)
-    faces = _as_faces(faces)
+    faces, _ = remove_invalid_faces(vertices, faces)
     if len(vertices) == 0:
         return vertices, faces
     unique, inverse = np.unique(vertices, axis=0, return_inverse=True)
