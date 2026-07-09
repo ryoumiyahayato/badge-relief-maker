@@ -3,6 +3,7 @@ import pytest
 
 from badge_relief_maker.app.core.mesh_repair import (
     face_count,
+    remove_duplicate_vertices,
     remove_unreferenced_vertices,
     repair_mesh_basic,
     triangle_areas,
@@ -42,6 +43,13 @@ def test_repair_mesh_basic_removes_invalid_zero_duplicate_and_unreferenced():
 def test_repair_mesh_rejects_malformed_vertex_array():
     with pytest.raises(ValueError, match="vertices must be an Nx3 array"):
         repair_mesh_basic([0, 0, 0], [[0, 1, 2]])
+
+
+def test_repair_mesh_rejects_non_finite_vertices():
+    vertices = np.asarray([[0, 0, 0], [np.nan, 0, 0], [0, 1, 0]], dtype=float)
+
+    with pytest.raises(ValueError, match="vertices contain non-finite coordinates"):
+        repair_mesh_basic(vertices, [[0, 1, 2]])
 
 
 def test_repair_mesh_rejects_malformed_face_array():
@@ -85,3 +93,17 @@ def test_remove_unreferenced_vertices_drops_invalid_faces_without_crashing():
     assert repaired_vertices.shape == (3, 3)
     assert repaired_faces.tolist() == [[0, 1, 2]]
     assert removed == 1
+
+
+def test_remove_duplicate_vertices_drops_invalid_faces_without_crashing():
+    vertices = np.asarray(
+        [[0, 0, 0], [1, 0, 0], [1, 0, 0], [0, 1, 0]],
+        dtype=float,
+    )
+    faces = np.asarray([[0, 1, 3], [0, 1, 99]], dtype=np.int64)
+
+    repaired_vertices, repaired_faces = remove_duplicate_vertices(vertices, faces)
+
+    assert repaired_vertices.shape == (3, 3)
+    assert repaired_faces.shape == (1, 3)
+    assert repaired_faces.max() < len(repaired_vertices)
