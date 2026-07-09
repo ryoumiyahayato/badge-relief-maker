@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from .height_markers import apply_manual_height_markers
 from .heightmap_generator import grayscale_heightmap
 from .image_preprocess import load_rgba, normalize_alpha_background
 from .manufacturability_check import basic_report
@@ -55,6 +56,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     shape_after_crop = tuple(mask.shape)
     mask, heightmap, resize_scale = resize_mask_and_heightmap(mask, heightmap, params.max_grid_cells)
     shape_after_resize = tuple(mask.shape)
+    heightmap, manual_height_report = apply_manual_height_markers(heightmap, mask, params.manual_height_markers)
     heightmap, rim_report = apply_outer_rim_to_heightmap(
         heightmap,
         mask,
@@ -112,6 +114,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["repaired_face_count"] = int(len(faces))
     report["mesh_repair"] = repair_report
     report["outline"] = outline
+    report["manual_height"] = manual_height_report
     report["rim"] = rim_report
     report["side_wall_mode"] = _side_wall_mode(params)
     report["original_mask_pixel_count"] = original_mask_pixel_count
@@ -129,6 +132,8 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         report["warnings"].append("mask contains no foreground pixels")
     elif report["mask_pixel_count"] < 4:
         report["warnings"].append("mask is very small and may produce an unusable model")
+    if manual_height_report["enabled"]:
+        report["warnings"].append("manual height markers were applied")
     if rim_report["enabled"]:
         report["warnings"].append("outer rim height boost was applied")
     elif params.rim_width_px > 0 or params.rim_height_mm > 0.0:
