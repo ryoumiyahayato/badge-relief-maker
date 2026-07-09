@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
 
-from badge_relief_maker.app.core.manufacturability_check import basic_report
+from badge_relief_maker.app.core.manufacturability_check import basic_report, edge_usage_report
 from badge_relief_maker.app.core.mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
 from badge_relief_maker.app.core.mesh_exporter import export_ascii_stl, export_obj_objects, implemented_formats
@@ -50,7 +50,23 @@ def test_basic_report_includes_size_and_warnings():
     assert report["bbox"]["size_x"] == 10.0
     assert report["bbox"]["size_y"] == 5.0
     assert report["estimated_total_thickness_mm"] == 3.0
-    assert isinstance(report["warnings"], list)
+    assert report["topology"]["boundary_edge_count"] == 3
+    assert "open boundary edges detected" in report["warnings"]
+
+
+def test_edge_usage_report_detects_closed_tetrahedron():
+    faces = np.asarray([[0, 1, 2], [0, 3, 1], [1, 3, 2], [2, 3, 0]], dtype=np.int64)
+    report = edge_usage_report(faces)
+    assert report["boundary_edge_count"] == 0
+    assert report["non_manifold_edge_count"] == 0
+    assert report["closed_edge_manifold"] is True
+
+
+def test_edge_usage_report_detects_non_manifold_edge():
+    faces = np.asarray([[0, 1, 2], [1, 0, 3], [0, 1, 4]], dtype=np.int64)
+    report = edge_usage_report(faces)
+    assert report["non_manifold_edge_count"] == 1
+    assert report["closed_edge_manifold"] is False
 
 
 def test_clean_mask_removes_tiny_fragments_and_fills_holes():
@@ -136,6 +152,7 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert "bbox" in result.report
     assert "warnings" in result.report
     assert "mask_cleanup" in result.report
+    assert "topology" in result.report
     assert (preview_dir / "mask_preview.png").exists()
     assert (preview_dir / "heightmap_preview.png").exists()
     text = output_path.read_text(encoding="utf-8")
