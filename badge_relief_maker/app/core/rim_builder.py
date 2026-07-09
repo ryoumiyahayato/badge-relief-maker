@@ -28,32 +28,69 @@ def boundary_cell_mask(mask):
     return boundary
 
 
-def inner_rim_mask(mask, width_px=1):
-    """Return foreground cells within width_px steps from the exterior boundary."""
+def rim_distance_map(mask, width_px=1):
+    """Return inward distance from exterior boundary for rim cells.
+
+    Boundary cells have distance 0. Cells outside the requested rim width are -1.
+    """
     mask = np.asarray(mask, dtype=bool)
     if mask.ndim != 2:
         raise ValueError("mask must be a 2D array")
     width = int(width_px)
+    distances = np.full(mask.shape, -1, dtype=np.int64)
     if width <= 0 or not mask.any():
-        return np.zeros_like(mask, dtype=bool)
+        return distances
 
-    rim = boundary_cell_mask(mask)
-    frontier = rim.copy()
-    for _ in range(1, width):
-        expanded = _expand_one_step(frontier) & mask & ~rim
+    frontier = boundary_cell_mask(mask)
+    distances[frontier] = 0
+    for distance in range(1, width):
+        expanded = _expand_one_step(frontier) & mask & (distances < 0)
         if not expanded.any():
             break
-        rim |= expanded
+        distances[expanded] = distance
         frontier = expanded
-    return rim
+    return distances
 
 
-def apply_outer_rim_to_heightmap(heightmap, mask, width_px=0, rim_height_mm=0.0, relief_height_mm=1.0):
+def inner_rim_mask(mask, width_px=1):
+    """Return foreground cells within width_px steps from the exterior boundary."""
+    return rim_distance_map(mask, width_px) >= 0
+
+
+def rim_boost_map(mask, width_px=1, boost_normalized=0.0, profile="flat"):
+    """Return a normalized boost map for the requested rim profile."""
+    distances = rim_distance_map(mask, width_px)
+    boost = float(boost_normalized)
+    result = np.zeros_like(distances, dtype=float)
+    if boost <= 0.0 or not np.any(distances >= 0):
+        return result
+
+    width = max(1, int(width_px))
+    normalized_profile = str(profile or "flat").lower()
+    if normalized_profile == "flat":
+        result[distances >= 0] = boost
+    elif normalized_profile == "linear":
+        active = distances >= 0
+        factors = 1.0 - (distances.astype(float) / float(width))
+        result[active] = np.clip(factors[active], 0.0, 1.0) * boost
+    else:
+        raise ValueError("rim profile must be 'flat' or 'linear'")
+    return result
+
+
+def apply_outer_rim_to_heightmap(
+    heightmap,
+    mask,
+    width_px=0,
+    rim_height_mm=0.0,
+    relief_height_mm=1.0,
+    profile="flat",
+):
     """Raise foreground boundary cells in the heightmap to create a simple rim.
 
     The heightmap remains normalized. The requested rim height is converted into
     normalized units by dividing by relief_height_mm, then added to rim cells and
-    clipped to 1.0 for this MVP path.
+    clipped to 1.0 for this MVP path. Linear profile tapers the boost inward.
     """
     heightmap = np.asarray(heightmap, dtype=float)
     mask = np.asarray(mask, dtype=bool)
@@ -65,10 +102,12 @@ def apply_outer_rim_to_heightmap(heightmap, mask, width_px=0, rim_height_mm=0.0,
     width = int(width_px)
     height_mm = float(rim_height_mm)
     relief_mm = float(relief_height_mm)
+    normalized_profile = str(profile or "flat").lower()
     report = {
         "enabled": False,
         "rim_width_px": max(0, width),
         "rim_height_mm": height_mm,
+        "rim_profile": normalized_profile,
         "rim_pixel_count": 0,
         "boost_normalized": 0.0,
         "clipped_pixel_count": 0,
@@ -76,15 +115,15 @@ def apply_outer_rim_to_heightmap(heightmap, mask, width_px=0, rim_height_mm=0.0,
     if width <= 0 or height_mm <= 0.0 or relief_mm <= 0.0 or not mask.any():
         return heightmap.copy(), report
 
-    rim = inner_rim_mask(mask, width)
     boost = height_mm / relief_mm
+    boost_map = rim_boost_map(mask, width_px=width, boost_normalized=boost, profile=normalized_profile)
+    rim = boost_map > 0.0
     result = heightmap.copy()
-    before = result[rim]
-    after_unclipped = before + boost
+    after_unclipped = result[rim] + boost_map[rim]
     result[rim] = np.clip(after_unclipped, 0.0, 1.0)
     report.update(
         {
-            "enabled": True,
+            "enabled": bool(rim.any()),
             "rim_pixel_count": int(rim.sum()),
             "boost_normalized": float(boost),
             "clipped_pixel_count": int(np.count_nonzero(after_unclipped > 1.0)),
