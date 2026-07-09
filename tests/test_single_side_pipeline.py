@@ -4,7 +4,7 @@ from PIL import Image
 from badge_relief_maker.app.core.manufacturability_check import basic_report
 from badge_relief_maker.app.core.mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
-from badge_relief_maker.app.core.mesh_exporter import export_ascii_stl, implemented_formats
+from badge_relief_maker.app.core.mesh_exporter import export_ascii_stl, export_obj_objects, implemented_formats
 from badge_relief_maker.app.core.mesh_optimize import optimize_mesh
 from badge_relief_maker.app.core.relief_parameters import ReliefParameters
 from badge_relief_maker.app.core.single_side_pipeline import build_single_side_relief
@@ -76,6 +76,24 @@ def test_ascii_stl_export_writes_facets(tmp_path):
     assert "vertex" in text
     assert "endsolid" in text
     assert {"obj", "stl"}.issubset(implemented_formats())
+
+
+def test_multi_object_obj_export_writes_named_objects(tmp_path):
+    vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+    faces = np.asarray([[0, 1, 2]], dtype=np.int64)
+    output = tmp_path / "split.obj"
+    export_obj_objects(
+        output,
+        [
+            {"name": "front_relief", "vertices": vertices, "faces": faces},
+            {"name": "back_relief", "vertices": vertices, "faces": faces},
+        ],
+    )
+    text = output.read_text(encoding="utf-8")
+    assert "o front_relief" in text
+    assert "o back_relief" in text
+    assert "f 1 2 3" in text
+    assert "f 4 5 6" in text
 
 
 def test_crop_to_mask_returns_bbox():
