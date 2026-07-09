@@ -38,7 +38,7 @@ The current runnable mesh path is a simple single-side proof of concept:
 - Add internal vertical walls where neighboring relief cells have different heights.
 - Deduplicate repeated vertices.
 - Run basic mesh repair to remove invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
-- Report face area and face normal orientation diagnostics.
+- Report face area, face normal orientation and malformed face-array diagnostics.
 - Export optional mask and heightmap previews.
 - Export OBJ, ASCII STL or binary GLB.
 - Return a basic manufacturing report with size, outline, manual-height, rim, topology, face-geometry, repair metadata and warning fields.
@@ -61,7 +61,7 @@ The outline report counts mask boundary edges, horizontal and vertical boundary 
 
 The outer rim height boost raises foreground cells near the mask boundary before mesh generation. Flat profile raises all rim cells equally; linear profile tapers the rim inward with a straight ramp; smooth profile uses a smoothstep ramp for a softer rounded-looking transition. This is a simple way to create a badge-like raised border; it is not yet a true bevelled or rounded rim mesh.
 
-The topology report counts unique edges, boundary edges and non-manifold edges. Face-geometry diagnostics report valid and invalid faces, zero-area faces, total surface area and rough up/down/side face-normal counts. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
+The topology report counts unique edges, boundary edges and non-manifold edges. Face-geometry diagnostics report valid and invalid faces, malformed face arrays, zero-area faces, total surface area and rough up/down/side face-normal counts. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
 
 The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
 
