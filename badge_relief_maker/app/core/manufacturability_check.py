@@ -4,6 +4,8 @@ from collections import Counter
 
 import numpy as np
 
+from .mesh_analysis import footprint_feature_report, overhang_tool_access_report, self_intersection_report
+
 
 _MALFORMED_FACE_WARNING = "malformed face array detected"
 _MANUFACTURING_DISCLAIMER = (
@@ -336,7 +338,18 @@ def connected_component_report(vertices, faces):
     }
 
 
-def manufacturing_gate_report(vertex_count, face_count, bounds, topology, face_geometry, components, minimum_thickness_mm=None):
+def manufacturing_gate_report(
+    vertex_count,
+    face_count,
+    bounds,
+    topology,
+    face_geometry,
+    components,
+    minimum_thickness_mm=None,
+    self_intersections=None,
+    feature_analysis=None,
+    process_analysis=None,
+):
     """Return an explicit non-certifying gate for severe mesh defects."""
     blockers = []
     review_flags = []
@@ -360,10 +373,30 @@ def manufacturing_gate_report(vertex_count, face_count, bounds, topology, face_g
         blockers.append("one or more components are open or unoriented")
     if components["inward_closed_component_count"] > 0:
         blockers.append("one or more closed components are oriented inward")
+    zero_volume_components = sum(
+        bool(item["closed_oriented_manifold"]) and abs(float(item["signed_volume_mm3"])) <= 1e-12
+        for item in components.get("component_reports", [])
+    )
+    if zero_volume_components:
+        blockers.append("one or more closed components have zero signed volume")
     if minimum_thickness_mm is not None and bounds["size_z"] < float(minimum_thickness_mm):
         blockers.append("estimated total thickness is below the configured minimum")
     if components["component_count"] > 1:
         review_flags.append("multiple disconnected components require manual review")
+    if self_intersections is not None:
+        if not self_intersections.get("complete", False):
+            review_flags.append("self-intersection analysis reached its candidate limit")
+        if self_intersections.get("intersection_pair_count", 0) > 0:
+            blockers.append("self-intersecting triangle pairs are present")
+    if feature_analysis is not None:
+        if feature_analysis["local_wall_thickness"]["violation"]:
+            blockers.append("local vertical wall thickness is below the selected process profile")
+        if feature_analysis["minimum_feature_size"]["violation"]:
+            review_flags.append("estimated minimum feature size is below the selected process profile")
+        if feature_analysis["floating_components"]["tiny_component_count"] > 0:
+            blockers.append("tiny disconnected foreground components are present")
+    if process_analysis is not None and process_analysis.get("review_required"):
+        review_flags.append("overhang, draft or tool-access review is required for the selected process")
 
     return {
         "status": "blocked" if blockers else "review_required",
@@ -371,17 +404,19 @@ def manufacturing_gate_report(vertex_count, face_count, bounds, topology, face_g
         "unattended_manufacturing_recommended": False,
         "blockers": blockers,
         "review_flags": review_flags,
-        "missing_checks": [
-            "self-intersection detection",
-            "local wall-thickness analysis",
-            "minimum feature-size analysis",
-            "process-specific overhang and tool-access analysis",
-        ],
+        "missing_checks": ["full slicer/CAM simulation and process-specific physical validation"],
         "disclaimer": _MANUFACTURING_DISCLAIMER,
     }
 
 
-def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_faces=200000):
+def basic_report(
+    vertices,
+    faces,
+    minimum_thickness_mm=None,
+    max_recommended_faces=200000,
+    analysis_context=None,
+    process_profile="general",
+):
     """Return a cautious advisory mesh diagnostic report."""
     vertices = _vertices_array(vertices)
     vertex_count = int(len(vertices))
@@ -390,6 +425,38 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
     topology = edge_usage_report(faces)
     face_geometry = face_geometry_report(vertices, faces)
     components = connected_component_report(vertices, faces)
+    triangular_faces = _faces_array(faces)
+    valid_analysis_faces = None
+    if _is_triangular_face_array(triangular_faces):
+        valid_analysis_faces, _ = _valid_faces(vertices, triangular_faces)
+    if analysis_context is not None and analysis_context.get("construction") == "indexed_heightfield" and analysis_context.get("edge_style", "straight") == "straight":
+        self_intersections = {
+            "checked": True,
+            "complete": True,
+            "method": "indexed height-field construction invariant",
+            "candidate_pair_count": 0,
+            "tested_pair_count": 0,
+            "intersection_pair_count": 0,
+            "sample_face_pairs": [],
+        }
+    elif valid_analysis_faces is not None:
+        self_intersections = self_intersection_report(vertices, valid_analysis_faces)
+        self_intersections["method"] = "uniform-grid triangle broad phase"
+    else:
+        self_intersections = None
+    feature_analysis = None
+    if analysis_context is not None:
+        feature_analysis = footprint_feature_report(
+            analysis_context["mask"],
+            analysis_context["heightmap"],
+            analysis_context["width_mm"],
+            analysis_context["height_mm"],
+            analysis_context["base_thickness_mm"],
+            analysis_context["relief_height_mm"],
+            profile_name=process_profile,
+            minimum_thickness_mm=minimum_thickness_mm,
+        )
+    process_analysis = overhang_tool_access_report(vertices, valid_analysis_faces, profile_name=process_profile) if valid_analysis_faces is not None else None
     warnings = []
 
     if vertex_count == 0 or face_count == 0:
@@ -428,6 +495,9 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         face_geometry,
         components,
         minimum_thickness_mm,
+        self_intersections,
+        feature_analysis,
+        process_analysis,
     )
     return {
         "vertex_count": vertex_count,
@@ -439,9 +509,12 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         "topology": topology,
         "face_geometry": face_geometry,
         "components": components,
+        "self_intersections": self_intersections,
+        "feature_analysis": feature_analysis,
+        "process_analysis": process_analysis,
         "manufacturing_gate": manufacturing_gate,
         "manufacturing_advisory": _MANUFACTURING_DISCLAIMER,
         "warnings": warnings,
         "watertight_check": "oriented edge-manifold heuristic",
-        "thin_region_check": "not implemented",
+        "thin_region_check": "vertical thickness and footprint distance-ridge estimate",
     }

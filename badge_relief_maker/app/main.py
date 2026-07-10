@@ -3,7 +3,11 @@
 import argparse
 import sys
 
-from .core.project_build import build_double_side_placeholder_from_project_file, build_side_relief_from_project_file
+from .core.project_build import (
+    build_double_side_placeholder_from_project_file,
+    build_fused_double_side_from_project_file,
+    build_side_relief_from_project_file,
+)
 from .core.project_io import create_project, import_image_asset, load_project, save_project
 from .core.relief_parameters import ReliefParameters
 from .core.single_side_pipeline import build_single_side_relief
@@ -30,7 +34,7 @@ def run_gui() -> int:
 
 def _selected_action_count(args):
     import_requested = bool(args.import_front_path or args.import_back_path or args.import_reference_path)
-    build_requested = bool(args.build_front or args.build_back or args.build_side or args.build_double_placeholder)
+    build_requested = bool(args.build_front or args.build_back or args.build_side or args.build_double_placeholder or args.build_double)
     direct_requested = bool(args.input_path or args.output_path)
     return sum(bool(value) for value in [args.gui, args.new_project_name, import_requested, build_requested, direct_requested])
 
@@ -74,6 +78,17 @@ def _execute(args):
         if not args.project_path:
             raise ValueError("provide --project-path when building a double-side placeholder")
         result = build_double_side_placeholder_from_project_file(
+            args.project_path,
+            export_format=args.project_export_format,
+            quality_mode=args.quality,
+        )
+        print(result.report)
+        return 0
+
+    if args.build_double:
+        if not args.project_path:
+            raise ValueError("provide --project-path when building a fused double-side model")
+        result = build_fused_double_side_from_project_file(
             args.project_path,
             export_format=args.project_export_format,
             quality_mode=args.quality,
@@ -126,6 +141,16 @@ def _execute(args):
         rim_width_mm=args.rim_width_mm,
         rim_height_mm=args.rim_height_mm,
         rim_profile=args.rim_profile,
+        edge_style=args.edge_style,
+        bevel_mm=args.bevel_mm,
+        radius_mm=args.radius_mm,
+        height_mode=args.height_mode,
+        background_depth_mm=args.background_depth_mm,
+        uniform_height_normalized=args.uniform_height,
+        smooth_strength=args.smooth_strength,
+        detail_sharpness=args.detail_sharpness,
+        process_profile=args.process_profile,
+        manual_crop_box=tuple(args.manual_crop_box) if args.manual_crop_box else None,
     )
     result = build_single_side_relief(args.input_path, args.output_path, params, preview_dir=args.preview_dir)
     print(result.report)
@@ -153,6 +178,7 @@ def main(argv=None) -> int:
     build_group.add_argument("--build-back", action="store_true")
     build_group.add_argument("--build-side", choices=["front", "back"])
     build_group.add_argument("--build-double-placeholder", action="store_true")
+    build_group.add_argument("--build-double", action="store_true", help="build one aligned fused front/back solid")
 
     parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl", "glb"])
     parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
@@ -174,6 +200,16 @@ def main(argv=None) -> int:
     parser.add_argument("--rim-width-mm", type=float, default=0.0)
     parser.add_argument("--rim-height-mm", type=float, default=0.0)
     parser.add_argument("--rim-profile", default="flat", choices=["flat", "linear", "smooth"])
+    parser.add_argument("--edge-style", default="straight", choices=["straight", "sloped", "bevel", "rounded"])
+    parser.add_argument("--bevel-mm", type=float, default=0.0)
+    parser.add_argument("--radius-mm", type=float, default=0.0)
+    parser.add_argument("--height-mode", default="grayscale", choices=["grayscale", "layers", "hybrid"])
+    parser.add_argument("--background-depth-mm", type=float, default=0.0)
+    parser.add_argument("--uniform-height", type=float, default=1.0)
+    parser.add_argument("--smooth-strength", type=float, default=0.0)
+    parser.add_argument("--detail-sharpness", type=float, default=0.0)
+    parser.add_argument("--process-profile", default="general", choices=["general", "fdm", "resin", "cnc", "mould"])
+    parser.add_argument("--manual-crop-box", type=float, nargs=4, metavar=("X0", "Y0", "X1", "Y1"))
     parser.add_argument("--no-crop", action="store_true")
     parser.add_argument("--crop-padding-px", type=int, default=1)
     parser.add_argument("--max-grid-cells", type=int, default=20000)

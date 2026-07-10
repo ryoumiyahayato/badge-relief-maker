@@ -8,6 +8,7 @@ _SUPPORTED_TARGETS = {"heightmap", "relief", "front", "back", "both"}
 _SET_OPERATIONS = {"set", "replace", "override", "height_override", "set_height"}
 _ADD_OPERATIONS = {"add", "raise", "increase"}
 _SUBTRACT_OPERATIONS = {"subtract", "sub", "lower", "decrease"}
+_SMOOTH_OPERATIONS = {"smooth", "soften", "blur"}
 _POLYGON_SHAPES = {"polygon", "poly", "freeform", "free_form"}
 _RECTANGLE_SHAPES = {"rectangle", "rect", "box"}
 
@@ -61,7 +62,12 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
         if not region.any():
             report["ignored_marker_count"] += 1
             continue
-        result[region] = _apply_operation(result[region], normalized)
+        if normalized["operation"] == "smooth":
+            blurred = _mean_filter_3x3(result)
+            strength = normalized["value"]
+            result[region] = result[region] * (1.0 - strength) + blurred[region] * strength
+        else:
+            result[region] = _apply_operation(result[region], normalized)
         affected_total |= region
         report["applied_marker_count"] += 1
 
@@ -75,6 +81,17 @@ def normalize_manual_height_marker(marker, grid_shape):
     if not isinstance(marker, dict):
         return None
     return _normalize_marker(marker, grid_shape)
+
+
+def manual_height_marker_region(mask, marker):
+    """Return the clipped boolean region selected by one marker."""
+    mask = np.asarray(mask, dtype=bool)
+    if mask.ndim != 2:
+        raise ValueError("mask must be a 2D array")
+    normalized = _normalize_marker(marker, mask.shape) if isinstance(marker, dict) else None
+    if normalized is None:
+        return np.zeros(mask.shape, dtype=bool)
+    return _marker_region(mask, normalized)
 
 
 def _marker_list(markers):
@@ -233,12 +250,17 @@ def _operation(marker):
         return "add"
     if raw in _SUBTRACT_OPERATIONS:
         return "subtract"
+    if raw in _SMOOTH_OPERATIONS:
+        return "smooth"
     if raw in _SET_OPERATIONS:
         return "set"
     return "set"
 
 
 def _operation_value(marker, operation):
+    if operation == "smooth":
+        value = _float_or_none(marker.get("strength", marker.get("value", 1.0)))
+        return None if value is None else _clamp01(value)
     if operation in {"add", "subtract"}:
         for key in ["delta", "delta_height", "height_delta", "value", "height"]:
             if key in marker:
@@ -360,3 +382,12 @@ def _float_or_none(value):
 
 def _clamp01(value):
     return float(min(max(float(value), 0.0), 1.0))
+
+
+def _mean_filter_3x3(values):
+    padded = np.pad(np.asarray(values, dtype=float), 1, mode="edge")
+    total = np.zeros_like(values, dtype=float)
+    for row_offset in range(3):
+        for col_offset in range(3):
+            total += padded[row_offset : row_offset + values.shape[0], col_offset : col_offset + values.shape[1]]
+    return total / 9.0

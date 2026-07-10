@@ -8,7 +8,7 @@ def empty_heightmap(shape):
     return np.zeros(shape, dtype=np.float32)
 
 
-def grayscale_heightmap(rgba, mask=None, invert=False):
+def grayscale_heightmap(rgba, mask=None, invert=False, uniform_value=1.0):
     """Convert image brightness to a normalized foreground heightmap.
 
     Foreground normalization ignores background pixels. A uniformly bright
@@ -38,7 +38,7 @@ def grayscale_heightmap(rgba, mask=None, invert=False):
         if high > low:
             normalized = (gray - low) / (high - low)
         else:
-            normalized = np.ones_like(gray, dtype=np.float32)
+            normalized = np.full_like(gray, np.clip(float(uniform_value), 0.0, 1.0), dtype=np.float32)
         if invert:
             normalized = 1.0 - normalized
         result = normalized.astype(np.float32)

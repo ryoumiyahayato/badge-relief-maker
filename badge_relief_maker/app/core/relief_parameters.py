@@ -29,6 +29,19 @@ class ReliefParameters:
     rim_width_mm: float = 0.0
     rim_height_mm: float = 0.0
     rim_profile: str = "flat"
+    edge_style: str = "straight"
+    bevel_mm: float = 0.0
+    radius_mm: float = 0.0
+    height_mode: str = "grayscale"
+    background_depth_mm: float = 0.0
+    uniform_height_normalized: float = 1.0
+    smooth_strength: float = 0.0
+    detail_sharpness: float = 0.0
+    process_profile: str = "general"
+    manual_crop_box: tuple | None = None
+    perspective_quad: tuple | None = None
+    manual_mask_edits: tuple = field(default_factory=tuple)
+    region_layers: tuple = field(default_factory=tuple)
     manual_height_markers: tuple = field(default_factory=tuple)
 
 
@@ -40,3 +53,14 @@ class ReliefBuildResult:
     faces: object
     report: dict
     output_path: str | None = None
+
+
+@dataclass(frozen=True)
+class PreparedReliefField:
+    """Processed mask and height field shared by preview and mesh workflows."""
+
+    mask: object
+    heightmap: object
+    rgba: object
+    image_transform: object
+    report: dict

@@ -1,5 +1,6 @@
 import json
 import struct
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -19,6 +20,7 @@ from badge_relief_maker.app.core.project_io import create_project, import_image_
 
 
 def _read_glb(path):
+    path = Path(path)
     data = path.read_bytes()
     magic, version, total_length = struct.unpack_from("<III", data, 0)
     assert magic == 0x46546C67

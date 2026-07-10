@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 
 
-PROJECT_FILE_VERSION = 1
+PROJECT_FILE_VERSION = 2
 
 
 def utc_now_iso():
@@ -171,6 +171,27 @@ class ReliefSideParameters:
     minimum_thickness_mm: float = 0.8
     crop_to_foreground: bool = True
     crop_padding_px: int = 1
+    uniform_height_normalized: float = 1.0
+    smooth_strength: float = 0.0
+    detail_sharpness: float = 0.0
+    process_profile: str = "general"
+    manual_crop_box: list | None = None
+    perspective_quad: list | None = None
+    mask_edits: list = field(default_factory=list)
+    region_layers: list = field(default_factory=list)
+
+
+@dataclass
+class DoubleSideParameters:
+    """Alignment and footprint settings for a fused front/back model."""
+
+    enabled: bool = False
+    back_scale: float = 1.0
+    back_rotation_deg: float = 0.0
+    back_offset_x_mm: float = 0.0
+    back_offset_y_mm: float = 0.0
+    flip_back_horizontal: bool = True
+    footprint_mode: str = "union"
 
 
 @dataclass
@@ -211,6 +232,7 @@ class MedalProject:
     edge: EdgeParameters = field(default_factory=EdgeParameters)
     front_relief: ReliefSideParameters = field(default_factory=ReliefSideParameters)
     back_relief: ReliefSideParameters = field(default_factory=lambda: ReliefSideParameters(enabled=False))
+    double_side: DoubleSideParameters = field(default_factory=DoubleSideParameters)
     manual_markers: list = field(default_factory=list)
     export_history: list = field(default_factory=list)
 
@@ -244,6 +266,7 @@ class MedalProject:
         project.edge = _dataclass_from_dict(EdgeParameters, data.get("edge", {}))
         project.front_relief = _dataclass_from_dict(ReliefSideParameters, data.get("front_relief", {}))
         project.back_relief = _dataclass_from_dict(ReliefSideParameters, data.get("back_relief", {}), enabled=False)
+        project.double_side = _dataclass_from_dict(DoubleSideParameters, data.get("double_side", {}))
         project.manual_markers = [
             item
             for item in (_manual_marker_from_dict(item) for item in _dict_list(data.get("manual_markers", [])))
@@ -264,4 +287,14 @@ class MedalProject:
             relief.enabled = _coerce_bool(relief.enabled, default_enabled)
             relief.invert_height = _coerce_bool(relief.invert_height, False)
             relief.crop_to_foreground = _coerce_bool(relief.crop_to_foreground, True)
+            if not isinstance(relief.manual_crop_box, list):
+                relief.manual_crop_box = None
+            if not isinstance(relief.perspective_quad, list):
+                relief.perspective_quad = None
+            if not isinstance(relief.mask_edits, list):
+                relief.mask_edits = []
+            if not isinstance(relief.region_layers, list):
+                relief.region_layers = []
+        project.double_side.enabled = _coerce_bool(project.double_side.enabled, False)
+        project.double_side.flip_back_horizontal = _coerce_bool(project.double_side.flip_back_horizontal, True)
         return project

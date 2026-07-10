@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 
 from .project_model import PROJECT_FILE_VERSION, ExportRecord, ImageRecord, MedalProject
@@ -62,12 +63,61 @@ def _project_version(data):
     return version
 
 
+def migrate_project_data(data):
+    """Return a current-version project dictionary without mutating the caller.
+
+    Version 1 projects predate persisted visual-editing and fused-double-side
+    settings. Their existing fields retain their previous meaning; new fields
+    receive deterministic defaults.
+    """
+    if not isinstance(data, dict):
+        raise ProjectFormatError("project root must be a JSON object")
+    migrated = deepcopy(data)
+    version = _project_version(migrated)
+    if version == 1:
+        for side_name, enabled in (("front_relief", True), ("back_relief", False)):
+            side = migrated.get(side_name)
+            if not isinstance(side, dict):
+                side = {"enabled": enabled}
+                migrated[side_name] = side
+            side.setdefault("uniform_height_normalized", 1.0)
+            side.setdefault("smooth_strength", 0.0)
+            side.setdefault("detail_sharpness", 0.0)
+            side.setdefault("process_profile", "general")
+            side.setdefault("manual_crop_box", None)
+            side.setdefault("perspective_quad", None)
+            side.setdefault("mask_edits", [])
+            side.setdefault("region_layers", [])
+        migrated.setdefault(
+            "double_side",
+            {
+                "enabled": False,
+                "back_scale": 1.0,
+                "back_rotation_deg": 0.0,
+                "back_offset_x_mm": 0.0,
+                "back_offset_y_mm": 0.0,
+                "flip_back_horizontal": True,
+                "footprint_mode": "union",
+            },
+        )
+        migrated["file_version"] = 2
+        version = 2
+    if version != PROJECT_FILE_VERSION:
+        raise UnsupportedProjectVersionError(
+            f"project file version {version} is not supported by version {PROJECT_FILE_VERSION}"
+        )
+    return migrated
+
+
 def save_project(project, path):
     """Flush and atomically save a project as JSON .medalproj."""
     if not isinstance(project, MedalProject):
         raise TypeError("project must be a MedalProject")
     version = _project_version({"file_version": project.file_version})
-    project.file_version = version
+    if version < PROJECT_FILE_VERSION:
+        project.file_version = PROJECT_FILE_VERSION
+    else:
+        project.file_version = version
     path = normalize_project_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     ensure_project_dirs(path)
@@ -107,9 +157,9 @@ def load_project(path):
         raise ProjectFormatError(f"project file contains invalid JSON: {path}") from exc
     if not isinstance(data, dict):
         raise ProjectFormatError("project root must be a JSON object")
-    version = _project_version(data)
+    data = migrate_project_data(data)
     project = MedalProject.from_dict(data)
-    project.file_version = version
+    project.file_version = PROJECT_FILE_VERSION
     return project
 
 

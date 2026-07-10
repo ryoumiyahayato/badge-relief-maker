@@ -1,6 +1,7 @@
 """Lightweight mesh repair helpers for the MVP pipeline."""
 
 import numpy as np
+from collections import defaultdict, deque
 
 
 def _as_vertices(vertices):
@@ -111,6 +112,75 @@ def remove_duplicate_vertices(vertices, faces):
     return unique, inverse[faces] if len(faces) else faces
 
 
+def _signed_volume(vertices, faces):
+    if len(faces) == 0:
+        return 0.0
+    first = vertices[faces[:, 0]]
+    second = vertices[faces[:, 1]]
+    third = vertices[faces[:, 2]]
+    return float(np.einsum("ij,ij->i", first, np.cross(second, third)).sum() / 6.0)
+
+
+def orient_closed_components_outward(vertices, faces):
+    """Propagate consistent winding and reverse inward closed components."""
+    vertices = _as_vertices(vertices)
+    faces = _as_faces(faces).copy()
+    edge_uses = defaultdict(list)
+    for face_index, (a, b, c) in enumerate(faces):
+        for left, right in ((a, b), (b, c), (c, a)):
+            edge_uses[tuple(sorted((int(left), int(right))))].append((face_index, int(left), int(right)))
+
+    adjacency = defaultdict(list)
+    for uses in edge_uses.values():
+        if len(uses) != 2:
+            continue
+        first, second = uses
+        same_direction = first[1] == second[1] and first[2] == second[2]
+        adjacency[first[0]].append((second[0], same_direction))
+        adjacency[second[0]].append((first[0], same_direction))
+
+    flip = np.full(len(faces), -1, dtype=np.int8)
+    components = []
+    conflicts = 0
+    for start in range(len(faces)):
+        if flip[start] >= 0:
+            continue
+        flip[start] = 0
+        queue = deque([start])
+        component = []
+        while queue:
+            current = queue.popleft()
+            component.append(current)
+            for neighbor, same_direction in adjacency[current]:
+                expected = int(flip[current]) ^ int(same_direction)
+                if flip[neighbor] < 0:
+                    flip[neighbor] = expected
+                    queue.append(neighbor)
+                elif int(flip[neighbor]) != expected:
+                    conflicts += 1
+        components.append(component)
+
+    propagated_flips = int(np.count_nonzero(flip == 1))
+    faces[flip == 1] = faces[flip == 1][:, [0, 2, 1]]
+    reversed_components = 0
+    for component in components:
+        component_faces = faces[np.asarray(component, dtype=np.int64)]
+        local_edges = defaultdict(int)
+        for a, b, c in component_faces:
+            for left, right in ((a, b), (b, c), (c, a)):
+                local_edges[tuple(sorted((int(left), int(right))))] += 1
+        closed = bool(local_edges) and all(count == 2 for count in local_edges.values())
+        if closed and _signed_volume(vertices, component_faces) < 0.0:
+            indices = np.asarray(component, dtype=np.int64)
+            faces[indices] = faces[indices][:, [0, 2, 1]]
+            reversed_components += 1
+    return vertices, faces, {
+        "propagated_face_flips": propagated_flips,
+        "reversed_inward_components": int(reversed_components),
+        "orientation_conflict_count": int(conflicts),
+    }
+
+
 def repair_mesh_basic(vertices, faces):
     """Run conservative mesh cleanup and return repair metadata.
 
@@ -124,11 +194,13 @@ def repair_mesh_basic(vertices, faces):
     faces, zero_area_faces_removed = remove_zero_area_faces(vertices, faces)
     faces, duplicate_faces_removed = remove_duplicate_faces(faces)
     vertices, faces, unreferenced_vertices_removed = remove_unreferenced_vertices(vertices, faces)
+    vertices, faces, orientation_report = orient_closed_components_outward(vertices, faces)
 
     report = {
         "invalid_faces_removed": int(invalid_faces_removed),
         "zero_area_faces_removed": int(zero_area_faces_removed),
         "duplicate_faces_removed": int(duplicate_faces_removed),
         "unreferenced_vertices_removed": int(unreferenced_vertices_removed),
+        **orientation_report,
     }
     return vertices, faces, report
