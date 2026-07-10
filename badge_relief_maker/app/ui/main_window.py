@@ -179,10 +179,17 @@ class MainWindow(QMainWindow):
         if QMessageBox is not None:
             QMessageBox.critical(self, "Badge Relief Maker", message)
 
-    def _load_controls_from_project(self):
+    def _side_parameters(self, side_name):
+        if side_name == "front":
+            return self.project.front_relief
+        if side_name == "back":
+            return self.project.back_relief
+        raise ValueError(f"unsupported GUI side: {side_name}")
+
+    def _load_controls_from_project(self, side_name="front"):
         if self.project is None or self.width_spin is None:
             return
-        side = self.project.front_relief
+        side = self._side_parameters(side_name)
         edge = self.project.edge
         self.width_spin.setValue(float(self.project.dimensions.width_mm))
         self.height_spin.setValue(float(self.project.dimensions.height_mm))
@@ -196,10 +203,10 @@ class MainWindow(QMainWindow):
         self.rim_height_spin.setValue(float(edge.rim_height_mm))
         self.rim_profile_combo.setCurrentText(str(edge.rim_profile))
 
-    def _apply_controls_to_project(self):
+    def _apply_controls_to_project(self, side_name="front"):
         if self.project is None or self.width_spin is None:
             return
-        side = self.project.front_relief
+        side = self._side_parameters(side_name)
         edge = self.project.edge
         self.project.dimensions.width_mm = self.width_spin.value()
         self.project.dimensions.height_mm = self.height_spin.value()
@@ -219,7 +226,7 @@ class MainWindow(QMainWindow):
         try:
             self.project = create_project("Untitled Medal Project")
             self.project_path = None
-            self._load_controls_from_project()
+            self._load_controls_from_project("front")
             self._log("New project created. Save it as a .medalproj file.")
         except Exception as exc:
             self._error("Could not create project", exc)
@@ -233,7 +240,7 @@ class MainWindow(QMainWindow):
         try:
             self.project = load_project(path)
             self.project_path = path
-            self._load_controls_from_project()
+            self._load_controls_from_project("front")
             self._log(f"Opened project: {self.project.name}")
         except Exception as exc:
             self._error("Could not open project", exc)
@@ -249,7 +256,7 @@ class MainWindow(QMainWindow):
                 path, _ = QFileDialog.getSaveFileName(self, "Save project", "project.medalproj", "Medal Project (*.medalproj)")
             if not path:
                 return
-            self._apply_controls_to_project()
+            self._apply_controls_to_project("front")
             self.project_path = save_project(self.project, path)
             self._log(f"Saved project: {self.project_path}")
         except Exception as exc:
@@ -270,7 +277,7 @@ class MainWindow(QMainWindow):
             return
         try:
             record = import_image_asset(self.project, self.project_path, path, role, is_reference=is_reference)
-            self._apply_controls_to_project()
+            self._apply_controls_to_project("front")
             save_project(self.project, self.project_path)
             self._log(f"Imported {role} image: {record.path}")
         except Exception as exc:
@@ -297,6 +304,8 @@ class MainWindow(QMainWindow):
         self._build_worker.failed.connect(lambda message: self._build_failed(description, message))
         self._build_worker.finished.connect(self._build_thread.quit)
         self._build_worker.failed.connect(self._build_thread.quit)
+        self._build_worker.finished.connect(self._build_worker.deleteLater)
+        self._build_worker.failed.connect(self._build_worker.deleteLater)
         self._build_thread.finished.connect(self._build_thread.deleteLater)
         self._build_thread.finished.connect(self._clear_build_worker)
         self._build_thread.start()
@@ -325,8 +334,8 @@ class MainWindow(QMainWindow):
         if image_record is None:
             self._log(f"Import a {side_name} image before building relief.")
             return
-        self._apply_controls_to_project()
-        side_params = self.project.front_relief if side_name == "front" else self.project.back_relief
+        self._apply_controls_to_project(side_name)
+        side_params = self._side_parameters(side_name)
         self._start_build(
             lambda: build_side_relief_from_project(
                 self.project,
@@ -344,7 +353,7 @@ class MainWindow(QMainWindow):
         if self.project.front_image is None or self.project.back_image is None:
             self._log("Import both front and back images before building a double placeholder.")
             return
-        self._apply_controls_to_project()
+        self._apply_controls_to_project("front")
         self._start_build(
             lambda: build_double_side_placeholder_from_project(
                 self.project,
