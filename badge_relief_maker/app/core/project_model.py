@@ -97,7 +97,12 @@ class OutlineData:
 
 @dataclass
 class DimensionParameters:
-    """Real world dimensions in millimeters."""
+    """Real-world dimensions in millimeters.
+
+    ``total_thickness_mm`` is the body/thickness budget used by double-side
+    assembly workflows. A single-side mesh currently has a flat base plus its
+    configured relief and reports the resulting bbox thickness explicitly.
+    """
 
     width_mm: float = 80.0
     height_mm: float = 80.0
@@ -123,7 +128,7 @@ class EdgeParameters:
 
 @dataclass
 class ReliefSideParameters:
-    """Relief parameters for one face."""
+    """Persisted image-processing and relief settings for one face."""
 
     enabled: bool = True
     relief_height_mm: float = 3.0
@@ -131,6 +136,13 @@ class ReliefSideParameters:
     layer_count: int = 4
     height_mode: str = "grayscale"
     quality_mode: str = "standard"
+    invert_height: bool = False
+    mask_mode: str = "auto"
+    alpha_threshold: int = 1
+    luminance_threshold: float = 20.0
+    minimum_thickness_mm: float = 0.8
+    crop_to_foreground: bool = True
+    crop_padding_px: int = 1
 
 
 @dataclass
@@ -175,11 +187,9 @@ class MedalProject:
     export_history: list = field(default_factory=list)
 
     def touch(self):
-        """Update the project timestamp."""
         self.updated_at = utc_now_iso()
 
     def to_dict(self):
-        """Serialize to JSON-compatible data."""
         return asdict(self)
 
     @staticmethod
@@ -229,6 +239,8 @@ class MedalProject:
             project.outline.points = []
         project.edge.rim_enabled = _coerce_bool(project.edge.rim_enabled, False)
         project.edge.use_smoothed_side_walls = _coerce_bool(project.edge.use_smoothed_side_walls, False)
-        project.front_relief.enabled = _coerce_bool(project.front_relief.enabled, True)
-        project.back_relief.enabled = _coerce_bool(project.back_relief.enabled, False)
+        for relief, default_enabled in [(project.front_relief, True), (project.back_relief, False)]:
+            relief.enabled = _coerce_bool(relief.enabled, default_enabled)
+            relief.invert_height = _coerce_bool(relief.invert_height, False)
+            relief.crop_to_foreground = _coerce_bool(relief.crop_to_foreground, True)
         return project
