@@ -61,8 +61,8 @@ def _validate_project_parameters(project):
     height = _number(dimensions.height_mm, "height_mm", positive=True)
     total = _number(dimensions.total_thickness_mm, "total_thickness_mm", positive=True)
     base = _number(dimensions.base_thickness_mm, "base_thickness_mm", nonnegative=True)
-    if total < base:
-        raise ValueError("total_thickness_mm must be at least base_thickness_mm")
+    if total < base * 2.0:
+        raise ValueError("total_thickness_mm must be at least twice base_thickness_mm")
     _number(project.front_relief.relief_height_mm, "front relief_height_mm", nonnegative=True)
     _number(project.back_relief.relief_height_mm, "back relief_height_mm", nonnegative=True)
     _number(project.edge.rim_width_mm, "rim_width_mm", nonnegative=True)
