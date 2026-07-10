@@ -56,18 +56,46 @@ def _coerce_int(value, default):
         return int(default)
 
 
+def _nonempty_text(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _image_record_from_dict(data):
+    record = _optional_dataclass_from_dict(ImageRecord, data, "role", "path")
+    if record is None or not _nonempty_text(record.role) or not _nonempty_text(record.path):
+        return None
+    record.role = record.role.strip()
+    record.path = record.path.strip()
+    record.original_path = str(record.original_path or "")
+    record.quality_label = str(record.quality_label or "unknown")
+    record.notes = str(record.notes or "")
+    record.is_reference = _coerce_bool(record.is_reference, False)
+    if not isinstance(record.preprocessing, dict):
+        record.preprocessing = {}
+    return record
+
+
 def _manual_marker_from_dict(data):
     marker = _optional_dataclass_from_dict(ManualMarker, data, "marker_type", "target")
-    if marker is None:
+    if marker is None or not _nonempty_text(marker.marker_type) or not _nonempty_text(marker.target):
         return None
+    marker.marker_type = marker.marker_type.strip()
+    marker.target = marker.target.strip()
     if not isinstance(marker.data, dict):
         marker.data = {}
+    marker.created_at = str(marker.created_at or utc_now_iso())
     return marker
 
 
 def _export_record_from_dict(data):
     record = _optional_dataclass_from_dict(ExportRecord, data, "path", "export_format")
-    if record is not None and not isinstance(record.report, dict):
+    if record is None or not _nonempty_text(record.path) or not _nonempty_text(record.export_format):
+        return None
+    record.path = record.path.strip()
+    record.export_format = record.export_format.strip().lower()
+    record.created_at = str(record.created_at or utc_now_iso())
+    record.notes = str(record.notes or "")
+    if not isinstance(record.report, dict):
         record.report = {}
     return record
 
@@ -197,20 +225,18 @@ class MedalProject:
         """Create a project from JSON-compatible data."""
         if not isinstance(data, dict):
             data = {}
-        project = MedalProject(name=str(data.get("name", "Untitled")))
+        raw_name = data.get("name", "Untitled")
+        project = MedalProject(name=raw_name.strip() if _nonempty_text(raw_name) else "Untitled")
         project.file_version = _coerce_int(data.get("file_version", PROJECT_FILE_VERSION), PROJECT_FILE_VERSION)
-        project.created_at = data.get("created_at", project.created_at)
-        project.updated_at = data.get("updated_at", project.updated_at)
+        project.created_at = str(data.get("created_at", project.created_at) or project.created_at)
+        project.updated_at = str(data.get("updated_at", project.updated_at) or project.updated_at)
         project.same_physical_object = _coerce_bool(data.get("same_physical_object", True), True)
 
-        project.front_image = _optional_dataclass_from_dict(ImageRecord, data.get("front_image"), "role", "path")
-        project.back_image = _optional_dataclass_from_dict(ImageRecord, data.get("back_image"), "role", "path")
+        project.front_image = _image_record_from_dict(data.get("front_image"))
+        project.back_image = _image_record_from_dict(data.get("back_image"))
         project.reference_images = [
             item
-            for item in (
-                _optional_dataclass_from_dict(ImageRecord, item, "role", "path")
-                for item in _dict_list(data.get("reference_images", []))
-            )
+            for item in (_image_record_from_dict(item) for item in _dict_list(data.get("reference_images", [])))
             if item is not None
         ]
         project.outline = _dataclass_from_dict(OutlineData, data.get("outline", {}))
@@ -229,11 +255,6 @@ class MedalProject:
             if item is not None
         ]
 
-        for image in [project.front_image, project.back_image, *project.reference_images]:
-            if image is not None:
-                image.is_reference = _coerce_bool(image.is_reference, False)
-                if not isinstance(image.preprocessing, dict):
-                    image.preprocessing = {}
         project.outline.manually_edited = _coerce_bool(project.outline.manually_edited, False)
         if not isinstance(project.outline.points, list):
             project.outline.points = []
