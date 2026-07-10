@@ -36,7 +36,10 @@ def test_image_transform_maps_points_dimensions_and_geometry_crop():
     assert transform.original_length_to_processed(0.25, "x", normalized=True) == pytest.approx(24.875)
 
     final_transform = transform.with_geometry_crop((5, 3, 75, 37), (34, 70))
+    assert final_transform.original_to_target_point(0.5, 0.5, normalized=True) == pytest.approx((34.5, 16.5))
     assert final_transform.processed_to_geometry_point(x, y) == pytest.approx((34.5, 16.5))
+    assert final_transform.input_grid_to_target_point(12, 8, "processed") == pytest.approx((7.0, 5.0))
+    assert final_transform.input_grid_to_target_point(12, 8, "final") == pytest.approx((12.0, 8.0))
     assert final_transform.geometry_cell_size_mm(80.0, 60.0) == pytest.approx((80.0 / 70.0, 60.0 / 34.0))
     assert final_transform.to_report()["coordinate_chain"].startswith("original_image")
 
@@ -57,6 +60,27 @@ def test_marker_transform_accepts_shared_image_transform():
     assert markers[0]["x"] == pytest.approx(80.0 * 79.0 / 159.0)
     assert markers[0]["y"] == pytest.approx(40.0 * 39.0 / 79.0)
     assert markers[0]["radius_px"] == pytest.approx(5.0)
+
+
+def test_marker_transform_shifts_processed_but_not_final_coordinates():
+    transform = ImageTransform(
+        original_shape=(20, 20),
+        crop_box=None,
+        cropped_shape=(20, 20),
+        resized_shape=(20, 20),
+        geometry_crop_box=(4, 3, 16, 17),
+        geometry_shape=(14, 12),
+    )
+    processed, final = transform_manual_height_markers(
+        (
+            {"marker_type": "height", "x": 9, "y": 8, "height": 0.5, "coordinate_space": "processed"},
+            {"marker_type": "height", "x": 9, "y": 8, "height": 0.5, "coordinate_space": "final"},
+        ),
+        image_transform=transform,
+    )
+
+    assert (processed["x"], processed["y"]) == pytest.approx((5.0, 5.0))
+    assert (final["x"], final["y"]) == pytest.approx((9.0, 8.0))
 
 
 def test_explicit_luminance_polarities_select_expected_foreground():
@@ -103,7 +127,7 @@ def test_mesh_export_creates_parent_and_preserves_existing_target_on_validation_
         export_obj(output_path, vertices, [[0, 1, 99]])
 
     assert output_path.read_text(encoding="utf-8") == original
-    assert not list(output_path.parent.glob("*.tmp"))
+    assert not [item for item in output_path.parent.iterdir() if item.name.endswith(".tmp")]
 
 
 def test_project_loader_rejects_newer_file_version(tmp_path):
