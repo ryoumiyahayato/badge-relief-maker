@@ -52,7 +52,6 @@ class MainWindow(_BaseMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(QLabel("Export folder"))
         self.output_directory_label = QLabel("Project exports folder")
-        self.output_directory_label.setTextInteractionFlags(self.output_directory_label.textInteractionFlags())
         layout.addWidget(self.output_directory_label, 1)
         choose_button = QPushButton("Choose…")
         choose_button.clicked.connect(self.choose_output_directory)
@@ -74,10 +73,11 @@ class MainWindow(_BaseMainWindow):
     @staticmethod
     def _unique_copy_path(directory, filename):
         directory = Path(directory)
-        candidate = directory / filename
+        original = Path(filename)
+        candidate = directory / original.name
         counter = 2
         while candidate.exists():
-            candidate = directory / f"{candidate.stem}_{counter}{candidate.suffix}"
+            candidate = directory / f"{original.stem}_{counter}{original.suffix}"
             counter += 1
         return candidate
 
