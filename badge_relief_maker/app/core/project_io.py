@@ -1,13 +1,23 @@
 """Project save, load and asset import helpers."""
 
 import json
+import os
 import shutil
+import tempfile
 from pathlib import Path
 
-from .project_model import ExportRecord, ImageRecord, MedalProject
+from .project_model import PROJECT_FILE_VERSION, ExportRecord, ImageRecord, MedalProject
 
 
 PROJECT_SUFFIX = ".medalproj"
+
+
+class ProjectFormatError(ValueError):
+    """Raised when a project file cannot be safely interpreted."""
+
+
+class UnsupportedProjectVersionError(ProjectFormatError):
+    """Raised when a project was created by a newer unsupported format."""
 
 
 def normalize_project_path(path):
@@ -37,30 +47,70 @@ def create_project(name):
     return MedalProject(name=name)
 
 
+def _project_version(data):
+    raw = data.get("file_version", PROJECT_FILE_VERSION)
+    try:
+        version = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ProjectFormatError("project file_version must be an integer") from exc
+    if version < 1:
+        raise ProjectFormatError("project file_version must be positive")
+    if version > PROJECT_FILE_VERSION:
+        raise UnsupportedProjectVersionError(
+            f"project file version {version} is newer than supported version {PROJECT_FILE_VERSION}"
+        )
+    return version
+
+
 def save_project(project, path):
-    """Atomically save a project as JSON .medalproj."""
+    """Flush and atomically save a project as JSON .medalproj."""
+    if not isinstance(project, MedalProject):
+        raise TypeError("project must be a MedalProject")
+    version = _project_version({"file_version": project.file_version})
+    project.file_version = version
     path = normalize_project_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     ensure_project_dirs(path)
     project.touch()
-    temporary_path = path.with_name(path.name + ".tmp")
+
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temporary_path = Path(temporary_name)
     try:
-        with temporary_path.open("w", encoding="utf-8") as fh:
-            json.dump(project.to_dict(), fh, indent=2, ensure_ascii=False)
+        with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(project.to_dict(), fh, indent=2, ensure_ascii=False, allow_nan=False)
+            fh.write("\n")
             fh.flush()
-        temporary_path.replace(path)
-    finally:
+            os.fsync(fh.fileno())
+        os.replace(temporary_path, path)
+    except Exception:
+        try:
+            os.close(file_descriptor)
+        except OSError:
+            pass
         if temporary_path.exists():
             temporary_path.unlink()
+        raise
     return str(path)
 
 
 def load_project(path):
-    """Load a project from a .medalproj JSON file."""
+    """Load and validate a supported .medalproj JSON file."""
     path = normalize_project_path(path)
-    with path.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    return MedalProject.from_dict(data)
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except json.JSONDecodeError as exc:
+        raise ProjectFormatError(f"project file contains invalid JSON: {path}") from exc
+    if not isinstance(data, dict):
+        raise ProjectFormatError("project root must be a JSON object")
+    version = _project_version(data)
+    project = MedalProject.from_dict(data)
+    project.file_version = version
+    return project
 
 
 def _safe_token(value, default="asset"):
@@ -152,8 +202,13 @@ def add_export_record(project, export_path, export_format, report=None, notes=""
 
 
 def resolve_project_asset(project_path, stored_path):
-    """Resolve a stored asset path while rejecting paths outside the project folder."""
-    project_dir = normalize_project_path(project_path).parent.resolve()
+    """Resolve a stored asset path and require it to stay inside project assets."""
+    project_path = normalize_project_path(project_path)
+    project_dir = project_path.parent.resolve()
+    asset_root = asset_root_for(project_path).resolve()
     stored = Path(stored_path)
     candidate = stored.resolve() if stored.is_absolute() else (project_dir / stored).resolve()
-    return _assert_within(candidate, project_dir, "stored project asset escapes the project directory")
+    candidate = _assert_within(candidate, asset_root, "stored project asset escapes the project asset directory")
+    if not candidate.is_file():
+        raise FileNotFoundError(f"stored project asset does not exist: {candidate}")
+    return candidate
