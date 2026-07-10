@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  pytest:
+  windows-quality-gate:
     runs-on: windows-latest
     strategy:
       matrix:
@@ -16,9 +16,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: Install package and tests
-        run: python -m pip install -e ".[test]"
+      - name: Install package and development dependencies
+        run: python -m pip install -e ".[dev]"
       - name: Verify package entry point
         run: python -m badge_relief_maker.app
+      - name: Verify help entry point
+        run: python -m badge_relief_maker.app --help
+      - name: Verify GUI module imports
+        run: python -c "from badge_relief_maker.app.ui.main_window import MainWindow; print(MainWindow.__name__)"
+      - name: Run static checks
+        run: python -m ruff check badge_relief_maker tests
       - name: Run tests
         run: python -m pytest -q
