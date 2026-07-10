@@ -1,38 +1,7 @@
-"""Transform saved manual marker coordinates through crop and resize steps."""
+"""Transform saved manual marker coordinates through image-processing stages."""
 
 from .height_markers import normalize_manual_height_marker
-
-
-def _scale_point(value, source_size, crop_offset, crop_size, target_size, normalized):
-    coordinate = float(value) * max(source_size - 1, 1) if normalized else float(value)
-    coordinate -= float(crop_offset)
-    if crop_size <= 1 or target_size <= 1:
-        return 0.0
-    return coordinate * float(target_size - 1) / float(crop_size - 1)
-
-
-def _dimension_scale(crop_size, target_size):
-    if crop_size <= 0:
-        return 1.0
-    return float(target_size) / float(crop_size)
-
-
-def _transform_points(points, normalized, original_shape, crop_box, cropped_shape, resized_shape):
-    original_rows, original_cols = original_shape
-    crop_x0, crop_y0 = (crop_box[0], crop_box[1]) if crop_box is not None else (0, 0)
-    crop_rows, crop_cols = cropped_shape
-    resized_rows, resized_cols = resized_shape
-    result = []
-    for point in points:
-        if isinstance(point, dict):
-            x_value = point.get("x")
-            y_value = point.get("y")
-        else:
-            x_value, y_value = point[0], point[1]
-        x = _scale_point(x_value, original_cols, crop_x0, crop_cols, resized_cols, normalized)
-        y = _scale_point(y_value, original_rows, crop_y0, crop_rows, resized_rows, normalized)
-        result.append((x, y))
-    return result
+from .image_transform import ImageTransform
 
 
 def _marker_list(markers):
@@ -48,17 +17,21 @@ def _marker_list(markers):
         return [markers]
 
 
-def _transform_marker(marker, original_shape, crop_box, cropped_shape, resized_shape):
+def _transform_points(points, normalized, transform):
+    result = []
+    for point in points:
+        if isinstance(point, dict):
+            x_value = point.get("x")
+            y_value = point.get("y")
+        else:
+            x_value, y_value = point[0], point[1]
+        result.append(transform.original_to_processed_point(x_value, y_value, normalized=normalized))
+    return result
+
+
+def _transform_marker(marker, transform):
     if not isinstance(marker, dict):
         return None
-
-    original_rows, original_cols = (int(original_shape[0]), int(original_shape[1]))
-    crop_rows, crop_cols = (int(cropped_shape[0]), int(cropped_shape[1]))
-    resized_rows, resized_cols = (int(resized_shape[0]), int(resized_shape[1]))
-    crop_x0, crop_y0 = (int(crop_box[0]), int(crop_box[1])) if crop_box is not None else (0, 0)
-    x_dimension_scale = _dimension_scale(crop_cols, resized_cols)
-    y_dimension_scale = _dimension_scale(crop_rows, resized_rows)
-    radius_scale = (x_dimension_scale + y_dimension_scale) * 0.5
 
     data = dict(marker)
     coordinate_space = str(data.get("coordinate_space", data.get("space", "normalized"))).lower()
@@ -66,16 +39,14 @@ def _transform_marker(marker, original_shape, crop_box, cropped_shape, resized_s
 
     if coordinate_space in {"processed", "heightmap", "final"}:
         data["coordinate_space"] = "pixel"
-        return data if normalize_manual_height_marker(data, resized_shape) is not None else None
+        return data if normalize_manual_height_marker(data, transform.resized_shape) is not None else None
 
     normalized = coordinate_space not in {"pixel", "pixels", "image_pixel"}
     if shape in {"polygon", "poly", "freeform", "free_form"}:
         points_key = next((key for key in ["points", "vertices", "polygon_points"] if key in data), None)
         if points_key is None:
             return None
-        data["points"] = _transform_points(
-            list(data[points_key]), normalized, original_shape, crop_box, cropped_shape, resized_shape
-        )
+        data["points"] = _transform_points(list(data[points_key]), normalized, transform)
         for key in ["vertices", "polygon_points"]:
             data.pop(key, None)
     else:
@@ -83,54 +54,68 @@ def _transform_marker(marker, original_shape, crop_box, cropped_shape, resized_s
         y_key = "y" if "y" in data else "center_y" if "center_y" in data else None
         if x_key is None or y_key is None:
             return None
-        data["x"] = _scale_point(data[x_key], original_cols, crop_x0, crop_cols, resized_cols, normalized)
-        data["y"] = _scale_point(data[y_key], original_rows, crop_y0, crop_rows, resized_rows, normalized)
+        data["x"], data["y"] = transform.original_to_processed_point(data[x_key], data[y_key], normalized=normalized)
         data.pop("center_x", None)
         data.pop("center_y", None)
 
     if "radius_px" in data:
-        data["radius_px"] = float(data["radius_px"]) * radius_scale
+        data["radius_px"] = transform.original_radius_to_processed(data["radius_px"], normalized=False)
     elif "radius" in data:
-        data["radius_px"] = float(data.pop("radius")) * radius_scale
+        data["radius_px"] = transform.original_radius_to_processed(data.pop("radius"), normalized=False)
     elif "radius_normalized" in data:
-        original_radius = float(data.pop("radius_normalized")) * min(original_rows, original_cols)
-        data["radius_px"] = original_radius * radius_scale
+        data["radius_px"] = transform.original_radius_to_processed(data.pop("radius_normalized"), normalized=True)
 
     for key in ["width_px", "rect_width_px", "region_width_px", "box_width_px"]:
         if key in data:
-            data[key] = float(data[key]) * x_dimension_scale
+            data[key] = transform.original_length_to_processed(data[key], "x", normalized=False)
     for key in ["height_px", "rect_height_px", "region_height_px", "box_height_px"]:
         if key in data:
-            data[key] = float(data[key]) * y_dimension_scale
+            data[key] = transform.original_length_to_processed(data[key], "y", normalized=False)
     if "size_px" in data:
-        data["size_px"] = float(data["size_px"]) * radius_scale
+        data["size_px"] = transform.original_radius_to_processed(data["size_px"], normalized=False)
 
     for key in ["width_normalized", "rect_width_normalized", "region_width_normalized", "box_width_normalized"]:
         if key in data:
-            data["width_px"] = float(data.pop(key)) * max(original_cols - 1, 1) * x_dimension_scale
+            data["width_px"] = transform.original_length_to_processed(data.pop(key), "x", normalized=True)
             break
     for key in ["rect_height_normalized", "region_height_normalized", "box_height_normalized", "height_size_normalized"]:
         if key in data:
-            data["height_px"] = float(data.pop(key)) * max(original_rows - 1, 1) * y_dimension_scale
+            data["height_px"] = transform.original_length_to_processed(data.pop(key), "y", normalized=True)
             break
 
     data["coordinate_space"] = "pixel"
-    return data if normalize_manual_height_marker(data, resized_shape) is not None else None
+    return data if normalize_manual_height_marker(data, transform.resized_shape) is not None else None
 
 
-def transform_manual_height_markers(markers, original_shape, crop_box, cropped_shape, resized_shape):
-    """Map valid marker geometry from original-image coordinates to the resized grid.
+def transform_manual_height_markers(
+    markers,
+    original_shape=None,
+    crop_box=None,
+    cropped_shape=None,
+    resized_shape=None,
+    image_transform=None,
+):
+    """Map valid marker geometry from original image to the processed grid.
 
-    Normalized marker coordinates are interpreted against the original image.
-    Pixel coordinates are also interpreted in original-image pixels. Callers may
-    opt out for already processed pixel data with coordinate_space set to
-    ``processed``, ``heightmap`` or ``final``. Malformed markers are ignored rather
-    than aborting the complete build.
+    Existing callers may provide the individual processing-step values. New code
+    should pass one :class:`ImageTransform` so every marker shape uses the same
+    coordinate chain. Malformed markers are ignored independently.
     """
+    transform = image_transform
+    if transform is None:
+        transform = ImageTransform(
+            original_shape=original_shape,
+            crop_box=crop_box,
+            cropped_shape=cropped_shape,
+            resized_shape=resized_shape,
+        )
+    if not isinstance(transform, ImageTransform):
+        raise TypeError("image_transform must be an ImageTransform")
+
     transformed = []
     for marker in _marker_list(markers):
         try:
-            data = _transform_marker(marker, original_shape, crop_box, cropped_shape, resized_shape)
+            data = _transform_marker(marker, transform)
         except (TypeError, ValueError, IndexError, KeyError, OverflowError):
             data = None
         if data is not None:
