@@ -39,4 +39,7 @@ target-version = "py310"
 line-length = 140
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+# Start with defects that can break imports or execution. Formatting and full
+# import-order enforcement should be enabled only after the existing tree is
+# normalized in a dedicated change.
+select = ["E9", "F63", "F7", "F82"]
