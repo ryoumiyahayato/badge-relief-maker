@@ -45,6 +45,11 @@ def test_auto_mask_uses_variable_alpha_when_informative():
     assert int(mask.sum()) == 4
 
 
+def test_auto_mask_rejects_non_rgba_input():
+    with pytest.raises(ValueError, match="expected rgba image"):
+        foreground_mask(np.zeros((4, 4, 3), dtype=np.uint8), mode="auto")
+
+
 def test_marker_transform_ignores_invalid_numeric_geometry():
     transformed = transform_manual_height_markers(
         ({"marker_type": "height", "x": "bad", "y": 2, "radius_px": 1, "height": 0.5},),
