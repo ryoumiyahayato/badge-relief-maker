@@ -20,7 +20,7 @@ def test_project_validation_rejects_non_numeric_dimensions():
         _validate_project_parameters(project)
 
 
-def test_single_side_validation_accepts_one_base_thickness_budget():
+def test_single_side_validation_accepts_independent_body_setting():
     project = create_project("Single Side Thickness")
     project.dimensions.base_thickness_mm = 2.0
     project.dimensions.total_thickness_mm = 2.0
@@ -31,13 +31,15 @@ def test_single_side_validation_accepts_one_base_thickness_budget():
     assert height == 80.0
 
 
-def test_single_side_validation_rejects_total_thinner_than_base():
-    project = create_project("Invalid Single Thickness")
+def test_single_side_validation_ignores_smaller_fused_body_thickness():
+    project = create_project("Independent Single Thickness")
     project.dimensions.base_thickness_mm = 2.0
     project.dimensions.total_thickness_mm = 1.5
 
-    with pytest.raises(ValueError, match="at least base_thickness_mm"):
-        _validate_project_parameters(project, double_side=False, side_name="front")
+    width, height = _validate_project_parameters(project, double_side=False, side_name="front")
+
+    assert width == 80.0
+    assert height == 80.0
 
 
 def test_single_side_validation_ignores_unused_malformed_other_side():
@@ -58,7 +60,7 @@ def test_selected_back_side_still_validates_back_settings():
         _validate_project_parameters(project, double_side=False, side_name="back")
 
 
-def test_double_side_validation_rejects_insufficient_total_thickness_for_two_bases():
+def test_double_side_placeholder_rejects_insufficient_total_thickness_for_two_bases():
     project = create_project("Invalid Double Thickness")
     project.dimensions.base_thickness_mm = 2.0
     project.dimensions.total_thickness_mm = 3.0
@@ -75,7 +77,7 @@ def test_double_side_validation_checks_both_side_settings():
         _validate_project_parameters(project, double_side=True)
 
 
-def test_project_validation_accepts_default_double_side_thickness_budget():
+def test_project_validation_accepts_default_placeholder_thickness_budget():
     project = create_project("Valid Dimensions")
 
     width, height = _validate_project_parameters(project, double_side=True)
