@@ -55,14 +55,23 @@ def _number(value, name, *, positive=False, nonnegative=False):
     return result
 
 
-def _validate_project_parameters(project):
+def _validate_project_parameters(project, *, double_side=False):
+    """Validate project dimensions for the requested build mode.
+
+    A single-side build only consumes one base slab. The double-side placeholder
+    places one slab on each side of the configured total thickness, so it needs
+    room for two base slabs.
+    """
     dimensions = project.dimensions
     width = _number(dimensions.width_mm, "width_mm", positive=True)
     height = _number(dimensions.height_mm, "height_mm", positive=True)
     total = _number(dimensions.total_thickness_mm, "total_thickness_mm", positive=True)
     base = _number(dimensions.base_thickness_mm, "base_thickness_mm", nonnegative=True)
-    if total < base * 2.0:
-        raise ValueError("total_thickness_mm must be at least twice base_thickness_mm")
+    minimum_total = base * (2.0 if double_side else 1.0)
+    if total < minimum_total:
+        if double_side:
+            raise ValueError("total_thickness_mm must be at least twice base_thickness_mm for a double-side build")
+        raise ValueError("total_thickness_mm must be at least base_thickness_mm for a single-side build")
     _number(project.front_relief.relief_height_mm, "front relief_height_mm", nonnegative=True)
     _number(project.back_relief.relief_height_mm, "back relief_height_mm", nonnegative=True)
     _number(project.edge.rim_width_mm, "rim_width_mm", nonnegative=True)
@@ -184,7 +193,7 @@ def _build_side_mesh_only(project, project_path, side_name, quality_mode, previe
 
 def build_side_relief_from_project(project, project_path, side_name="front", export_format="obj", quality_mode=None, export_name=None):
     """Build one side relief for an existing project and update export history."""
-    _validate_project_parameters(project)
+    _validate_project_parameters(project, double_side=False)
     image_record, _ = _side_data(project, side_name)
     if image_record is None:
         raise ValueError(f"project has no {side_name} image")
@@ -220,7 +229,7 @@ def build_side_relief_from_project(project, project_path, side_name="front", exp
 
 def build_double_side_placeholder_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
     """Build a placeholder double-side assembly from front and back images."""
-    _validate_project_parameters(project)
+    _validate_project_parameters(project, double_side=True)
     if project.front_image is None:
         raise ValueError("project has no front image")
     if project.back_image is None:
