@@ -81,8 +81,8 @@ def _validate_side_parameters(side, label):
         raise ValueError(f"unsupported {label} mask_mode: {side.mask_mode}")
 
 
-def _validate_project_parameters(project, *, double_side=False):
-    """Validate dimensions and side settings for the requested build mode."""
+def _validate_project_parameters(project, *, double_side=False, side_name=None):
+    """Validate dimensions and only the side settings required by the build."""
     dimensions = project.dimensions
     width = _number(dimensions.width_mm, "width_mm", positive=True)
     height = _number(dimensions.height_mm, "height_mm", positive=True)
@@ -93,8 +93,15 @@ def _validate_project_parameters(project, *, double_side=False):
         if double_side:
             raise ValueError("total_thickness_mm must be at least twice base_thickness_mm for a double-side build")
         raise ValueError("total_thickness_mm must be at least base_thickness_mm for a single-side build")
-    _validate_side_parameters(project.front_relief, "front")
-    _validate_side_parameters(project.back_relief, "back")
+
+    if double_side or side_name is None:
+        sides = [(project.front_relief, "front"), (project.back_relief, "back")]
+    else:
+        _, selected_side = _side_data(project, side_name)
+        sides = [(selected_side, side_name)]
+    for side, label in sides:
+        _validate_side_parameters(side, label)
+
     _number(project.edge.rim_width_mm, "rim_width_mm", nonnegative=True)
     _number(project.edge.rim_height_mm, "rim_height_mm", nonnegative=True)
     _integer(project.edge.rim_width_px, "rim_width_px", minimum=0)
@@ -223,7 +230,7 @@ def _build_side_mesh_only(project, project_path, side_name, quality_mode, previe
 
 def build_side_relief_from_project(project, project_path, side_name="front", export_format="obj", quality_mode=None, export_name=None):
     """Build one side relief for an existing project and update export history."""
-    _validate_project_parameters(project, double_side=False)
+    _validate_project_parameters(project, double_side=False, side_name=side_name)
     image_record, _ = _side_data(project, side_name)
     if image_record is None:
         raise ValueError(f"project has no {side_name} image")
