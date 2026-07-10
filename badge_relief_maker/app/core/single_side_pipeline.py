@@ -169,18 +169,19 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         cropped_shape=shape_after_crop,
         resized_shape=shape_after_resize,
     )
-    transformed_markers = transform_manual_height_markers(
-        params.manual_height_markers,
-        image_transform=image_transform,
-    )
-    heightmap, manual_height_report = apply_manual_height_markers(heightmap, mask, transformed_markers)
-    manual_height_report["coordinate_transform"] = "ImageTransform.original_image_to_processed_grid"
 
     geometry_crop_box = None
     if params.crop_to_foreground:
         mask, heightmap, geometry_crop_box = crop_to_mask(mask, heightmap, padding=0)
     shape_for_geometry = tuple(mask.shape)
     image_transform = image_transform.with_geometry_crop(geometry_crop_box, shape_for_geometry)
+
+    transformed_markers = transform_manual_height_markers(
+        params.manual_height_markers,
+        image_transform=image_transform,
+    )
+    heightmap, manual_height_report = apply_manual_height_markers(heightmap, mask, transformed_markers)
+    manual_height_report["coordinate_transform"] = "ImageTransform.original_image_to_final_geometry_grid"
 
     effective_rim_width_px = _effective_rim_width_px(params, mask)
     heightmap, rim_report = apply_outer_rim_to_heightmap(
