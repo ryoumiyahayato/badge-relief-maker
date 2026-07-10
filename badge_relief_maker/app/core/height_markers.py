@@ -27,7 +27,7 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
     - points/vertices/polygon_points: polygon points for polygon markers.
     - height_normalized/normalized_height/value/height: target height in 0..1.
     - delta/delta_height: additive height change for add/subtract operations.
-    - operation/mode: set, add or subtract.
+    - operation/mode: set, add, subtract or smooth.
     - radius_px or radius_normalized: circular edit radius.
     - width_px/height_px, width_normalized and rect/region normalized dimensions.
     """
@@ -63,7 +63,7 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
             report["ignored_marker_count"] += 1
             continue
         if normalized["operation"] == "smooth":
-            blurred = _mean_filter_3x3(result)
+            blurred = _mean_filter_3x3(result, mask)
             strength = normalized["value"]
             result[region] = result[region] * (1.0 - strength) + blurred[region] * strength
         else:
@@ -384,10 +384,22 @@ def _clamp01(value):
     return float(min(max(float(value), 0.0), 1.0))
 
 
-def _mean_filter_3x3(values):
-    padded = np.pad(np.asarray(values, dtype=float), 1, mode="edge")
+def _mean_filter_3x3(values, mask):
+    """Return a 3x3 mean that excludes background and mask holes.
+
+    A zero height outside the foreground is not a relief sample. Including it in
+    the brush average erodes boundary height and causes visible edge collapse.
+    """
+    values = np.asarray(values, dtype=float)
+    mask = np.asarray(mask, dtype=bool)
+    padded_values = np.pad(values, 1, mode="edge")
+    padded_mask = np.pad(mask.astype(float), 1, mode="constant", constant_values=0.0)
     total = np.zeros_like(values, dtype=float)
+    weight = np.zeros_like(values, dtype=float)
+    rows, cols = values.shape
     for row_offset in range(3):
         for col_offset in range(3):
-            total += padded[row_offset : row_offset + values.shape[0], col_offset : col_offset + values.shape[1]]
-    return total / 9.0
+            valid = padded_mask[row_offset : row_offset + rows, col_offset : col_offset + cols]
+            total += padded_values[row_offset : row_offset + rows, col_offset : col_offset + cols] * valid
+            weight += valid
+    return np.divide(total, weight, out=values.copy(), where=weight > 0.0)
