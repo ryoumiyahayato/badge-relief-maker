@@ -9,19 +9,37 @@ def empty_heightmap(shape):
 
 
 def grayscale_heightmap(rgba, mask=None, invert=False):
-    """Convert image brightness to a normalized heightmap."""
+    """Convert image brightness to a normalized heightmap.
+
+    When a mask is provided, normalization uses only foreground pixels so hidden
+    or transparent background RGB values cannot change the relief range.
+    """
     rgb = rgba[:, :, :3].astype(np.float32)
     gray = 0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]
-    low = float(gray.min())
-    high = float(gray.max())
-    if high > low:
-        result = (gray - low) / (high - low)
+
+    if mask is None:
+        sample = gray.reshape(-1)
+        foreground = None
     else:
-        result = np.zeros_like(gray, dtype=np.float32)
-    if invert:
-        result = 1.0 - result
-    if mask is not None:
-        result = np.where(mask, result, 0.0)
+        foreground = np.asarray(mask, dtype=bool)
+        if foreground.shape != gray.shape:
+            raise ValueError("mask and image must have the same height and width")
+        sample = gray[foreground]
+
+    result = np.zeros_like(gray, dtype=np.float32)
+    if sample.size:
+        low = float(sample.min())
+        high = float(sample.max())
+        if high > low:
+            normalized = (gray - low) / (high - low)
+        else:
+            normalized = np.zeros_like(gray, dtype=np.float32)
+        if invert:
+            normalized = 1.0 - normalized
+        result = normalized.astype(np.float32)
+
+    if foreground is not None:
+        result = np.where(foreground, result, 0.0)
     return result.astype(np.float32)
 
 
