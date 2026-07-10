@@ -32,6 +32,9 @@ Acceptance:
 - Python 3.10 and 3.12 pass on Windows.
 - Package and GUI modules import from the repository root package.
 - No obsolete nested package is used.
+- Record the actual result in `docs/VALIDATION_RECORD.md`.
+
+The initial Ruff gate intentionally checks execution-breaking syntax/name defects. Enable broad formatting/import-order rules only in a dedicated normalization change.
 
 ## Task 1: Project format and resource safety
 
@@ -39,19 +42,21 @@ Status: core implemented; migration and GUI recovery tests pending.
 
 Implemented:
 
-- Atomic JSON replacement with flush/fsync.
+- Atomic JSON replacement with flush/fsync and NaN/Infinity rejection.
 - Strict supported file-version ceiling.
 - Explicit boolean parsing.
 - Malformed nested-record filtering.
 - Unique imported asset names and export names.
 - Asset-root containment checks.
 - Persisted front/back image-processing settings.
+- Schema and trust-boundary documentation in `docs/PROJECT_FORMAT.md`.
+- Single-side builds validate only the requested face; double-side builds validate both.
 
 Next acceptance work:
 
-- Add formal version migration when version 2 is introduced.
+- Add formal migration when version 2 is introduced.
 - Add GUI tests for corrupt JSON and unsupported versions.
-- Document the `.medalproj` schema with examples.
+- Add validation for more malformed field types during load, not only before build.
 
 ## Task 2: Input image and mask pipeline
 
@@ -81,6 +86,8 @@ Implemented:
 - `ImageTransform` records original, crop, resized and final geometry stages.
 - Circle, rectangle and polygon markers use the same transform.
 - Pixel radii and rectangular dimensions scale with resize.
+- Original/processed marker positions are shifted into the final tight geometry grid.
+- `coordinate_space: final` remains relative to the final geometry grid.
 - Processing padding does not change final requested XY dimensions.
 
 Next:
@@ -96,40 +103,40 @@ Status: grayscale and marker core implemented.
 Implemented:
 
 - Foreground-only grayscale normalization.
-- Invert mode.
+- Deterministic full-height plateau for a uniform-brightness foreground.
+- Invert mode with `inverted = 1 - normal` inside the mask.
 - Set/add/subtract markers.
 - Circle, rectangle and polygon regions.
 - Rim clipping count and warning.
 
 Next:
 
-- Define a user-selectable policy for uniform-brightness foregrounds.
+- Optionally expose a user-selectable uniform-height value.
 - Add smoothing/soften brush.
 - Add region layers and local height locks.
 - Add GUI editing and saved visual overlays.
 
 ## Task 5: Closed single-side solid
 
-Status: indexed height-field implementation present; full fixture gate pending.
+Status: indexed height-field implementation and generated fixture tests present; full CI evidence pending.
 
-Implemented:
-
-- Shared indexed top, bottom and boundary walls.
-- Separate vertex namespaces for disconnected mask components.
-- Closed-edge, winding and signed-volume regression checks.
-- Severe topology errors block export.
-
-Required remaining fixtures:
+Implemented fixtures:
 
 - Single cell.
-- Rectangle.
-- Circle-like mask.
+- Rectangle and varying rectangular height field.
 - Ring with a hole.
 - Two unequal adjacent cells.
 - 2×2 varying heights.
 - Multiple fragments.
 - Border-touching foreground.
-- Empty mask.
+- Empty mask export blocking.
+- Preview/standard/high physical-size consistency.
+
+Still required:
+
+- Dedicated circle-like fixture.
+- Full Windows suite result.
+- Stable external image/mesh fixture artifacts where useful.
 
 Next geometry work:
 
@@ -159,6 +166,7 @@ Next:
 - Mesh read-back tests where practical.
 - Local wall-thickness and minimum-feature analysis.
 - Self-intersection report.
+- Block zero-volume closed components explicitly.
 
 ## Task 7: Desktop GUI single-side workflow
 
@@ -168,8 +176,9 @@ Implemented:
 
 - New/open/save project.
 - Front/back/reference import.
-- Persisted front size, base, relief, mask, invert, quality and rim controls.
-- Worker-thread builds with duplicate-build prevention.
+- Persisted width, height, base, relief, mask, invert, quality and rim controls.
+- Controls are applied to the requested front/back build side and the active side is retained for later save.
+- Worker-thread builds with duplicate-build prevention and worker cleanup.
 - OBJ/STL/GLB actions.
 - Readable error dialog/log output.
 - Open output folder.
@@ -180,6 +189,7 @@ Required before completion:
 - Exact mask overlay preview.
 - Heightmap preview.
 - Manual crop and mask editing.
+- Explicit front/back parameter-side selector.
 - Full report/warning panel.
 - Unsaved-change prompt.
 - GUI automated smoke tests on Windows.
@@ -208,6 +218,8 @@ Do not mark this task complete until those requirements pass.
 ## Task 9: Windows delivery
 
 Status: not implemented.
+
+The old misleading `build_windows.bat` placeholder was removed. `run_windows.bat` is a development GUI launcher only.
 
 Next:
 
