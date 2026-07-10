@@ -20,7 +20,7 @@ python -m pip install -e ".[test]"
 python -m pytest
 ```
 
-The obsolete nested placeholder package has been removed from the runnable path.
+The obsolete nested placeholder package and its old core modules have been removed from the runnable path.
 
 ## Current pipeline
 
@@ -28,22 +28,23 @@ The single-side build path now performs the following steps:
 
 - Load JPG or PNG as RGBA.
 - Select an explicit `alpha`, `luminance` or `auto` foreground-mask mode.
-- In `auto` mode, use alpha only when the image contains meaningful transparency; otherwise compare luminance against the image border, supporting both dark-on-light and light-on-dark artwork.
+- In `auto` mode, use alpha when transparency exists; otherwise compare luminance against the image border, supporting both dark-on-light and light-on-dark artwork.
 - Remove small components, fill small holes and optionally smooth the mask.
 - Generate a grayscale heightmap normalized only from masked foreground pixels.
 - Crop and resize the processing grid.
 - Transform saved manual markers from original-image coordinates through crop and resize.
 - Apply circular, rectangular or polygon height edits.
 - Tight-crop the geometry mask so processing padding does not change final physical dimensions.
-- Convert rim width in millimeters using the actual final grid rather than the quality preset limit.
-- Build a closed stepped mask solid using shared vertices and height slabs.
-- Optimize and conservatively repair the mesh.
+- Convert rim width in millimeters using the actual final grid rather than a quality-preset estimate.
+- Build a closed indexed height-field solid with shared top, bottom and wall vertices.
+- Preserve separate vertex namespaces for disconnected mask components instead of globally merging coincident vertices.
+- Run conservative face and unreferenced-vertex repair.
 - Report boundary edges, non-manifold edges, inconsistent edge winding, face areas and signed volume.
 - Export OBJ, ASCII STL or binary GLB.
 
 For a masked build, the foreground bounding box is scaled to the requested `width_mm × height_mm`. Crop padding affects image processing only, not the finished XY size.
 
-The closed grid-contour path is currently preferred over the older experimental smoothed wall path. When smoothed walls are requested, the build defers them and keeps the closed grid solid rather than emitting the known non-watertight preview geometry.
+The indexed height-field surface averages incident cell heights at shared corners. Adjacent cells therefore share one continuous top edge instead of separate plateaus connected by T-junction-prone step walls. The manufacturing path currently favors this closed surface over the older experimental smoothed-wall output. When smoothed walls are requested, the build defers them and keeps the closed indexed solid.
 
 ## Project files
 
@@ -53,11 +54,12 @@ Project handling includes:
 
 - Atomic JSON saves through a temporary file and replace operation.
 - Sanitized asset roles and filenames.
-- A resolved-path containment check that prevents image imports or stored asset paths from escaping the project directory.
+- Resolved-path containment checks that prevent image imports or stored asset paths from escaping the project directory.
 - Unique imported asset filenames instead of silent overwrite.
 - Unique export filenames so multiple history entries do not point to the same overwritten file.
 - Explicit parsing of saved boolean strings.
 - Numeric and cross-field validation before project builds.
+- A double-side thickness rule requiring total thickness to accommodate two base layers.
 - Filtering of malformed nested project records and malformed manual markers.
 
 Create a project:
@@ -162,16 +164,22 @@ Supported marker shapes and operations include:
 
 GLB output contains glTF 2.0 positions, vertex normals, triangle indices and simple PBR material records. Multi-object GLB keeps separate named nodes and materials. UVs and textures are not implemented yet.
 
-OBJ, STL and GLB now share the same mesh-array validation: vertices and faces must be finite `N×3` arrays, face indices must be integers, and indices must stay inside the vertex array.
+OBJ, STL and GLB share the same mesh-array validation: vertices and faces must be finite `N×3` arrays, face indices must be integers, and indices must stay inside the vertex array.
 
 ## Manufacturing status
 
-The default stepped mask surface now passes an oriented edge-manifold heuristic for representative non-uniform height fields: each undirected edge must occur twice with opposite directed use. The report also calculates signed volume and warns about inward orientation.
+Representative non-uniform and disconnected-component regression cases now require:
 
-This remains an advisory MVP, not a manufacturing certification system. The following remain incomplete:
+- zero open boundary edges;
+- zero non-manifold edges;
+- zero inconsistent-winding edges;
+- positive signed volume for outward-oriented closed components;
+- requested foreground XY dimensions after crop and processing padding.
+
+This remains an advisory MVP, not a manufacturing certification system. Direct manufacturing output is not recommended until the full automated suite and representative Blender/slicer/CAM checks pass, and until the following are implemented:
 
 1. True bevelled or rounded rim geometry.
-2. Hole filling, self-intersection repair and component-level orientation repair.
+2. Hole filling, self-intersection detection/repair and component-level orientation repair.
 3. Fused and aligned front/back production solids.
 4. Text, motif and decorative-region separation.
 5. Higher-quality contour and layer generation.
