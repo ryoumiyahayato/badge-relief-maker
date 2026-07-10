@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.project = None
         self.project_path = None
+        self.active_side = "front"
         self.status_label = None
         self.log_box = None
         self.last_output_path = None
@@ -189,6 +190,7 @@ class MainWindow(QMainWindow):
     def _load_controls_from_project(self, side_name="front"):
         if self.project is None or self.width_spin is None:
             return
+        self.active_side = side_name
         side = self._side_parameters(side_name)
         edge = self.project.edge
         self.width_spin.setValue(float(self.project.dimensions.width_mm))
@@ -203,9 +205,11 @@ class MainWindow(QMainWindow):
         self.rim_height_spin.setValue(float(edge.rim_height_mm))
         self.rim_profile_combo.setCurrentText(str(edge.rim_profile))
 
-    def _apply_controls_to_project(self, side_name="front"):
+    def _apply_controls_to_project(self, side_name=None):
         if self.project is None or self.width_spin is None:
             return
+        side_name = side_name or self.active_side
+        self.active_side = side_name
         side = self._side_parameters(side_name)
         edge = self.project.edge
         self.project.dimensions.width_mm = self.width_spin.value()
@@ -256,7 +260,7 @@ class MainWindow(QMainWindow):
                 path, _ = QFileDialog.getSaveFileName(self, "Save project", "project.medalproj", "Medal Project (*.medalproj)")
             if not path:
                 return
-            self._apply_controls_to_project("front")
+            self._apply_controls_to_project()
             self.project_path = save_project(self.project, path)
             self._log(f"Saved project: {self.project_path}")
         except Exception as exc:
@@ -277,7 +281,7 @@ class MainWindow(QMainWindow):
             return
         try:
             record = import_image_asset(self.project, self.project_path, path, role, is_reference=is_reference)
-            self._apply_controls_to_project("front")
+            self._apply_controls_to_project()
             save_project(self.project, self.project_path)
             self._log(f"Imported {role} image: {record.path}")
         except Exception as exc:
@@ -353,13 +357,13 @@ class MainWindow(QMainWindow):
         if self.project.front_image is None or self.project.back_image is None:
             self._log("Import both front and back images before building a double placeholder.")
             return
-        self._apply_controls_to_project("front")
+        self._apply_controls_to_project()
         self._start_build(
             lambda: build_double_side_placeholder_from_project(
                 self.project,
                 self.project_path,
                 export_format=export_format,
-                quality_mode=self.project.front_relief.quality_mode,
+                quality_mode=self._side_parameters(self.active_side).quality_mode,
             ),
             f"Building non-fused double placeholder {export_format.upper()}",
         )
