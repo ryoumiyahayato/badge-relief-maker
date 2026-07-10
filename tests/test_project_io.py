@@ -166,8 +166,9 @@ def test_project_edge_settings_are_used_for_side_build(tmp_path):
 
     assert result.report["rim"]["enabled"] is True
     assert result.report["rim"]["rim_profile"] == "smooth"
-    assert result.report["side_wall_mode"] == "smoothed_contour"
+    assert result.report["side_wall_mode"] == "grid_contour_closed"
     assert "outer rim height boost was applied" in result.report["warnings"]
+    assert "smoothed side walls were deferred to preserve a closed grid-contour solid" in result.report["warnings"]
 
 
 def test_project_rim_width_mm_converts_to_pixel_width(tmp_path):
@@ -186,7 +187,8 @@ def test_project_rim_width_mm_converts_to_pixel_width(tmp_path):
     result = build_front_relief_from_project_file(project_path, export_format="obj", quality_mode="preview")
 
     assert result.report["rim"]["enabled"] is True
-    assert result.report["rim"]["rim_width_px"] > 0
+    assert result.report["rim"]["requested_rim_width_mm"] == 10.0
+    assert result.report["rim"]["effective_rim_width_px"] == 1
 
 
 def test_build_back_relief_from_existing_project(tmp_path):
