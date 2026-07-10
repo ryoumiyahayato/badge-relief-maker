@@ -13,6 +13,7 @@ from .single_side_pipeline import build_single_side_relief
 
 
 _HEIGHT_MARKER_TYPES = {"height", "height_override", "set_height"}
+_HEIGHT_VALUE_KEYS = {"height_normalized", "normalized_height", "value", "height", "delta", "delta_height", "height_delta"}
 
 
 def _safe_name(value):
@@ -40,35 +41,65 @@ def _side_data(project, side_name):
     raise ValueError(f"unsupported project side: {side_name}")
 
 
+def _number(value, name, *, positive=False, nonnegative=False):
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be numeric") from exc
+    if not np.isfinite(result):
+        raise ValueError(f"{name} must be finite")
+    if positive and result <= 0.0:
+        raise ValueError(f"{name} must be positive")
+    if nonnegative and result < 0.0:
+        raise ValueError(f"{name} must be non-negative")
+    return result
+
+
+def _validate_project_parameters(project):
+    dimensions = project.dimensions
+    width = _number(dimensions.width_mm, "width_mm", positive=True)
+    height = _number(dimensions.height_mm, "height_mm", positive=True)
+    total = _number(dimensions.total_thickness_mm, "total_thickness_mm", positive=True)
+    base = _number(dimensions.base_thickness_mm, "base_thickness_mm", nonnegative=True)
+    if total < base:
+        raise ValueError("total_thickness_mm must be at least base_thickness_mm")
+    _number(project.front_relief.relief_height_mm, "front relief_height_mm", nonnegative=True)
+    _number(project.back_relief.relief_height_mm, "back relief_height_mm", nonnegative=True)
+    _number(project.edge.rim_width_mm, "rim_width_mm", nonnegative=True)
+    _number(project.edge.rim_height_mm, "rim_height_mm", nonnegative=True)
+    return width, height
+
+
 def _rim_width_px_from_project(project, preset):
-    """Resolve project rim width to pixel units for the current quality preset."""
+    """Use only explicit pixel width; millimeter conversion happens on the final grid."""
+    del preset
     edge = project.edge
     if not bool(edge.rim_enabled):
         return 0
-    if int(getattr(edge, "rim_width_px", 0)) > 0:
-        return int(edge.rim_width_px)
+    return max(0, int(getattr(edge, "rim_width_px", 0)))
 
-    rim_width_mm = float(getattr(edge, "rim_width_mm", 0.0))
-    if rim_width_mm <= 0.0:
-        return 0
 
-    max_grid_cells = max(1, int(preset["max_grid_cells"]))
-    area_mm2 = max(float(project.dimensions.width_mm) * float(project.dimensions.height_mm), 1e-9)
-    approx_cell_mm = (area_mm2 / float(max_grid_cells)) ** 0.5
-    return max(1, int(round(rim_width_mm / approx_cell_mm)))
+def _potential_height_marker(data):
+    if not isinstance(data, dict) or not data:
+        return False
+    if not any(key in data for key in _HEIGHT_VALUE_KEYS):
+        return False
+    shape = str(data.get("shape", data.get("shape_type", "circle"))).lower()
+    if shape in {"polygon", "poly", "freeform", "free_form"}:
+        points = data.get("points", data.get("vertices", data.get("polygon_points")))
+        return isinstance(points, (list, tuple)) and len(points) >= 3
+    return ("x" in data or "center_x" in data) and ("y" in data or "center_y" in data)
 
 
 def _manual_height_markers_from_project(project, side_name):
-    """Return saved manual height marker data for one build side."""
+    """Return valid saved manual height marker data for one build side."""
     allowed_targets = {side_name, "both", "heightmap", "relief"}
     result = []
     for marker in getattr(project, "manual_markers", []):
         marker_type = str(getattr(marker, "marker_type", "")).lower()
         target = str(getattr(marker, "target", "")).lower()
-        if marker_type not in _HEIGHT_MARKER_TYPES or target not in allowed_targets:
-            continue
-        raw_data = getattr(marker, "data", {}) or {}
-        if not isinstance(raw_data, dict):
+        raw_data = getattr(marker, "data", {})
+        if marker_type not in _HEIGHT_MARKER_TYPES or target not in allowed_targets or not _potential_height_marker(raw_data):
             continue
         data = dict(raw_data)
         data["marker_type"] = marker_type
@@ -96,6 +127,7 @@ def _relief_parameters_from_project(project, side_name="front", quality_mode=Non
         use_smoothed_side_walls=bool(getattr(edge, "use_smoothed_side_walls", False)),
         contour_smoothing_iterations=int(getattr(edge, "contour_smoothing_iterations", 1)),
         rim_width_px=_rim_width_px_from_project(project, preset),
+        rim_width_mm=float(getattr(edge, "rim_width_mm", 0.0)) if rim_enabled else 0.0,
         rim_height_mm=float(edge.rim_height_mm) if rim_enabled else 0.0,
         rim_profile=str(getattr(edge, "rim_profile", "flat") or "flat"),
         manual_height_markers=_manual_height_markers_from_project(project, side_name),
@@ -152,6 +184,7 @@ def _build_side_mesh_only(project, project_path, side_name, quality_mode, previe
 
 def build_side_relief_from_project(project, project_path, side_name="front", export_format="obj", quality_mode=None, export_name=None):
     """Build one side relief for an existing project and update export history."""
+    _validate_project_parameters(project)
     image_record, _ = _side_data(project, side_name)
     if image_record is None:
         raise ValueError(f"project has no {side_name} image")
@@ -187,6 +220,7 @@ def build_side_relief_from_project(project, project_path, side_name="front", exp
 
 def build_double_side_placeholder_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
     """Build a placeholder double-side assembly from front and back images."""
+    _validate_project_parameters(project)
     if project.front_image is None:
         raise ValueError("project has no front image")
     if project.back_image is None:
@@ -211,10 +245,7 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
         {"name": "front_relief", "vertices": front_vertices, "faces": front_result.faces},
         {"name": "back_relief", "vertices": back_vertices, "faces": back_faces},
     ]
-    vertices, faces = _combine_meshes([
-        (front_vertices, front_result.faces),
-        (back_vertices, back_faces),
-    ])
+    vertices, faces = _combine_meshes([(front_vertices, front_result.faces), (back_vertices, back_faces)])
 
     report = basic_report(vertices, faces, minimum_thickness_mm=project.dimensions.base_thickness_mm)
     report["project_name"] = project.name
