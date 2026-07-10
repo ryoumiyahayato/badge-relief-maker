@@ -42,7 +42,12 @@ def foreground_mask(rgba, mode="auto", alpha_threshold=1, luminance_threshold=20
         return luminance_mask(rgba, luminance_threshold), "luminance"
 
     alpha = np.asarray(rgba)[:, :, 3]
-    if np.any(alpha < 255):
+    visible = alpha >= int(alpha_threshold)
+    if not np.any(visible):
+        return alpha_mask(rgba, alpha_threshold), "alpha"
+
+    alpha_is_informative = bool(alpha.size and int(alpha.min()) < int(alpha.max()))
+    if alpha_is_informative:
         return alpha_mask(rgba, alpha_threshold), "alpha"
 
     contrast = luminance_mask(rgba, luminance_threshold)
