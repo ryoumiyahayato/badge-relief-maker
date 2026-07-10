@@ -1,13 +1,44 @@
 """Mesh export helpers."""
 
 import json
+import os
 import struct
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 
 
 _DEFAULT_BASE_COLOR = [0.8, 0.8, 0.8, 1.0]
+
+
+@contextmanager
+def _atomic_writer(path, mode, encoding=None):
+    """Write beside the target, flush to disk, then atomically replace it."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        kwargs = {} if "b" in mode else {"encoding": encoding or "utf-8", "newline": "\n"}
+        with os.fdopen(file_descriptor, mode, **kwargs) as fh:
+            yield fh
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporary_path, path)
+    except Exception:
+        try:
+            os.close(file_descriptor)
+        except OSError:
+            pass
+        if temporary_path.exists():
+            temporary_path.unlink()
+        raise
 
 
 def _safe_obj_name(name):
@@ -17,10 +48,9 @@ def _safe_obj_name(name):
 
 
 def export_obj(path, vertices, faces):
-    """Export a minimal OBJ file."""
+    """Export a minimal OBJ file atomically."""
     vertices, faces = _mesh_arrays(vertices, faces)
-    path = Path(path)
-    with path.open("w", encoding="utf-8") as fh:
+    with _atomic_writer(path, "w", encoding="utf-8") as fh:
         for x, y, z in vertices:
             fh.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
         for a, b, c in faces:
@@ -28,15 +58,9 @@ def export_obj(path, vertices, faces):
 
 
 def export_obj_objects(path, objects):
-    """Export multiple named mesh objects to one OBJ file.
-
-    Each object item should contain name, vertices and faces. Blender imports
-    OBJ object markers as separate editable objects or mesh groups depending on
-    import settings, which is useful for the rough-base workflow.
-    """
-    path = Path(path)
+    """Export multiple named mesh objects to one atomic OBJ file."""
     vertex_offset = 0
-    with path.open("w", encoding="utf-8") as fh:
+    with _atomic_writer(path, "w", encoding="utf-8") as fh:
         for item in objects:
             name = _safe_obj_name(item.get("name", "object"))
             vertices, faces = _mesh_arrays(item.get("vertices", []), item.get("faces", []))
@@ -60,14 +84,9 @@ def _facet_normal(a, b, c):
 
 
 def export_ascii_stl(path, vertices, faces, solid_name="badge_relief"):
-    """Export a minimal ASCII STL file.
-
-    ASCII STL is larger than binary STL but easy to inspect and sufficient for
-    the first local MVP. A binary STL exporter can be added later.
-    """
+    """Export an atomic ASCII STL file using millimeter coordinates."""
     verts, faces = _mesh_arrays(vertices, faces)
-    path = Path(path)
-    with path.open("w", encoding="utf-8") as fh:
+    with _atomic_writer(path, "w", encoding="utf-8") as fh:
         fh.write(f"solid {solid_name}\n")
         for face in faces:
             a, b, c = verts[face[0]], verts[face[1]], verts[face[2]]
@@ -107,7 +126,6 @@ def _vertex_normals(vertices, faces):
 
 
 def _append_binary_blob(binary_blob, payload):
-    """Append one aligned GLB binary payload and return updated blob plus offset."""
     offset = _aligned_length(len(binary_blob))
     binary_blob = _pad_bytes(binary_blob, b"\x00") + payload
     return binary_blob, offset
@@ -190,22 +208,12 @@ def _material_from_item(item, name):
 
 
 def export_glb(path, vertices, faces):
-    """Export a minimal binary glTF 2.0 GLB mesh.
-
-    The exporter writes positions, vertex normals, triangle indices and one basic
-    material. Texture coordinates and textures are intentionally outside this
-    MVP path.
-    """
+    """Export a minimal binary glTF 2.0 GLB mesh."""
     export_glb_objects(path, [{"name": "badge_relief", "vertices": vertices, "faces": faces}])
 
 
 def export_glb_objects(path, objects):
-    """Export multiple named mesh objects to one binary glTF 2.0 GLB file.
-
-    This preserves rough front/back object separation as separate glTF nodes and
-    meshes. Each mesh receives one simple material. UVs and textures are outside
-    this MVP path.
-    """
+    """Export multiple named mesh objects to one binary glTF 2.0 GLB file."""
     nodes = []
     meshes = []
     accessors = []
@@ -329,7 +337,7 @@ def _write_glb(path, document, binary_blob=b""):
     if binary_blob:
         chunks.append((0x004E4942, binary_blob))
     total_length = 12 + sum(8 + len(data) for _, data in chunks)
-    with Path(path).open("wb") as fh:
+    with _atomic_writer(path, "wb") as fh:
         fh.write(struct.pack("<III", 0x46546C67, 2, total_length))
         for chunk_type, data in chunks:
             fh.write(struct.pack("<II", len(data), chunk_type))
@@ -351,10 +359,8 @@ def export_mesh(path, vertices, faces):
 
 
 def supported_formats():
-    """Return planned export formats."""
     return {"stl", "obj", "glb"}
 
 
 def implemented_formats():
-    """Return currently implemented export formats."""
     return {"obj", "stl", "glb"}
