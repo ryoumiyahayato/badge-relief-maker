@@ -2,21 +2,23 @@
 
 The legacy window already provides the complete control surface. This subclass
 keeps clicks from source and final-grid previews in distinct coordinate spaces,
-prevents edits from drifting after crop/resize, and freezes all mutable controls
-while a background build reads the project.
+prevents edits from drifting after crop/resize, freezes mutable controls while a
+background build reads the project, and supports a user-selected export folder.
 """
 
 import json
+import shutil
 from pathlib import Path
 
 try:
-    from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QMessageBox, QPushButton
+    from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
 except Exception:
-    QCheckBox = None
-    QComboBox = None
-    QDoubleSpinBox = None
+    QFileDialog = None
+    QHBoxLayout = None
+    QLabel = None
     QMessageBox = None
     QPushButton = None
+    QWidget = None
 
 from ..core.image_editing import rectify_perspective
 from ..core.image_preprocess import load_image, normalize_alpha_background
@@ -36,8 +38,81 @@ class MainWindow(_BaseMainWindow):
         self._preview_processing_shape = None
         self._raw_source_preview_path = None
         self._editing_source_preview_path = None
+        self.selected_output_directory = None
+        self.output_directory_label = None
         super().__init__()
+        self._install_output_directory_controls()
         self._wire_preview_spaces()
+
+    def _install_output_directory_controls(self):
+        if QWidget is None or QHBoxLayout is None or QLabel is None or QPushButton is None:
+            return
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(QLabel("Export folder"))
+        self.output_directory_label = QLabel("Project exports folder")
+        self.output_directory_label.setTextInteractionFlags(self.output_directory_label.textInteractionFlags())
+        layout.addWidget(self.output_directory_label, 1)
+        choose_button = QPushButton("Choose…")
+        choose_button.clicked.connect(self.choose_output_directory)
+        layout.addWidget(choose_button)
+        self.centralWidget().layout().insertWidget(1, row)
+
+    def choose_output_directory(self):
+        if QFileDialog is None:
+            return
+        start = str(self.selected_output_directory or (Path(self.project_path).parent if self.project_path else Path.cwd()))
+        selected = QFileDialog.getExistingDirectory(self, "Choose export folder", start)
+        if not selected:
+            return
+        self.selected_output_directory = str(Path(selected).resolve())
+        if self.output_directory_label is not None:
+            self.output_directory_label.setText(self.selected_output_directory)
+        self._log(f"Selected export folder: {self.selected_output_directory}")
+
+    @staticmethod
+    def _unique_copy_path(directory, filename):
+        directory = Path(directory)
+        candidate = directory / filename
+        counter = 2
+        while candidate.exists():
+            candidate = directory / f"{candidate.stem}_{counter}{candidate.suffix}"
+            counter += 1
+        return candidate
+
+    def _copy_result_to_selected_output(self, result):
+        """Copy a completed atomic project export into the user's chosen folder.
+
+        The project-owned export remains as a recoverable source artifact. Export
+        history is updated only after the external copy succeeds, so a copy error
+        cannot leave history pointing at a missing file.
+        """
+        if not self.selected_output_directory or not getattr(result, "output_path", None):
+            return result
+        source = Path(result.output_path)
+        if not source.is_file():
+            raise FileNotFoundError(f"completed export does not exist: {source}")
+        directory = Path(self.selected_output_directory).resolve()
+        directory.mkdir(parents=True, exist_ok=True)
+        target = self._unique_copy_path(directory, source.name)
+        shutil.copy2(source, target)
+        result.output_path = str(target)
+        result.report["export_path"] = str(target)
+        result.report["project_owned_export_path"] = str(source)
+        result.report["selected_output_directory"] = str(directory)
+        if self.project is not None and self.project.export_history:
+            record = self.project.export_history[-1]
+            record.path = str(target)
+            record.report = result.report
+        return result
+
+    def _build_finished(self, result):
+        try:
+            self._copy_result_to_selected_output(result)
+        except Exception as exc:
+            self._error("Could not copy export to the selected folder; the project-owned export was retained", exc)
+        super()._build_finished(result)
 
     def _wire_preview_spaces(self):
         for label in (self.source_preview, self.mask_preview, self.height_preview):
