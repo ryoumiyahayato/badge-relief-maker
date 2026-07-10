@@ -9,11 +9,16 @@ def empty_heightmap(shape):
 
 
 def grayscale_heightmap(rgba, mask=None, invert=False):
-    """Convert image brightness to a normalized heightmap.
+    """Convert image brightness to a normalized foreground heightmap.
 
-    When a mask is provided, normalization uses only foreground pixels so hidden
-    or transparent background RGB values cannot change the relief range.
+    Foreground normalization ignores background pixels. A uniformly bright
+    foreground has no recoverable relative depth, so the deterministic default is
+    a constant full-height value of 1.0 before optional inversion. This produces a
+    usable raised plateau while still satisfying ``inverted = 1 - normal``.
     """
+    rgba = np.asarray(rgba)
+    if rgba.ndim != 3 or rgba.shape[2] != 4:
+        raise ValueError("expected rgba image")
     rgb = rgba[:, :, :3].astype(np.float32)
     gray = 0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]
 
@@ -33,7 +38,7 @@ def grayscale_heightmap(rgba, mask=None, invert=False):
         if high > low:
             normalized = (gray - low) / (high - low)
         else:
-            normalized = np.zeros_like(gray, dtype=np.float32)
+            normalized = np.ones_like(gray, dtype=np.float32)
         if invert:
             normalized = 1.0 - normalized
         result = normalized.astype(np.float32)
