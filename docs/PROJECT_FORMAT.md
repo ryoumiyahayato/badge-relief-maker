@@ -65,7 +65,7 @@ The current supported `file_version` is `2`.
 - `width_mm` and `height_mm` are the final foreground X/Y dimensions.
 - `base_thickness_mm` is the flat backing used by one single-side model.
 - `total_thickness_mm` is the shared central-body thickness used by fused double-side output; it excludes outward front and back relief.
-- A single-side build retains the compatibility rule `total_thickness_mm >= base_thickness_mm`.
+- A single-side build uses `base_thickness_mm` and does not consume or constrain `total_thickness_mm`.
 - The non-fused placeholder contains two complete side bases and requires `total_thickness_mm >= 2 × base_thickness_mm`.
 - A fused build requires only a positive `total_thickness_mm`; it is independent of `base_thickness_mm`.
 
