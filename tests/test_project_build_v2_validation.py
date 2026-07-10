@@ -38,3 +38,12 @@ def test_fused_alignment_requires_supported_footprint_mode():
 
     with pytest.raises(ValueError, match="footprint_mode"):
         _validate_project_parameters(project, fused=True)
+
+
+def test_fused_build_requires_one_process_profile_for_the_whole_object():
+    project = create_project("Mixed Process")
+    project.front_relief.process_profile = "resin"
+    project.back_relief.process_profile = "cnc"
+
+    with pytest.raises(ValueError, match="process_profile must match"):
+        _validate_project_parameters(project, fused=True)
