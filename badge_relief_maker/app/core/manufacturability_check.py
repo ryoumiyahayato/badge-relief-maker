@@ -88,7 +88,13 @@ def _empty_component_report(invalid_face_count=0, malformed_face_array=False):
     return {
         "component_count": 0,
         "component_face_counts": [],
+        "component_signed_volumes_mm3": [],
+        "component_closed_oriented_flags": [],
+        "component_reports": [],
         "largest_component_face_count": 0,
+        "closed_oriented_component_count": 0,
+        "inward_closed_component_count": 0,
+        "open_or_unoriented_component_count": 0,
         "valid_face_count": 0,
         "invalid_face_count": int(invalid_face_count),
         "malformed_face_array": bool(malformed_face_array),
@@ -179,6 +185,15 @@ def _valid_faces(vertices, faces):
     return faces[valid_mask], int(len(faces) - int(valid_mask.sum()))
 
 
+def _signed_volume(vertices, faces):
+    if len(faces) == 0:
+        return 0.0
+    p0 = vertices[faces[:, 0]]
+    p1 = vertices[faces[:, 1]]
+    p2 = vertices[faces[:, 2]]
+    return float(np.einsum("ij,ij->i", p0, np.cross(p1, p2)).sum() / 6.0)
+
+
 def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
     """Return triangle area, volume and normal-orientation diagnostics."""
     vertices = _vertices_array(vertices)
@@ -203,7 +218,7 @@ def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
     areas = double_areas * 0.5
     nonzero = double_areas > float(zero_area_epsilon)
     zero_area_count = int(np.count_nonzero(~nonzero))
-    signed_volume = float(np.einsum("ij,ij->i", p0, np.cross(p1, p2)).sum() / 6.0)
+    signed_volume = _signed_volume(vertices, valid_faces)
 
     up_count = 0
     down_count = 0
@@ -231,7 +246,12 @@ def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
 
 
 def connected_component_report(vertices, faces):
-    """Count face-connected mesh components using shared vertex indices."""
+    """Report face-connected components using shared vertex indices.
+
+    Each component includes its face count, oriented-edge closure state and signed
+    volume. Per-component volumes prevent one outward component from hiding an
+    inward component through cancellation in the whole-mesh volume.
+    """
     vertices = _vertices_array(vertices)
     malformed_row_count = _face_row_count(faces)
     normalized_faces = _faces_array(faces)
@@ -271,12 +291,49 @@ def connected_component_report(vertices, faces):
         union(a, b)
         union(b, c)
 
-    counts = Counter(find(face[0]) for face in valid_faces)
-    component_face_counts = sorted((int(count) for count in counts.values()), reverse=True)
+    grouped_faces = {}
+    for face in valid_faces:
+        grouped_faces.setdefault(find(face[0]), []).append(face)
+
+    details = []
+    for root, rows in grouped_faces.items():
+        component_faces = np.asarray(rows, dtype=np.int64)
+        topology = edge_usage_report(component_faces)
+        signed_volume = _signed_volume(vertices, component_faces)
+        details.append(
+            {
+                "root": int(root),
+                "face_count": int(len(component_faces)),
+                "signed_volume_mm3": signed_volume,
+                "closed_oriented_manifold": bool(topology["closed_oriented_manifold"]),
+                "boundary_edge_count": int(topology["boundary_edge_count"]),
+                "non_manifold_edge_count": int(topology["non_manifold_edge_count"]),
+                "inconsistent_winding_edge_count": int(topology["inconsistent_winding_edge_count"]),
+            }
+        )
+
+    details.sort(key=lambda item: (-item["face_count"], item["root"]))
+    component_reports = [
+        {key: value for key, value in item.items() if key != "root"}
+        for item in details
+    ]
+    component_face_counts = [item["face_count"] for item in component_reports]
+    component_volumes = [item["signed_volume_mm3"] for item in component_reports]
+    component_closed = [item["closed_oriented_manifold"] for item in component_reports]
+    closed_count = int(sum(component_closed))
+    inward_count = int(
+        sum(item["closed_oriented_manifold"] and item["signed_volume_mm3"] < 0.0 for item in component_reports)
+    )
     return {
-        "component_count": int(len(component_face_counts)),
+        "component_count": int(len(component_reports)),
         "component_face_counts": component_face_counts,
+        "component_signed_volumes_mm3": component_volumes,
+        "component_closed_oriented_flags": component_closed,
+        "component_reports": component_reports,
         "largest_component_face_count": component_face_counts[0] if component_face_counts else 0,
+        "closed_oriented_component_count": closed_count,
+        "inward_closed_component_count": inward_count,
+        "open_or_unoriented_component_count": int(len(component_reports) - closed_count),
         "valid_face_count": int(len(valid_faces)),
         "invalid_face_count": invalid_count,
         "malformed_face_array": False,
@@ -306,7 +363,12 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         warnings.append("non-manifold edges detected")
     if topology["inconsistent_winding_edge_count"] > 0:
         warnings.append("inconsistent face winding detected")
-    if topology.get("closed_oriented_manifold") and face_geometry["signed_volume_mm3"] < 0.0:
+    if components["inward_closed_component_count"] > 0:
+        if components["component_count"] == 1:
+            warnings.append("closed mesh orientation appears inward")
+        else:
+            warnings.append("one or more closed mesh components appear inward")
+    elif topology.get("closed_oriented_manifold") and face_geometry["signed_volume_mm3"] < 0.0:
         warnings.append("closed mesh orientation appears inward")
     if topology.get("malformed_face_array") or face_geometry.get("malformed_face_array"):
         warnings.append(_MALFORMED_FACE_WARNING)
