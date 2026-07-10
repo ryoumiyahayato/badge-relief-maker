@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self.last_output_path = None
         self._build_thread = None
         self._build_worker = None
+        self._build_description = None
         self._build_buttons = []
         self.width_spin = None
         self.height_spin = None
@@ -298,6 +299,7 @@ class MainWindow(QMainWindow):
         if self._build_thread is not None:
             self._log("A build is already running.")
             return
+        self._build_description = description
         self._set_building(True)
         self._log(f"{description}...")
         self._build_thread = QThread(self)
@@ -305,7 +307,7 @@ class MainWindow(QMainWindow):
         self._build_worker.moveToThread(self._build_thread)
         self._build_thread.started.connect(self._build_worker.run)
         self._build_worker.finished.connect(self._build_finished)
-        self._build_worker.failed.connect(lambda message: self._build_failed(description, message))
+        self._build_worker.failed.connect(self._build_failed)
         self._build_worker.finished.connect(self._build_thread.quit)
         self._build_worker.failed.connect(self._build_thread.quit)
         self._build_worker.finished.connect(self._build_worker.deleteLater)
@@ -317,6 +319,7 @@ class MainWindow(QMainWindow):
     def _clear_build_worker(self):
         self._build_thread = None
         self._build_worker = None
+        self._build_description = None
         self._set_building(False)
 
     def _build_finished(self, result):
@@ -328,8 +331,8 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self._error("Could not finalize build", exc)
 
-    def _build_failed(self, description, message):
-        self._error(description, message)
+    def _build_failed(self, message):
+        self._error(self._build_description or "Build failed", message)
 
     def _build_side(self, side_name, export_format):
         if not self._ensure_saved_project():
