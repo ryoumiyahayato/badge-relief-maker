@@ -28,7 +28,7 @@ The single-side build path now performs the following steps:
 
 - Load JPG or PNG as RGBA.
 - Select an explicit `alpha`, `luminance` or `auto` foreground-mask mode.
-- In `auto` mode, use alpha when transparency exists; otherwise compare luminance against the image border, supporting both dark-on-light and light-on-dark artwork.
+- In `auto` mode, use alpha only when it contains useful transparency variation; otherwise compare luminance against the image border, supporting both dark-on-light and light-on-dark artwork.
 - Remove small components, fill small holes and optionally smooth the mask.
 - Generate a grayscale heightmap normalized only from masked foreground pixels.
 - Crop and resize the processing grid.
@@ -39,7 +39,7 @@ The single-side build path now performs the following steps:
 - Build a closed indexed height-field solid with shared top, bottom and wall vertices.
 - Preserve separate vertex namespaces for disconnected mask components instead of globally merging coincident vertices.
 - Run conservative face and unreferenced-vertex repair.
-- Report boundary edges, non-manifold edges, inconsistent edge winding, face areas and signed volume.
+- Report boundary edges, non-manifold edges, inconsistent edge winding, face areas, whole-mesh signed volume, disconnected components and per-component signed volumes.
 - Export OBJ, ASCII STL or binary GLB.
 
 For a masked build, the foreground bounding box is scaled to the requested `width_mm × height_mm`. Crop padding affects image processing only, not the finished XY size.
@@ -59,6 +59,7 @@ Project handling includes:
 - Unique export filenames so multiple history entries do not point to the same overwritten file.
 - Explicit parsing of saved boolean strings.
 - Numeric and cross-field validation before project builds.
+- A single-side thickness rule requiring total thickness to accommodate one base layer.
 - A double-side thickness rule requiring total thickness to accommodate two base layers.
 - Filtering of malformed nested project records and malformed manual markers.
 
@@ -174,12 +175,13 @@ Representative non-uniform and disconnected-component regression cases now requi
 - zero non-manifold edges;
 - zero inconsistent-winding edges;
 - positive signed volume for outward-oriented closed components;
+- per-component orientation reporting so opposite signed volumes cannot hide each other in a whole-mesh total;
 - requested foreground XY dimensions after crop and processing padding.
 
 This remains an advisory MVP, not a manufacturing certification system. Direct manufacturing output is not recommended until the full automated suite and representative Blender/slicer/CAM checks pass, and until the following are implemented:
 
 1. True bevelled or rounded rim geometry.
-2. Hole filling, self-intersection detection/repair and component-level orientation repair.
+2. Hole filling, self-intersection detection/repair and automatic component-level orientation repair.
 3. Fused and aligned front/back production solids.
 4. Text, motif and decorative-region separation.
 5. Higher-quality contour and layer generation.
