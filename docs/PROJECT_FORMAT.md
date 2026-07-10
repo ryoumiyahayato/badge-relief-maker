@@ -1,23 +1,23 @@
 # `.medalproj` Project Format
 
-A `.medalproj` file is UTF-8 JSON. It is project metadata, not a trusted executable format. Image, preview and export files are stored in the sibling `<project_stem>_assets/` directory.
+A `.medalproj` file is UTF-8 JSON. It is untrusted project metadata, not executable content. Imported images, previews and exports live in the sibling `<project_stem>_assets/` directory.
 
 ## Versioning
 
-The current supported `file_version` is `1`.
+The current supported `file_version` is `2`.
 
-- Missing version is interpreted as the current version for legacy v1 files.
+- Version 1 files are migrated in memory to version 2 defaults when loaded.
 - Non-integer, zero or negative versions are rejected.
-- A version greater than the current implementation is rejected with `UnsupportedProjectVersionError`.
-- Unknown fields inside a supported version are ignored so additive forward-compatible metadata does not break v1 loading.
-- No downgrade from a future version is attempted.
+- Versions newer than the implementation are rejected with `UnsupportedProjectVersionError`.
+- Unknown fields in a supported version are ignored.
+- Saving writes the current supported version.
 
 ## Top-level structure
 
 ```json
 {
   "name": "Example Medal",
-  "file_version": 1,
+  "file_version": 2,
   "created_at": "2026-07-10T00:00:00+00:00",
   "updated_at": "2026-07-10T00:00:00+00:00",
   "same_physical_object": true,
@@ -29,6 +29,7 @@ The current supported `file_version` is `1`.
   "edge": {},
   "front_relief": {},
   "back_relief": {},
+  "double_side": {},
   "manual_markers": [],
   "export_history": []
 }
@@ -48,9 +49,9 @@ The current supported `file_version` is `1`.
 }
 ```
 
-`path` is resolved relative to the project file directory and must remain inside the sibling project asset root after `resolve()`. Absolute paths and `..` components are not accepted when they resolve outside that root. The original source path is informational only and is not used as the build asset.
+`path` is resolved relative to the project directory and must remain inside the sibling project asset root after `resolve()`. The original source path is informational only.
 
-## Dimensions
+## Dimensions and thickness semantics
 
 ```json
 {
@@ -61,11 +62,14 @@ The current supported `file_version` is `1`.
 }
 ```
 
-- Width and height must be finite and greater than zero.
-- Base thickness must be finite and non-negative.
-- A single-side build requires total thickness to be at least one base thickness.
-- A double placeholder requires total thickness to be at least two base thicknesses.
-- `total_thickness_mm` is currently a double-side body/spacing budget, not a guarantee of placeholder final bbox thickness.
+- `width_mm` and `height_mm` are the final foreground X/Y dimensions.
+- `base_thickness_mm` is the flat backing used by one single-side model.
+- `total_thickness_mm` is the shared central-body thickness used by fused double-side output; it excludes outward front and back relief.
+- A single-side build retains the compatibility rule `total_thickness_mm >= base_thickness_mm`.
+- The non-fused placeholder contains two complete side bases and requires `total_thickness_mm >= 2 × base_thickness_mm`.
+- A fused build requires only a positive `total_thickness_mm`; it is independent of `base_thickness_mm`.
+
+All numeric values must be finite. Width, height and fused body thickness must be positive; other thickness and relief values must be non-negative.
 
 ## Relief side settings
 
@@ -83,11 +87,29 @@ The current supported `file_version` is `1`.
   "luminance_threshold": 20.0,
   "minimum_thickness_mm": 0.8,
   "crop_to_foreground": true,
-  "crop_padding_px": 1
+  "crop_padding_px": 1,
+  "uniform_height_normalized": 1.0,
+  "smooth_strength": 0.0,
+  "detail_sharpness": 0.0,
+  "process_profile": "general",
+  "manual_crop_box": null,
+  "perspective_quad": null,
+  "mask_edits": [],
+  "region_layers": []
 }
 ```
 
-Supported mask modes are `auto`, `alpha`, `luminance`, `luminance-dark` and `luminance-light`.
+Supported values:
+
+- `mask_mode`: `auto`, `alpha`, `luminance`, `luminance-dark`, `luminance-light`.
+- `height_mode`: `grayscale`, `layers`, `hybrid`.
+- `quality_mode`: `preview`, `standard`, `high`.
+- `process_profile`: `general`, `fdm`, `resin`, `cnc`, `mould`.
+- `uniform_height_normalized`, `smooth_strength` and `detail_sharpness`: finite values in `0..1`.
+
+`manual_crop_box` is `[x0, y0, x1, y1]` in the post-perspective source pixel grid. `perspective_quad` contains four normalized source points ordered top-left, top-right, bottom-right and bottom-left.
+
+Mask edits are applied in source space before crop and resize. Region layers are applied after the final geometry crop.
 
 ## Edge and rim settings
 
@@ -106,9 +128,56 @@ Supported mask modes are `auto`, `alpha`, `luminance`, `luminance-dark` and `lum
 }
 ```
 
-`bevel_mm` and `radius_mm` are reserved persisted parameters; true bevel/rounded geometry is not yet implemented. The current rim is a heightmap boost, and clipping is reported.
+Supported `edge_style` values are `straight`, `sloped`, `bevel` and `rounded`. The current mesh builder creates closed profiled boundary geometry. The heightmap rim remains a separate local height operation and reports clipping.
 
-## Manual marker
+## Fused double-side settings
+
+```json
+{
+  "enabled": false,
+  "back_scale": 1.0,
+  "back_rotation_deg": 0.0,
+  "back_offset_x_mm": 0.0,
+  "back_offset_y_mm": 0.0,
+  "flip_back_horizontal": true,
+  "footprint_mode": "union"
+}
+```
+
+`footprint_mode` is one of `union`, `intersection`, `front` or `back`. The back image is interpreted as viewed from the back, optionally flipped horizontally, then scaled, rotated and offset before both fields are fused onto one shared body grid.
+
+## Mask edit
+
+```json
+{
+  "shape": "circle",
+  "coordinate_space": "pixel",
+  "x": 120.0,
+  "y": 85.0,
+  "radius_px": 10.0,
+  "operation": "remove"
+}
+```
+
+Mask edits support circle, rectangle and polygon geometry with `add`, `remove` or equivalent operation names. GUI clicks on the final mask preview are converted back to source pixels before persistence.
+
+## Region layer
+
+```json
+{
+  "shape": "circle",
+  "coordinate_space": "final_normalized",
+  "x": 0.5,
+  "y": 0.5,
+  "radius_normalized": 0.1,
+  "height_normalized": 0.7,
+  "locked": true
+}
+```
+
+Region layers provide fixed normalized height plateaus. Locked layers are restored after global smoothing/sharpening.
+
+## Manual height marker
 
 ```json
 {
@@ -116,7 +185,7 @@ Supported mask modes are `auto`, `alpha`, `luminance`, `luminance-dark` and `lum
   "target": "front",
   "data": {
     "shape": "circle",
-    "coordinate_space": "normalized",
+    "coordinate_space": "final_normalized",
     "x": 0.5,
     "y": 0.5,
     "radius_normalized": 0.1,
@@ -127,16 +196,16 @@ Supported mask modes are `auto`, `alpha`, `luminance`, `luminance-dark` and `lum
 }
 ```
 
-Supported targets include front, back, both, heightmap and relief. Supported shapes are circle, rectangle and polygon. Supported operations are set, add and subtract.
+Supported targets are `front`, `back`, `both`, `heightmap` and `relief`. Supported operations include set, add, subtract and smooth. Supported shapes are circle/brush, rectangle and polygon/freeform.
 
-Coordinate spaces:
+Coordinate spaces include:
 
-- normalized original-image coordinates;
-- original-image pixels;
-- resized processing-grid pixels;
-- final geometry-grid pixels.
+- `normalized`: normalized post-EXIF/perspective source coordinates;
+- `pixel`: source pixels;
+- `processed` / `processed_normalized`: resized processing grid;
+- `final` / `final_normalized`: exact final tight geometry grid.
 
-Malformed markers are ignored rather than terminating the complete build.
+Malformed individual edits are ignored rather than terminating the complete project load. Build-time numeric and cross-field validation still rejects invalid project settings.
 
 ## Export record
 
@@ -150,16 +219,17 @@ Malformed markers are ignored rather than terminating the complete build.
 }
 ```
 
-Project workflows select a unique output name before writing. Each history record should therefore point to a traceable output rather than a silently overwritten filename.
+Project workflows choose a unique output name before writing. Mesh exporters use a temporary sibling file, flush/fsync and atomic replacement.
 
 ## Persistence guarantees
 
 `save_project()`:
 
-1. updates the project timestamp;
-2. serializes with `allow_nan=false`;
-3. writes a temporary sibling file;
-4. flushes and calls `fsync`;
-5. atomically replaces the destination.
+1. validates the supported version;
+2. updates the timestamp;
+3. serializes with `allow_nan=false`;
+4. writes a temporary sibling file;
+5. flushes and calls `fsync`;
+6. atomically replaces the destination.
 
-A serialization or write failure leaves the previous project file in place. The in-memory object may still have an updated timestamp and should be considered unsaved until the next successful save.
+A serialization or write failure leaves the previous project file in place. The in-memory object may still contain unsaved changes.
