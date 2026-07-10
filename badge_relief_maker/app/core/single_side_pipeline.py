@@ -6,7 +6,7 @@ from .height_markers import apply_manual_height_markers
 from .heightmap_generator import grayscale_heightmap
 from .image_preprocess import load_rgba, normalize_alpha_background
 from .manufacturability_check import basic_report
-from .mask_generator import alpha_mask, luminance_mask
+from .mask_generator import foreground_mask
 from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_masked_relief_solid
 from .mesh_exporter import export_mesh
@@ -22,23 +22,47 @@ from .solid_builder import build_rectangular_relief_solid
 def _side_wall_mode(params):
     if not params.use_mask_footprint:
         return "rectangle"
-    if params.use_smoothed_side_walls:
-        return "smoothed_contour"
-    return "grid_contour"
+    return "grid_contour_closed"
+
+
+def _validate_parameters(params):
+    if float(params.width_mm) <= 0.0 or float(params.height_mm) <= 0.0:
+        raise ValueError("width_mm and height_mm must be positive")
+    if float(params.base_thickness_mm) < 0.0 or float(params.relief_height_mm) < 0.0:
+        raise ValueError("base_thickness_mm and relief_height_mm must be non-negative")
+    if float(params.minimum_thickness_mm) < 0.0:
+        raise ValueError("minimum_thickness_mm must be non-negative")
+    if int(params.crop_padding_px) < 0:
+        raise ValueError("crop_padding_px must be non-negative")
+    if int(params.max_grid_cells) <= 0:
+        raise ValueError("max_grid_cells must be positive")
+
+
+def _effective_rim_width_px(params, mask):
+    explicit = int(params.rim_width_px)
+    if explicit > 0:
+        return explicit
+    requested_mm = float(getattr(params, "rim_width_mm", 0.0))
+    if requested_mm <= 0.0 or not mask.any():
+        return 0
+    rows, cols = mask.shape
+    cell_w_mm = float(params.width_mm) / float(max(cols, 1))
+    cell_h_mm = float(params.height_mm) / float(max(rows, 1))
+    average_cell_mm = max((cell_w_mm + cell_h_mm) * 0.5, 1e-12)
+    return max(1, int(round(requested_mm / average_cell_mm)))
 
 
 def build_single_side_relief(image_path, output_path=None, parameters=None, preview_dir=None):
-    """Build a basic solid relief model from one image.
-
-    The default path follows the foreground mask so transparent or dark
-    background areas do not become part of the exported body. A rectangular
-    fallback remains available for debugging.
-    """
+    """Build a basic solid relief model from one image."""
     params = parameters or ReliefParameters()
+    _validate_parameters(params)
     rgba = normalize_alpha_background(load_rgba(image_path))
-    mask = alpha_mask(rgba, params.alpha_threshold)
-    if not mask.any():
-        mask = luminance_mask(rgba)
+    mask, resolved_mask_mode = foreground_mask(
+        rgba,
+        mode=params.mask_mode,
+        alpha_threshold=params.alpha_threshold,
+        luminance_threshold=params.luminance_threshold,
+    )
 
     original_shape = tuple(mask.shape)
     original_mask_pixel_count = int(mask.sum())
@@ -57,14 +81,24 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     mask, heightmap, resize_scale = resize_mask_and_heightmap(mask, heightmap, params.max_grid_cells)
     shape_after_resize = tuple(mask.shape)
     heightmap, manual_height_report = apply_manual_height_markers(heightmap, mask, params.manual_height_markers)
+
+    geometry_crop_box = None
+    if params.crop_to_foreground:
+        mask, heightmap, geometry_crop_box = crop_to_mask(mask, heightmap, padding=0)
+    shape_for_geometry = tuple(mask.shape)
+
+    effective_rim_width_px = _effective_rim_width_px(params, mask)
     heightmap, rim_report = apply_outer_rim_to_heightmap(
         heightmap,
         mask,
-        width_px=params.rim_width_px,
+        width_px=effective_rim_width_px,
         rim_height_mm=params.rim_height_mm,
         relief_height_mm=params.relief_height_mm,
         profile=params.rim_profile,
     )
+    rim_report["requested_rim_width_mm"] = float(getattr(params, "rim_width_mm", 0.0))
+    rim_report["effective_rim_width_px"] = int(effective_rim_width_px)
+
     outline = outline_report(
         mask,
         params.width_mm,
@@ -117,13 +151,17 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     report["manual_height"] = manual_height_report
     report["rim"] = rim_report
     report["side_wall_mode"] = _side_wall_mode(params)
+    report["mask_mode_requested"] = str(params.mask_mode)
+    report["mask_mode_used"] = resolved_mask_mode
     report["original_mask_pixel_count"] = original_mask_pixel_count
     report["mask_pixel_count"] = int(mask.sum())
     report["mask_cleanup"] = cleanup_report
     report["original_shape"] = original_shape
     report["shape_after_crop"] = shape_after_crop
     report["shape_after_resize"] = shape_after_resize
+    report["shape_for_geometry"] = shape_for_geometry
     report["crop_box"] = crop_box
+    report["geometry_crop_box"] = geometry_crop_box
     report["resize_scale"] = resize_scale
     report["footprint_mode"] = "mask" if params.use_mask_footprint else "rectangle"
     report["preview_paths"] = preview_paths
@@ -136,7 +174,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         report["warnings"].append("manual height markers were applied")
     if rim_report["enabled"]:
         report["warnings"].append("outer rim height boost was applied")
-    elif params.rim_width_px > 0 or params.rim_height_mm > 0.0:
+    elif effective_rim_width_px > 0 or params.rim_height_mm > 0.0:
         report["warnings"].append("outer rim was requested but not applied")
     if cleanup_report["removed_small_component_pixels"] > 0:
         report["warnings"].append("small isolated mask fragments were removed")
@@ -151,7 +189,7 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     if any(value > 0 for value in repair_report.values()):
         report["warnings"].append("basic mesh repair removed invalid or redundant geometry")
     if params.use_mask_footprint and params.use_smoothed_side_walls:
-        report["warnings"].append("smoothed contour side walls are experimental and may need Blender cleanup")
+        report["warnings"].append("smoothed side walls were deferred to preserve a closed grid-contour solid")
 
     written = None
     if output_path is not None:
