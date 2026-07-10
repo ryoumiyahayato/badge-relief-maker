@@ -21,6 +21,17 @@ def _safe_name(value):
     return text or "project"
 
 
+def _unique_output_path(directory, stem, export_format):
+    """Return a non-existing export path so history never points to overwritten files."""
+    directory = Path(directory)
+    candidate = directory / f"{stem}.{export_format}"
+    counter = 2
+    while candidate.exists():
+        candidate = directory / f"{stem}_{counter}.{export_format}"
+        counter += 1
+    return candidate
+
+
 def _side_data(project, side_name):
     if side_name == "front":
         return project.front_image, project.front_relief
@@ -119,10 +130,14 @@ def _shift_z(vertices, amount):
     return result
 
 
-def _mirror_z(vertices):
-    result = np.asarray(vertices, dtype=float).copy()
-    result[:, 2] = -result[:, 2]
-    return result
+def _mirror_z_mesh(vertices, faces):
+    """Reflect a mesh across Z and reverse winding to preserve outward normals."""
+    mirrored_vertices = np.asarray(vertices, dtype=float).copy()
+    mirrored_vertices[:, 2] = -mirrored_vertices[:, 2]
+    mirrored_faces = np.asarray(faces, dtype=np.int64).copy()
+    if len(mirrored_faces):
+        mirrored_faces = mirrored_faces[:, [0, 2, 1]]
+    return mirrored_vertices, mirrored_faces
 
 
 def _build_side_mesh_only(project, project_path, side_name, quality_mode, preview_root):
@@ -136,12 +151,7 @@ def _build_side_mesh_only(project, project_path, side_name, quality_mode, previe
 
 
 def build_side_relief_from_project(project, project_path, side_name="front", export_format="obj", quality_mode=None, export_name=None):
-    """Build one side relief for an existing project and update export history.
-
-    Front and back are generated independently in the MVP. This supports the
-    incremental workflow where a front-only project can later receive a back
-    image without rebuilding project metadata from scratch.
-    """
+    """Build one side relief for an existing project and update export history."""
     image_record, _ = _side_data(project, side_name)
     if image_record is None:
         raise ValueError(f"project has no {side_name} image")
@@ -154,11 +164,10 @@ def build_side_relief_from_project(project, project_path, side_name="front", exp
     preview_dir.mkdir(parents=True, exist_ok=True)
 
     export_format = _validate_export_format(export_format)
-
     params, resolved_quality = _relief_parameters_from_project(project, side_name=side_name, quality_mode=quality_mode)
     source_image = resolve_project_asset(project_path, image_record.path)
     name = _safe_name(export_name or project.name)
-    output_path = export_dir / f"{name}_{side_name}_{resolved_quality}.{export_format}"
+    output_path = _unique_output_path(export_dir, f"{name}_{side_name}_{resolved_quality}", export_format)
 
     result = build_single_side_relief(source_image, output_path, params, preview_dir=preview_dir)
     result.report["project_name"] = project.name
@@ -177,13 +186,7 @@ def build_side_relief_from_project(project, project_path, side_name="front", exp
 
 
 def build_double_side_placeholder_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Build a placeholder double-side assembly from front and back images.
-
-    This is not a fused production mesh. It places the front relief on the
-    positive side and a mirrored back relief on the negative side, then exports
-    one combined mesh for Blender inspection. OBJ and GLB output keep front and
-    back as named objects/nodes for easier selection in Blender.
-    """
+    """Build a placeholder double-side assembly from front and back images."""
     if project.front_image is None:
         raise ValueError("project has no front image")
     if project.back_image is None:
@@ -202,14 +205,15 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
 
     half_thickness = float(project.dimensions.total_thickness_mm) / 2.0
     front_vertices = _shift_z(front_result.vertices, half_thickness)
-    back_vertices = _shift_z(_mirror_z(back_result.vertices), -half_thickness)
+    mirrored_back_vertices, back_faces = _mirror_z_mesh(back_result.vertices, back_result.faces)
+    back_vertices = _shift_z(mirrored_back_vertices, -half_thickness)
     split_objects = [
         {"name": "front_relief", "vertices": front_vertices, "faces": front_result.faces},
-        {"name": "back_relief", "vertices": back_vertices, "faces": back_result.faces},
+        {"name": "back_relief", "vertices": back_vertices, "faces": back_faces},
     ]
     vertices, faces = _combine_meshes([
         (front_vertices, front_result.faces),
-        (back_vertices, back_result.faces),
+        (back_vertices, back_faces),
     ])
 
     report = basic_report(vertices, faces, minimum_thickness_mm=project.dimensions.base_thickness_mm)
@@ -224,7 +228,7 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
     report["warnings"].append("double side placeholder is not fused into one watertight production body")
 
     name = _safe_name(export_name or project.name)
-    output_path = export_dir / f"{name}_double_placeholder_{resolved_quality}.{export_format}"
+    output_path = _unique_output_path(export_dir, f"{name}_double_placeholder_{resolved_quality}", export_format)
     if export_format == "obj":
         export_obj_objects(output_path, split_objects)
     elif export_format == "glb":
@@ -245,47 +249,30 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
 
 
 def build_front_relief_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Build the front relief for an existing project and update export history."""
-    return build_side_relief_from_project(
-        project,
-        project_path,
-        side_name="front",
-        export_format=export_format,
-        quality_mode=quality_mode,
-        export_name=export_name,
-    )
+    return build_side_relief_from_project(project, project_path, "front", export_format, quality_mode, export_name)
 
 
 def build_back_relief_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Build the back relief for an existing project and update export history."""
-    return build_side_relief_from_project(
-        project,
-        project_path,
-        side_name="back",
-        export_format=export_format,
-        quality_mode=quality_mode,
-        export_name=export_name,
-    )
+    return build_side_relief_from_project(project, project_path, "back", export_format, quality_mode, export_name)
+
+
+def build_side_relief_from_project_file(project_path, side_name="front", export_format="obj", quality_mode=None, export_name=None):
+    """Load a project file and build the requested side."""
+    project = load_project(project_path)
+    result = build_side_relief_from_project(project, project_path, side_name, export_format, quality_mode, export_name)
+    save_project(project, project_path)
+    return result
 
 
 def build_front_relief_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Load a project file and build the front relief."""
-    project = load_project(project_path)
-    result = build_front_relief_from_project(project, project_path, export_format, quality_mode, export_name)
-    save_project(project, project_path)
-    return result
+    return build_side_relief_from_project_file(project_path, "front", export_format, quality_mode, export_name)
 
 
 def build_back_relief_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Load a project file and build the back relief."""
-    project = load_project(project_path)
-    result = build_back_relief_from_project(project, project_path, export_format, quality_mode, export_name)
-    save_project(project, project_path)
-    return result
+    return build_side_relief_from_project_file(project_path, "back", export_format, quality_mode, export_name)
 
 
 def build_double_side_placeholder_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Load a project file and build a double-side placeholder assembly."""
     project = load_project(project_path)
     result = build_double_side_placeholder_from_project(project, project_path, export_format, quality_mode, export_name)
     save_project(project, project_path)
