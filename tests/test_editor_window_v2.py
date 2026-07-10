@@ -7,6 +7,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication
 
+from badge_relief_maker.app.core.image_transform import ImageTransform
 from badge_relief_maker.app.core.project_io import create_project
 from badge_relief_maker.app.core.project_model import ManualMarker
 from badge_relief_maker.app.ui.editor_window import MainWindow
@@ -21,6 +22,28 @@ def test_editor_window_uses_final_normalized_marker_coordinates():
     assert geometry["coordinate_space"] == "final_normalized"
     assert geometry["x"] == 0.25
     assert geometry["y"] == 0.75
+    window.close()
+    app.processEvents()
+
+
+def test_final_mask_click_is_persisted_in_source_pixels():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window._preview_transform = ImageTransform(
+        original_shape=(100, 200),
+        crop_box=(20, 10, 180, 90),
+        cropped_shape=(80, 160),
+        resized_shape=(40, 80),
+        geometry_crop_box=(5, 3, 75, 37),
+        geometry_shape=(34, 70),
+    )
+
+    geometry = window._mask_edit_geometry("final", 0.5, 0.5, 0.1)
+
+    assert geometry["coordinate_space"] == "pixel"
+    assert geometry["x"] == pytest.approx(99.5)
+    assert geometry["y"] == pytest.approx(49.5)
+    assert geometry["radius_px"] == pytest.approx(6.8)
     window.close()
     app.processEvents()
 
