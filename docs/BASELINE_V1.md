@@ -64,7 +64,7 @@ Architectural rules:
 | Atomic save/path containment/unique assets | Implemented | Automated regression required |
 | EXIF and alpha/luminance masks | Implemented | Representative image fixtures required in final gate |
 | Perspective/manual crop/mask edits | Implemented core and GUI interaction | Latest GUI tests and manual interaction record required |
-| Unified coordinates | Implemented, including reversible final-grid mapping | Cross-quality marker fixture gate required |
+| Unified coordinates | Reversible source/final-grid mapping and a preview/standard/high physical-placement fixture are implemented | Current-commit fixture execution still required |
 | Height generation and editing | Grayscale, layers, locks, set/add/subtract/smooth, global refine implemented | Latest full-suite result required |
 | Single-side closed solid | Implemented for current fixtures | Latest topology suite required |
 | Profiled edges | Straight, sloped, bevel and rounded builders implemented | Blender/mesh visual evidence required |
@@ -147,6 +147,8 @@ Specific coordinate requirements:
 - changing perspective cannot silently retain stale crop/mask/height coordinates;
 - all mutable project controls are disabled during a background build.
 
+The repository contains an end-to-end generated fixture that applies the same `final_normalized` edit in preview, standard and high modes, converts its affected centroid to millimeters and requires pairwise placement differences to stay within one final-grid cell. It remains unaccepted until that fixture passes on the current Windows gate.
+
 ## Double-side gate
 
 The fused candidate must:
@@ -159,6 +161,7 @@ The fused candidate must:
 - have zero boundary and non-manifold edges;
 - preserve outward winding;
 - define `total_thickness_mm` as central body thickness excluding outward relief;
+- use one deterministic quality mode and one common process profile;
 - remain distinct from the inspection placeholder.
 
 `base_thickness_mm` is a single-side setting. It does not impose a lower bound on fused central-body thickness. The old two-base rule applies only to the non-fused placeholder.
@@ -189,11 +192,10 @@ Every non-blocked result remains `review_required`. Manual Blender, slicer, CAM 
 
 ## Remaining acceptance work
 
-1. Obtain a clean current-commit Windows Python 3.10/3.12 quality-gate result.
+1. Obtain a clean current-commit Windows Python 3.10/3.12 quality-gate result, including the cross-quality coordinate fixture.
 2. Build and run the packaged executable on a clean Windows machine.
 3. Record Blender imports for OBJ, STL and GLB, including fused double-side output.
 4. Record representative slicer and CAM results.
-5. Verify cross-quality visual-edit placement with fixed fixtures.
-6. Validate profiled edges and alignment on representative artwork.
-7. Produce and measure at least one physical sample before making process-tolerance claims.
-8. Continue improving self-intersection completeness and true local-thickness analysis where external results expose defects.
+5. Validate profiled edges and alignment on representative artwork.
+6. Produce and measure at least one physical sample before making process-tolerance claims.
+7. Continue improving self-intersection completeness and true local-thickness analysis where external results expose defects.
