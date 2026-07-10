@@ -78,12 +78,13 @@ def test_selected_output_folder_receives_unique_copy_and_updates_history(tmp_pat
     selected = tmp_path / "chosen"
     selected.mkdir()
     (selected / "model.stl").write_text("older", encoding="utf-8")
+    (selected / "model_2.stl").write_text("also older", encoding="utf-8")
     window.selected_output_directory = str(selected)
     result = SimpleNamespace(output_path=str(source), report=report)
 
     window._copy_result_to_selected_output(result)
 
-    target = selected / "model_2.stl"
+    target = selected / "model_3.stl"
     assert result.output_path == str(target)
     assert target.read_text(encoding="utf-8").startswith("solid sample")
     assert result.report["project_owned_export_path"] == str(source)
