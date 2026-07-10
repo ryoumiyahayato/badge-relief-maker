@@ -1,4 +1,4 @@
-# Acceptance Image Fixtures
+# Acceptance Fixtures and Validation Assets
 
 The v1 acceptance images are generated locally from source code rather than downloaded or stored as opaque binaries.
 
@@ -17,6 +17,19 @@ The command creates:
 - `asymmetric_front.png` and `asymmetric_back.png` — viewed-back flip, alignment and fused-body checks;
 - `manifest.json` — expected mask modes and fixture purposes.
 
-Generation is deterministic for the same Pillow behavior and source revision. Record the tested commit, Python/Pillow versions and generated-file hashes in `docs/VALIDATION_RECORD.md` when the Windows, Blender, slicer or CAM gate is performed.
+Generate mesh artifacts and independent trimesh read-back reports with:
 
-The generator and its tests do not themselves prove Blender, slicer, CAM or physical acceptance. They only provide reproducible inputs for those records.
+```powershell
+python tools/generate_validation_assets.py validation_assets --max-grid-cells 5000
+```
+
+This creates:
+
+- single-circle OBJ, STL and GLB files at 80 × 60 mm;
+- a ring OBJ used to verify retained holes and watertight inner walls;
+- aligned fused-double OBJ, STL and GLB files using asymmetric front/back artwork;
+- `validation_manifest.json` containing core reports, expected dimensions and independent reload facts.
+
+The manifest deliberately leaves Blender, slicer, CAM and physical-sample fields as `pending`. Programmatic trimesh reload is useful regression evidence but does not replace those external checks.
+
+Generation is deterministic for the same source revision and dependency behavior. Record the tested commit, Python, Pillow and trimesh versions plus generated-file hashes in `docs/VALIDATION_RECORD.md` when the Windows or external acceptance gate is performed.
