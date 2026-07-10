@@ -22,9 +22,32 @@ jobs:
         run: python -m badge_relief_maker.app
       - name: Verify help entry point
         run: python -m badge_relief_maker.app --help
-      - name: Verify GUI module imports
-        run: python -c "from badge_relief_maker.app.ui.main_window import MainWindow; print(MainWindow.__name__)"
+      - name: Verify corrected GUI module imports
+        run: python -c "from badge_relief_maker.app.ui.editor_window import MainWindow; print(MainWindow.__name__)"
       - name: Run static checks
         run: python -m ruff check badge_relief_maker tests
       - name: Run tests
         run: python -m pytest -q
+
+  windows-package-smoke:
+    runs-on: windows-latest
+    needs: windows-quality-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install packaging dependencies
+        run: python -m pip install -e ".[package]"
+      - name: Build executable
+        shell: pwsh
+        run: ./build_windows.ps1
+      - name: Smoke-test executable
+        run: .\dist\BadgeReliefMaker.exe --help
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: BadgeReliefMaker-windows-x64
+          path: dist/BadgeReliefMaker.exe
+          if-no-files-found: error
