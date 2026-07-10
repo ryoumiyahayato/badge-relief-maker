@@ -12,7 +12,9 @@ class ReliefParameters:
     base_thickness_mm: float = 2.0
     relief_height_mm: float = 3.0
     invert_height: bool = False
+    mask_mode: str = "auto"
     alpha_threshold: int = 1
+    luminance_threshold: float = 20.0
     minimum_thickness_mm: float = 0.8
     use_mask_footprint: bool = True
     crop_to_foreground: bool = True
@@ -24,6 +26,7 @@ class ReliefParameters:
     use_smoothed_side_walls: bool = False
     contour_smoothing_iterations: int = 1
     rim_width_px: int = 0
+    rim_width_mm: float = 0.0
     rim_height_mm: float = 0.0
     rim_profile: str = "flat"
     manual_height_markers: tuple = field(default_factory=tuple)
