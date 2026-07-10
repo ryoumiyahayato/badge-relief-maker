@@ -33,7 +33,7 @@ def _selected_action_count(args):
 
 
 def main(argv=None) -> int:
-    """Run the CLI entry point."""
+    """Run the CLI with an explicit argument sequence for testability."""
     if argv is None:
         argv = []
 
@@ -180,3 +180,8 @@ def main(argv=None) -> int:
     result = build_single_side_relief(args.input_path, args.output_path, params, preview_dir=args.preview_dir)
     print(result.report)
     return 0
+
+
+def cli() -> int:
+    """Console-script wrapper that consumes the real process arguments."""
+    return main(sys.argv[1:])
