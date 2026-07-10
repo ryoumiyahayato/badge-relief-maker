@@ -38,8 +38,8 @@ def transform_manual_height_markers(markers, original_shape, crop_box, cropped_s
 
     Normalized marker coordinates are interpreted against the original image.
     Pixel coordinates are also interpreted in original-image pixels. Callers may
-    opt out for already processed data with coordinate_space set to ``processed``
-    or ``heightmap``.
+    opt out for already processed pixel data with coordinate_space set to
+    ``processed``, ``heightmap`` or ``final``.
     """
     if markers is None:
         return ()
@@ -66,6 +66,7 @@ def transform_manual_height_markers(markers, original_shape, crop_box, cropped_s
         data = dict(marker)
         coordinate_space = str(data.get("coordinate_space", data.get("space", "normalized"))).lower()
         if coordinate_space in {"processed", "heightmap", "final"}:
+            data["coordinate_space"] = "pixel"
             transformed.append(data)
             continue
         normalized = coordinate_space not in {"pixel", "pixels", "image_pixel"}
