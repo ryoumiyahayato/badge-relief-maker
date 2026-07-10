@@ -146,6 +146,10 @@ def _validate_project_parameters(project, *, double_side=False, side_name=None, 
     if str(edge.edge_style).strip().lower() not in _EDGE_STYLES:
         raise ValueError(f"unsupported edge_style: {edge.edge_style}")
     if fused:
+        front_profile = str(project.front_relief.process_profile).strip().lower()
+        back_profile = str(project.back_relief.process_profile).strip().lower()
+        if front_profile != back_profile:
+            raise ValueError("front and back process_profile must match for a fused build")
         _validate_double_alignment(project)
     return width, height
 
@@ -466,6 +470,7 @@ def build_fused_double_side_from_project(project, project_path, export_format="o
             "front_report": front.report,
             "back_report": back.report,
             "mesh_repair": repair_report,
+            "process_profile": front_params.process_profile,
             "body_thickness_mm": float(project.dimensions.total_thickness_mm),
             "front_relief_height_mm": float(front_params.relief_height_mm),
             "back_relief_height_mm": float(back_params.relief_height_mm),
