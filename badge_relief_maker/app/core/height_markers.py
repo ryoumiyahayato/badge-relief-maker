@@ -52,10 +52,7 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
 
     affected_total = np.zeros(mask.shape, dtype=bool)
     for marker in marker_list:
-        if not isinstance(marker, dict):
-            report["ignored_marker_count"] += 1
-            continue
-        normalized = _normalize_marker(marker, mask.shape)
+        normalized = normalize_manual_height_marker(marker, mask.shape)
         if normalized is None:
             report["ignored_marker_count"] += 1
             continue
@@ -73,10 +70,19 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
     return result, report
 
 
+def normalize_manual_height_marker(marker, grid_shape):
+    """Validate and normalize one marker for a processed heightmap grid."""
+    if not isinstance(marker, dict):
+        return None
+    return _normalize_marker(marker, grid_shape)
+
+
 def _marker_list(markers):
     if markers is None:
         return []
     if isinstance(markers, dict):
+        return [markers]
+    if isinstance(markers, (str, bytes)):
         return [markers]
     try:
         return list(markers)
