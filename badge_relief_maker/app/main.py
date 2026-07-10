@@ -25,13 +25,15 @@ def run_gui() -> int:
     return int(app.exec())
 
 
-def main(argv=None) -> int:
-    """Run the CLI entry point.
+def _selected_action_count(args):
+    import_requested = bool(args.import_front_path or args.import_back_path or args.import_reference_path)
+    build_requested = bool(args.build_front or args.build_back or args.build_side or args.build_double_placeholder)
+    direct_requested = bool(args.input_path or args.output_path)
+    return sum(bool(value) for value in [args.gui, args.new_project_name, import_requested, build_requested, direct_requested])
 
-    Passing argv explicitly keeps tests and embedded callers isolated from
-    external process arguments such as pytest flags. The package __main__ module
-    passes sys.argv[1:] for normal command-line usage.
-    """
+
+def main(argv=None) -> int:
+    """Run the CLI entry point."""
     if argv is None:
         argv = []
 
@@ -39,14 +41,19 @@ def main(argv=None) -> int:
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--new-project", dest="new_project_name")
     parser.add_argument("--project-path", dest="project_path")
-    parser.add_argument("--import-front", dest="import_front_path")
-    parser.add_argument("--import-back", dest="import_back_path")
-    parser.add_argument("--import-reference", dest="import_reference_path")
+
+    import_group = parser.add_mutually_exclusive_group()
+    import_group.add_argument("--import-front", dest="import_front_path")
+    import_group.add_argument("--import-back", dest="import_back_path")
+    import_group.add_argument("--import-reference", dest="import_reference_path")
     parser.add_argument("--reference-role", default="reference")
-    parser.add_argument("--build-front", action="store_true")
-    parser.add_argument("--build-back", action="store_true")
-    parser.add_argument("--build-side", choices=["front", "back"])
-    parser.add_argument("--build-double-placeholder", action="store_true")
+
+    build_group = parser.add_mutually_exclusive_group()
+    build_group.add_argument("--build-front", action="store_true")
+    build_group.add_argument("--build-back", action="store_true")
+    build_group.add_argument("--build-side", choices=["front", "back"])
+    build_group.add_argument("--build-double-placeholder", action="store_true")
+
     parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl", "glb"])
     parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
     parser.add_argument("--input", dest="input_path")
@@ -56,6 +63,8 @@ def main(argv=None) -> int:
     parser.add_argument("--base-mm", type=float, default=2.0)
     parser.add_argument("--relief-mm", type=float, default=3.0)
     parser.add_argument("--invert", action="store_true")
+    parser.add_argument("--mask-mode", default="auto", choices=["auto", "alpha", "luminance"])
+    parser.add_argument("--luminance-threshold", type=float, default=20.0)
     parser.add_argument("--rectangle-footprint", action="store_true")
     parser.add_argument("--smoothed-side-walls", action="store_true")
     parser.add_argument("--contour-smoothing-iterations", type=int, default=1)
@@ -70,6 +79,11 @@ def main(argv=None) -> int:
     parser.add_argument("--mask-smooth-iterations", type=int, default=0)
     parser.add_argument("--preview-dir", dest="preview_dir")
     args = parser.parse_args(argv)
+
+    if _selected_action_count(args) > 1:
+        parser.error("choose exactly one primary action: GUI, new project, import, project build, or direct image build")
+    if bool(args.input_path) != bool(args.output_path):
+        parser.error("direct image builds require both --input and --output")
 
     if args.gui:
         return run_gui()
@@ -122,7 +136,7 @@ def main(argv=None) -> int:
     requested_side = args.build_side
     if args.build_front:
         requested_side = "front"
-    if args.build_back:
+    elif args.build_back:
         requested_side = "back"
 
     if requested_side:
@@ -138,7 +152,7 @@ def main(argv=None) -> int:
         print(result.report)
         return 0
 
-    if not args.input_path or not args.output_path:
+    if not args.input_path and not args.output_path:
         print("Badge Relief Maker scaffold is ready. Provide --input and --output to build an OBJ, STL or GLB.")
         return 0
 
@@ -148,6 +162,8 @@ def main(argv=None) -> int:
         base_thickness_mm=args.base_mm,
         relief_height_mm=args.relief_mm,
         invert_height=args.invert,
+        mask_mode=args.mask_mode,
+        luminance_threshold=args.luminance_threshold,
         use_mask_footprint=not args.rectangle_footprint,
         crop_to_foreground=not args.no_crop,
         crop_padding_px=args.crop_padding_px,
