@@ -22,15 +22,23 @@ def _empty_bbox():
     }
 
 
+def _vertices_array(vertices):
+    try:
+        values = np.asarray(vertices, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("vertices must be a finite Nx3 array") from exc
+    if values.size == 0:
+        return np.zeros((0, 3), dtype=float)
+    if values.ndim != 2 or values.shape[1] != 3 or not np.isfinite(values).all():
+        raise ValueError("vertices must be a finite Nx3 array")
+    return values
+
+
 def mesh_bounds(vertices):
     """Return a simple bounding box report for vertices."""
-    if len(vertices) == 0:
+    data = _vertices_array(vertices)
+    if len(data) == 0:
         return _empty_bbox()
-    data = np.asarray(vertices, dtype=float)
-    if data.ndim != 2 or data.shape[1] != 3:
-        raise ValueError("vertices must be an Nx3 array")
-    if not np.isfinite(data).all():
-        raise ValueError("vertices contain non-finite coordinates")
     mins = data.min(axis=0)
     maxs = data.max(axis=0)
     sizes = maxs - mins
@@ -72,6 +80,17 @@ def _empty_face_geometry_report(invalid_face_count=0, malformed_face_array=False
         "up_facing_face_count": 0,
         "down_facing_face_count": 0,
         "side_facing_face_count": 0,
+        "malformed_face_array": bool(malformed_face_array),
+    }
+
+
+def _empty_component_report(invalid_face_count=0, malformed_face_array=False):
+    return {
+        "component_count": 0,
+        "component_face_counts": [],
+        "largest_component_face_count": 0,
+        "valid_face_count": 0,
+        "invalid_face_count": int(invalid_face_count),
         "malformed_face_array": bool(malformed_face_array),
     }
 
@@ -155,23 +174,24 @@ def edge_usage_report(faces):
     }
 
 
+def _valid_faces(vertices, faces):
+    valid_mask = np.all((faces >= 0) & (faces < len(vertices)), axis=1)
+    return faces[valid_mask], int(len(faces) - int(valid_mask.sum()))
+
+
 def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
     """Return triangle area, volume and normal-orientation diagnostics."""
-    vertices = np.asarray(vertices, dtype=float)
+    vertices = _vertices_array(vertices)
     malformed_row_count = _face_row_count(faces)
     normalized_faces = _faces_array(faces)
     if normalized_faces is None:
         return _empty_face_geometry_report(invalid_face_count=malformed_row_count, malformed_face_array=True)
-    if len(vertices) == 0 or normalized_faces.size == 0:
+    if normalized_faces.size == 0:
         return _empty_face_geometry_report()
-    if vertices.ndim != 2 or vertices.shape[1] != 3 or not np.isfinite(vertices).all():
-        raise ValueError("vertices must be a finite Nx3 array")
     if not _is_triangular_face_array(normalized_faces):
         return _empty_face_geometry_report(invalid_face_count=malformed_row_count, malformed_face_array=True)
 
-    valid_mask = np.all((normalized_faces >= 0) & (normalized_faces < len(vertices)), axis=1)
-    valid_faces = normalized_faces[valid_mask]
-    invalid_count = int(len(normalized_faces) - len(valid_faces))
+    valid_faces, invalid_count = _valid_faces(vertices, normalized_faces)
     if len(valid_faces) == 0:
         return _empty_face_geometry_report(invalid_face_count=invalid_count)
 
@@ -210,13 +230,68 @@ def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
     }
 
 
+def connected_component_report(vertices, faces):
+    """Count face-connected mesh components using shared vertex indices."""
+    vertices = _vertices_array(vertices)
+    malformed_row_count = _face_row_count(faces)
+    normalized_faces = _faces_array(faces)
+    if normalized_faces is None:
+        return _empty_component_report(invalid_face_count=malformed_row_count, malformed_face_array=True)
+    if normalized_faces.size == 0:
+        return _empty_component_report()
+    if not _is_triangular_face_array(normalized_faces):
+        return _empty_component_report(invalid_face_count=malformed_row_count, malformed_face_array=True)
+
+    valid_faces, invalid_count = _valid_faces(vertices, normalized_faces)
+    if len(valid_faces) == 0:
+        return _empty_component_report(invalid_face_count=invalid_count)
+
+    parent = np.arange(len(vertices), dtype=np.int64)
+    rank = np.zeros(len(vertices), dtype=np.int8)
+
+    def find(index):
+        index = int(index)
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = int(parent[index])
+        return index
+
+    def union(left, right):
+        root_left = find(left)
+        root_right = find(right)
+        if root_left == root_right:
+            return
+        if rank[root_left] < rank[root_right]:
+            root_left, root_right = root_right, root_left
+        parent[root_right] = root_left
+        if rank[root_left] == rank[root_right]:
+            rank[root_left] += 1
+
+    for a, b, c in valid_faces:
+        union(a, b)
+        union(b, c)
+
+    counts = Counter(find(face[0]) for face in valid_faces)
+    component_face_counts = sorted((int(count) for count in counts.values()), reverse=True)
+    return {
+        "component_count": int(len(component_face_counts)),
+        "component_face_counts": component_face_counts,
+        "largest_component_face_count": component_face_counts[0] if component_face_counts else 0,
+        "valid_face_count": int(len(valid_faces)),
+        "invalid_face_count": invalid_count,
+        "malformed_face_array": False,
+    }
+
+
 def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_faces=200000):
     """Return a simple advisory mesh diagnostic report."""
+    vertices = _vertices_array(vertices)
     vertex_count = int(len(vertices))
     face_count = _face_row_count(faces)
     bounds = mesh_bounds(vertices)
     topology = edge_usage_report(faces)
     face_geometry = face_geometry_report(vertices, faces)
+    components = connected_component_report(vertices, faces)
     warnings = []
 
     if vertex_count == 0 or face_count == 0:
@@ -239,6 +314,8 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         warnings.append("invalid face references detected")
     if face_geometry["zero_area_face_count"] > 0:
         warnings.append("zero-area faces detected")
+    if components["component_count"] > 1:
+        warnings.append("multiple disconnected mesh components detected")
 
     return {
         "vertex_count": vertex_count,
@@ -249,6 +326,7 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         "minimum_thickness_mm": minimum_thickness_mm,
         "topology": topology,
         "face_geometry": face_geometry,
+        "components": components,
         "warnings": warnings,
         "watertight_check": "oriented edge-manifold heuristic",
         "thin_region_check": "not implemented",
