@@ -24,7 +24,7 @@ def run_gui() -> int:
         print("PySide6 is not installed. Install GUI dependencies before using --gui.")
         return 2
 
-    from .ui.main_window import MainWindow
+    from .ui.editor_window import MainWindow
 
     app = QApplication(sys.argv[:1])
     window = MainWindow()
