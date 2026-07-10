@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from PIL import Image
 
 from badge_relief_maker.app.core.contour_side_builder import build_contour_side_walls, build_smoothed_contour_side_walls
@@ -473,23 +474,16 @@ def test_single_side_pipeline_rectangle_ignores_smoothed_side_wall_flag(tmp_path
     assert "smoothed side walls were deferred to preserve a closed grid-contour solid" not in result.report["warnings"]
 
 
-def test_single_side_pipeline_handles_empty_foreground(tmp_path):
+def test_single_side_pipeline_blocks_empty_foreground(tmp_path):
     image = Image.new("RGBA", (4, 4), (0, 0, 0, 0))
     image_path = tmp_path / "empty.png"
     output_path = tmp_path / "empty.obj"
     image.save(image_path)
 
-    result = build_single_side_relief(image_path, output_path, ReliefParameters(width_mm=5.0, height_mm=5.0))
+    with pytest.raises(ValueError, match="foreground mask is empty"):
+        build_single_side_relief(image_path, output_path, ReliefParameters(width_mm=5.0, height_mm=5.0))
 
-    assert output_path.exists()
-    assert result.vertices.shape == (0, 3)
-    assert result.faces.shape == (0, 3)
-    assert result.report["vertex_count"] == 0
-    assert result.report["face_count"] == 0
-    assert result.report["mask_pixel_count"] == 0
-    assert result.report["outline"]["outline_guess"] == "empty"
-    assert "empty mesh" in result.report["warnings"]
-    assert "mask contains no foreground pixels" in result.report["warnings"]
+    assert not output_path.exists()
 
 
 def test_single_side_pipeline_writes_stl(tmp_path):
