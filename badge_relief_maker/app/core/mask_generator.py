@@ -32,6 +32,10 @@ def luminance_mask(rgba: np.ndarray, threshold: int = 20) -> np.ndarray:
 
 def foreground_mask(rgba, mode="auto", alpha_threshold=1, luminance_threshold=20):
     """Resolve alpha/luminance foreground masking and report the selected mode."""
+    rgba = np.asarray(rgba)
+    if rgba.ndim != 3 or rgba.shape[2] != 4:
+        raise ValueError("expected rgba image")
+
     mode = str(mode or "auto").strip().lower()
     if mode not in {"auto", "alpha", "luminance"}:
         raise ValueError(f"unsupported mask mode: {mode}")
@@ -41,7 +45,7 @@ def foreground_mask(rgba, mode="auto", alpha_threshold=1, luminance_threshold=20
     if mode == "luminance":
         return luminance_mask(rgba, luminance_threshold), "luminance"
 
-    alpha = np.asarray(rgba)[:, :, 3]
+    alpha = rgba[:, :, 3]
     visible = alpha >= int(alpha_threshold)
     if not np.any(visible):
         return alpha_mask(rgba, alpha_threshold), "alpha"
