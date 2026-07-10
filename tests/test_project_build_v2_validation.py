@@ -1,6 +1,6 @@
 import pytest
 
-from badge_relief_maker.app.core.project_build import _validate_project_parameters
+from badge_relief_maker.app.core.project_build import _resolve_double_quality, _validate_project_parameters
 from badge_relief_maker.app.core.project_io import create_project
 
 
@@ -47,3 +47,28 @@ def test_fused_build_requires_one_process_profile_for_the_whole_object():
 
     with pytest.raises(ValueError, match="process_profile must match"):
         _validate_project_parameters(project, fused=True)
+
+
+def test_double_build_rejects_ambiguous_saved_quality_modes():
+    project = create_project("Mixed Quality")
+    project.front_relief.quality_mode = "preview"
+    project.back_relief.quality_mode = "high"
+
+    with pytest.raises(ValueError, match="quality_mode must match"):
+        _resolve_double_quality(project)
+
+
+def test_double_build_explicit_quality_override_applies_to_both_sides():
+    project = create_project("Override Quality")
+    project.front_relief.quality_mode = "preview"
+    project.back_relief.quality_mode = "high"
+
+    assert _resolve_double_quality(project, "standard") == "standard"
+
+
+def test_double_build_normalizes_equivalent_saved_quality_aliases():
+    project = create_project("Quality Aliases")
+    project.front_relief.quality_mode = "low"
+    project.back_relief.quality_mode = "draft"
+
+    assert _resolve_double_quality(project) == "preview"
