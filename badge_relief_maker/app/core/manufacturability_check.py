@@ -6,6 +6,10 @@ import numpy as np
 
 
 _MALFORMED_FACE_WARNING = "malformed face array detected"
+_MANUFACTURING_DISCLAIMER = (
+    "Manufacturing checks are advisory only. A closed mesh can still contain thin walls, "
+    "self-intersections, unsupported details or process-specific hazards."
+)
 
 
 def _empty_bbox():
@@ -246,12 +250,7 @@ def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
 
 
 def connected_component_report(vertices, faces):
-    """Report face-connected components using shared vertex indices.
-
-    Each component includes its face count, oriented-edge closure state and signed
-    volume. Per-component volumes prevent one outward component from hiding an
-    inward component through cancellation in the whole-mesh volume.
-    """
+    """Report face-connected components using shared vertex indices."""
     vertices = _vertices_array(vertices)
     malformed_row_count = _face_row_count(faces)
     normalized_faces = _faces_array(faces)
@@ -313,10 +312,7 @@ def connected_component_report(vertices, faces):
         )
 
     details.sort(key=lambda item: (-item["face_count"], item["root"]))
-    component_reports = [
-        {key: value for key, value in item.items() if key != "root"}
-        for item in details
-    ]
+    component_reports = [{key: value for key, value in item.items() if key != "root"} for item in details]
     component_face_counts = [item["face_count"] for item in component_reports]
     component_volumes = [item["signed_volume_mm3"] for item in component_reports]
     component_closed = [item["closed_oriented_manifold"] for item in component_reports]
@@ -340,8 +336,53 @@ def connected_component_report(vertices, faces):
     }
 
 
+def manufacturing_gate_report(vertex_count, face_count, bounds, topology, face_geometry, components, minimum_thickness_mm=None):
+    """Return an explicit non-certifying gate for severe mesh defects."""
+    blockers = []
+    review_flags = []
+    if vertex_count == 0 or face_count == 0:
+        blockers.append("mesh is empty")
+    if topology.get("malformed_face_array") or face_geometry.get("malformed_face_array"):
+        blockers.append("face array is malformed")
+    if topology["boundary_edge_count"] > 0:
+        blockers.append("open boundary edges are present")
+    if topology["non_manifold_edge_count"] > 0:
+        blockers.append("non-manifold edges are present")
+    if topology["inconsistent_winding_edge_count"] > 0:
+        blockers.append("face winding is inconsistent")
+    if face_geometry["invalid_face_count"] > 0:
+        blockers.append("invalid face references are present")
+    if face_geometry["zero_area_face_count"] > 0:
+        blockers.append("zero-area faces are present")
+    if components["component_count"] == 0 and face_count > 0:
+        blockers.append("no valid face-connected component was found")
+    if components["open_or_unoriented_component_count"] > 0:
+        blockers.append("one or more components are open or unoriented")
+    if components["inward_closed_component_count"] > 0:
+        blockers.append("one or more closed components are oriented inward")
+    if minimum_thickness_mm is not None and bounds["size_z"] < float(minimum_thickness_mm):
+        blockers.append("estimated total thickness is below the configured minimum")
+    if components["component_count"] > 1:
+        review_flags.append("multiple disconnected components require manual review")
+
+    return {
+        "status": "blocked" if blockers else "review_required",
+        "topology_checks_passed": bool(not blockers),
+        "unattended_manufacturing_recommended": False,
+        "blockers": blockers,
+        "review_flags": review_flags,
+        "missing_checks": [
+            "self-intersection detection",
+            "local wall-thickness analysis",
+            "minimum feature-size analysis",
+            "process-specific overhang and tool-access analysis",
+        ],
+        "disclaimer": _MANUFACTURING_DISCLAIMER,
+    }
+
+
 def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_faces=200000):
-    """Return a simple advisory mesh diagnostic report."""
+    """Return a cautious advisory mesh diagnostic report."""
     vertices = _vertices_array(vertices)
     vertex_count = int(len(vertices))
     face_count = _face_row_count(faces)
@@ -379,6 +420,15 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
     if components["component_count"] > 1:
         warnings.append("multiple disconnected mesh components detected")
 
+    manufacturing_gate = manufacturing_gate_report(
+        vertex_count,
+        face_count,
+        bounds,
+        topology,
+        face_geometry,
+        components,
+        minimum_thickness_mm,
+    )
     return {
         "vertex_count": vertex_count,
         "face_count": face_count,
@@ -389,6 +439,8 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         "topology": topology,
         "face_geometry": face_geometry,
         "components": components,
+        "manufacturing_gate": manufacturing_gate,
+        "manufacturing_advisory": _MANUFACTURING_DISCLAIMER,
         "warnings": warnings,
         "watertight_check": "oriented edge-manifold heuristic",
         "thin_region_check": "not implemented",
