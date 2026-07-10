@@ -55,13 +55,34 @@ def _number(value, name, *, positive=False, nonnegative=False):
     return result
 
 
-def _validate_project_parameters(project, *, double_side=False):
-    """Validate project dimensions for the requested build mode.
+def _integer(value, name, *, minimum=None, maximum=None):
+    try:
+        converted = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if not np.isfinite(converted) or converted != round(converted):
+        raise ValueError(f"{name} must be an integer")
+    result = int(converted)
+    if minimum is not None and result < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    if maximum is not None and result > maximum:
+        raise ValueError(f"{name} must be at most {maximum}")
+    return result
 
-    A single-side build only consumes one base slab. The double-side placeholder
-    places one slab on each side of the configured total thickness, so it needs
-    room for two base slabs.
-    """
+
+def _validate_side_parameters(side, label):
+    _number(side.relief_height_mm, f"{label} relief_height_mm", nonnegative=True)
+    _number(side.background_depth_mm, f"{label} background_depth_mm", nonnegative=True)
+    _number(side.luminance_threshold, f"{label} luminance_threshold", nonnegative=True)
+    _number(side.minimum_thickness_mm, f"{label} minimum_thickness_mm", nonnegative=True)
+    _integer(side.alpha_threshold, f"{label} alpha_threshold", minimum=0, maximum=255)
+    _integer(side.crop_padding_px, f"{label} crop_padding_px", minimum=0)
+    if str(side.mask_mode).lower() not in {"auto", "alpha", "luminance", "luminance-dark", "luminance-light"}:
+        raise ValueError(f"unsupported {label} mask_mode: {side.mask_mode}")
+
+
+def _validate_project_parameters(project, *, double_side=False):
+    """Validate dimensions and side settings for the requested build mode."""
     dimensions = project.dimensions
     width = _number(dimensions.width_mm, "width_mm", positive=True)
     height = _number(dimensions.height_mm, "height_mm", positive=True)
@@ -72,10 +93,12 @@ def _validate_project_parameters(project, *, double_side=False):
         if double_side:
             raise ValueError("total_thickness_mm must be at least twice base_thickness_mm for a double-side build")
         raise ValueError("total_thickness_mm must be at least base_thickness_mm for a single-side build")
-    _number(project.front_relief.relief_height_mm, "front relief_height_mm", nonnegative=True)
-    _number(project.back_relief.relief_height_mm, "back relief_height_mm", nonnegative=True)
+    _validate_side_parameters(project.front_relief, "front")
+    _validate_side_parameters(project.back_relief, "back")
     _number(project.edge.rim_width_mm, "rim_width_mm", nonnegative=True)
     _number(project.edge.rim_height_mm, "rim_height_mm", nonnegative=True)
+    _integer(project.edge.rim_width_px, "rim_width_px", minimum=0)
+    _integer(project.edge.contour_smoothing_iterations, "contour_smoothing_iterations", minimum=0)
     return width, height
 
 
@@ -118,7 +141,7 @@ def _manual_height_markers_from_project(project, side_name):
 
 
 def _relief_parameters_from_project(project, side_name="front", quality_mode=None):
-    """Create ReliefParameters from saved project settings."""
+    """Create runtime parameters from persisted project settings."""
     _, side = _side_data(project, side_name)
     mode = quality_mode or side.quality_mode
     preset = quality_preset(mode)
@@ -129,6 +152,13 @@ def _relief_parameters_from_project(project, side_name="front", quality_mode=Non
         height_mm=project.dimensions.height_mm,
         base_thickness_mm=project.dimensions.base_thickness_mm,
         relief_height_mm=side.relief_height_mm,
+        invert_height=bool(side.invert_height),
+        mask_mode=str(side.mask_mode),
+        alpha_threshold=int(side.alpha_threshold),
+        luminance_threshold=float(side.luminance_threshold),
+        minimum_thickness_mm=float(side.minimum_thickness_mm),
+        crop_to_foreground=bool(side.crop_to_foreground),
+        crop_padding_px=int(side.crop_padding_px),
         max_grid_cells=preset["max_grid_cells"],
         min_component_pixels=preset["min_component_pixels"],
         fill_hole_pixels=preset["fill_hole_pixels"],
@@ -216,6 +246,8 @@ def build_side_relief_from_project(project, project_path, side_name="front", exp
     result.report["project_quality_mode"] = resolved_quality
     result.report["project_source_role"] = side_name
     result.report["same_physical_object"] = project.same_physical_object
+    result.report["configured_total_thickness_mm"] = float(project.dimensions.total_thickness_mm)
+    result.report["thickness_semantics"] = "single-side bbox thickness equals base plus generated relief; project total thickness is a double-side body budget"
 
     add_export_record(
         project,
@@ -228,7 +260,7 @@ def build_side_relief_from_project(project, project_path, side_name="front", exp
 
 
 def build_double_side_placeholder_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
-    """Build a placeholder double-side assembly from front and back images."""
+    """Build a non-fused front/back inspection assembly."""
     _validate_project_parameters(project, double_side=True)
     if project.front_image is None:
         raise ValueError("project has no front image")
@@ -262,10 +294,17 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
     report["project_source_role"] = "double_placeholder"
     report["assembly_mode"] = "front_back_placeholder_not_fused"
     report["same_physical_object"] = project.same_physical_object
+    report["configured_total_thickness_mm"] = float(project.dimensions.total_thickness_mm)
+    report["thickness_semantics"] = "placeholder offsets two complete single-side solids around the configured body budget; it is not final bbox thickness"
     report["split_objects"] = [item["name"] for item in split_objects] if export_format in {"obj", "glb"} else []
     report["front_report"] = front_result.report
     report["back_report"] = back_result.report
-    report["warnings"].append("double side placeholder is not fused into one watertight production body")
+    warning = "double side placeholder is not fused into one watertight production body"
+    report["warnings"].append(warning)
+    report["manufacturing_gate"]["status"] = "blocked"
+    report["manufacturing_gate"]["topology_checks_passed"] = False
+    if warning not in report["manufacturing_gate"]["blockers"]:
+        report["manufacturing_gate"]["blockers"].append(warning)
 
     name = _safe_name(export_name or project.name)
     output_path = _unique_output_path(export_dir, f"{name}_double_placeholder_{resolved_quality}", export_format)
@@ -277,6 +316,7 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
         export_mesh(output_path, vertices, faces)
     report["export_path"] = str(output_path)
     report["export_format"] = export_format
+    report["unit_convention"] = "millimeters (STL stores no explicit unit metadata)"
 
     add_export_record(
         project,
