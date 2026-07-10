@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "badge-relief-maker"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local 2D badge and medal artwork to editable 2.5D relief meshes."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 dependencies = [
   "numpy>=1.24",
   "Pillow>=10.0",
@@ -16,6 +16,11 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
 gui = ["PySide6>=6.6"]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "PySide6>=6.6",
+]
 
 [project.scripts]
 badge-relief-maker = "badge_relief_maker.app.main:cli"
@@ -28,3 +33,10 @@ exclude = ["tests*", "badge-relief-maker*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 140
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
