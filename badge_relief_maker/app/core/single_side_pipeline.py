@@ -6,6 +6,7 @@ from .height_markers import apply_manual_height_markers
 from .heightmap_generator import grayscale_heightmap
 from .image_preprocess import load_rgba, normalize_alpha_background
 from .manufacturability_check import basic_report
+from .marker_transform import transform_manual_height_markers
 from .mask_generator import foreground_mask
 from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_masked_relief_solid
@@ -80,7 +81,15 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
     shape_after_crop = tuple(mask.shape)
     mask, heightmap, resize_scale = resize_mask_and_heightmap(mask, heightmap, params.max_grid_cells)
     shape_after_resize = tuple(mask.shape)
-    heightmap, manual_height_report = apply_manual_height_markers(heightmap, mask, params.manual_height_markers)
+    transformed_markers = transform_manual_height_markers(
+        params.manual_height_markers,
+        original_shape=original_shape,
+        crop_box=crop_box,
+        cropped_shape=shape_after_crop,
+        resized_shape=shape_after_resize,
+    )
+    heightmap, manual_height_report = apply_manual_height_markers(heightmap, mask, transformed_markers)
+    manual_height_report["coordinate_transform"] = "original_image_to_processed_grid"
 
     geometry_crop_box = None
     if params.crop_to_foreground:
