@@ -9,7 +9,7 @@ from .manufacturability_check import basic_report
 from .mesh_exporter import export_glb_objects, export_mesh, export_obj_objects
 from .mesh_repair import repair_mesh_basic
 from .project_io import add_export_record, asset_root_for, load_project, resolve_project_asset, save_project
-from .quality_modes import quality_preset
+from .quality_modes import normalize_quality_mode, quality_preset
 from .relief_parameters import ReliefBuildResult, ReliefParameters
 from .single_side_pipeline import build_single_side_relief, prepare_relief_field
 
@@ -152,6 +152,17 @@ def _validate_project_parameters(project, *, double_side=False, side_name=None, 
             raise ValueError("front and back process_profile must match for a fused build")
         _validate_double_alignment(project)
     return width, height
+
+
+def _resolve_double_quality(project, quality_mode=None):
+    """Return one quality mode for both sides, rejecting ambiguous saved state."""
+    if quality_mode is not None:
+        return normalize_quality_mode(quality_mode)
+    front_quality = normalize_quality_mode(project.front_relief.quality_mode)
+    back_quality = normalize_quality_mode(project.back_relief.quality_mode)
+    if front_quality != back_quality:
+        raise ValueError("front and back quality_mode must match unless a build quality override is provided")
+    return front_quality
 
 
 def _rim_width_px_from_project(project, preset):
@@ -355,8 +366,9 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
     export_dir.mkdir(parents=True, exist_ok=True)
     preview_root.mkdir(parents=True, exist_ok=True)
     export_format = _validate_export_format(export_format)
-    front_result, resolved_quality = _build_side_mesh_only(project, project_path, "front", quality_mode, preview_root)
-    back_result, _ = _build_side_mesh_only(project, project_path, "back", quality_mode, preview_root)
+    build_quality = _resolve_double_quality(project, quality_mode)
+    front_result, resolved_quality = _build_side_mesh_only(project, project_path, "front", build_quality, preview_root)
+    back_result, _ = _build_side_mesh_only(project, project_path, "back", build_quality, preview_root)
     half_thickness = float(project.dimensions.total_thickness_mm) / 2.0
     front_vertices = _shift_z(front_result.vertices, half_thickness)
     mirrored_back, back_faces = _mirror_z_mesh(back_result.vertices, back_result.faces)
@@ -410,8 +422,9 @@ def build_fused_double_side_from_project(project, project_path, export_format="o
     preview_root = asset_root_for(project_path) / "previews" / "double_fused"
     export_dir.mkdir(parents=True, exist_ok=True)
     preview_root.mkdir(parents=True, exist_ok=True)
-    front, front_params, resolved_quality = _prepare_side_field(project, project_path, "front", quality_mode, preview_root)
-    back, back_params, _ = _prepare_side_field(project, project_path, "back", quality_mode, preview_root)
+    build_quality = _resolve_double_quality(project, quality_mode)
+    front, front_params, resolved_quality = _prepare_side_field(project, project_path, "front", build_quality, preview_root)
+    back, back_params, _ = _prepare_side_field(project, project_path, "back", build_quality, preview_root)
     alignment_model = project.double_side
     alignment = {
         "back_scale": alignment_model.back_scale,
