@@ -1,230 +1,184 @@
 # Codex Tasks
 
-This file is the execution guide for future automated coding work. `docs/BASELINE_V1.md` is the acceptance source of truth.
+`docs/BASELINE_V1.md` is the acceptance source of truth. Preserve the deterministic local relief pipeline; do not replace unresolved coordinate, topology or engineering work with optional AI.
 
-Do not turn this project into a general AI image-to-3D application. Preserve the deterministic local relief pipeline and fix correctness, coordinates, topology and engineering stability before adding optional AI.
+## Working rule
 
-## Working rule for every task
-
-1. Audit the affected existing code for obvious regressions first.
-2. Fix blockers before adding features.
-3. Add or update tests for every core behavior change.
-4. Do not mark a feature complete until its acceptance tests pass.
+1. Audit affected code for obvious regressions before adding features.
+2. Fix blockers and semantic contradictions first.
+3. Add tests for every core behavior change.
+4. Do not mark implementation as accepted without current-commit evidence.
 5. Keep all processing local and offline.
-6. Keep the double-side placeholder explicitly non-fused and manufacturing-blocked.
+6. Keep the non-fused placeholder explicitly blocked.
+7. Never describe advisory analysis as manufacturing certification.
 
-## Task 0: Windows quality gate
+## Task 0: Current Windows quality gate
 
-Status: implemented in workflow; successful run evidence pending.
+Status: **highest priority; evidence pending**.
 
-Required commands:
+Run on the current head:
 
 ```powershell
 python -m pip install -e ".[dev]"
 python -m badge_relief_maker.app
 python -m badge_relief_maker.app --help
+python -c "from badge_relief_maker.app.ui.editor_window import MainWindow; print(MainWindow.__name__)"
 python -m ruff check badge_relief_maker tests
 python -m pytest -q
 ```
 
-Acceptance:
+Required:
 
-- Python 3.10 and 3.12 pass on Windows.
-- Package and GUI modules import from the repository root package.
-- No obsolete nested package is used.
-- Record the actual result in `docs/VALIDATION_RECORD.md`.
+- Windows Python 3.10 and 3.12 pass.
+- Record exact test count and commit in `docs/VALIDATION_RECORD.md`.
+- Inspect any failure as a real regression until proven otherwise.
+- Do not rely on the earlier intermediate 168-test run for the current commit.
 
-The initial Ruff gate intentionally checks execution-breaking syntax/name defects. Enable broad formatting/import-order rules only in a dedicated normalization change.
+## Task 1: Package artifact and clean-machine run
 
-## Task 1: Project format and resource safety
+Status: build configuration implemented; evidence pending.
 
-Status: core implemented; migration and GUI recovery tests pending.
+Required:
 
-Implemented:
+1. Let the Windows package workflow build `BadgeReliefMaker.exe`.
+2. Download and launch it on a machine without the source checkout or Python environment.
+3. Verify `--help`, GUI launch, project create/open/save and one sample export.
+4. Record Windows version, artifact commit, file hash and result.
+5. Add version metadata/icon only after the functional artifact passes.
 
-- Atomic JSON replacement with flush/fsync and NaN/Infinity rejection.
-- Strict supported file-version ceiling.
-- Explicit boolean parsing.
-- Malformed nested-record filtering.
-- Unique imported asset names and export names.
-- Asset-root containment checks.
-- Persisted front/back image-processing settings.
-- Schema and trust-boundary documentation in `docs/PROJECT_FORMAT.md`.
-- Single-side builds validate only the requested face; double-side builds validate both.
+## Task 2: Cross-quality visual-coordinate fixture
 
-Next acceptance work:
+Status: core transforms and unit tests implemented; end-to-end fixture pending.
 
-- Add formal migration when version 2 is introduced.
-- Add GUI tests for corrupt JSON and unsupported versions.
-- Add validation for more malformed field types during load, not only before build.
+Required fixture:
 
-## Task 2: Input image and mask pipeline
+1. Use one source with a non-trivial perspective transform, manual crop and automatic crop.
+2. Add a source-space mask edit.
+3. Add one final-mask click and one final-height/layer click.
+4. Build preview, standard and high.
+5. Verify the affected physical region differs by no more than one final grid cell.
+6. Verify all X/Y dimensions remain within ±0.05 mm.
+7. Save/reopen the project and repeat.
 
-Status: controlled-image MVP implemented.
+Also test that changing perspective prompts for clearing dependent edits and that clearing one side converts a `both` marker to the other side rather than deleting it globally.
 
-Implemented:
+## Task 3: GUI Windows interaction acceptance
 
-- EXIF-aware loading and source metadata.
-- Alpha, contrast luminance, dark-foreground and light-foreground modes.
-- Auto mode only trusts alpha when it contains variation.
-- Mask cleanup, preview files, crop and downsampling.
-- Empty masks block model export.
+Status: implementation candidate present; manual record pending.
 
-Next:
+Verify:
 
-- Manual crop UI.
-- User-editable mask input.
-- Preview overlay showing the exact final mask.
-- Perspective correction for photographed paper drawings.
+- source preview switches between oriented source for perspective and post-perspective source for crop/editing;
+- mask and height previews represent the exact final grid;
+- crop, mask, layer, set/add/subtract/smooth tools persist correctly;
+- front/back parameter switching does not overwrite the wrong side;
+- all mutable controls are disabled during a worker build;
+- errors are readable and the report panel is complete;
+- unsaved changes prompt on new/open/close;
+- output folder action opens the actual export directory.
 
-## Task 3: Unified coordinates
+Add focused GUI tests where deterministic; keep screenshot/manual evidence in the validation record.
 
-Status: core transform implemented.
+## Task 4: Project v2 robustness
 
-Implemented:
+Status: migration and schema implemented; adversarial coverage should continue.
 
-- `ImageTransform` records original, crop, resized and final geometry stages.
-- Circle, rectangle and polygon markers use the same transform.
-- Pixel radii and rectangular dimensions scale with resize.
-- Original/processed marker positions are shifted into the final tight geometry grid.
-- `coordinate_space: final` remains relative to the final geometry grid.
-- Processing padding does not change final requested XY dimensions.
+Required:
 
-Next:
+- corrupt JSON and unsupported-version GUI recovery tests;
+- malformed crop, perspective, mask edit, region layer and alignment records;
+- negative, NaN, Infinity and wrong-type fields;
+- asset symlink/junction containment behavior on Windows;
+- v1 load → v2 save → equivalent rebuild test;
+- repeated same-name imports and exports.
 
-- Use `ImageTransform` directly in GUI preview hit testing.
-- Add physical millimeter editing and manual crop transforms.
-- Verify marker location across preview/standard/high fixtures within one final grid cell.
+Fused validation rule:
 
-## Task 4: Heightmap and local edits
+- `total_thickness_mm` is central body thickness and is independent of `base_thickness_mm`;
+- the two-base minimum applies only to the non-fused placeholder;
+- front/back process profiles must be reconciled explicitly before one fused report is produced.
 
-Status: grayscale and marker core implemented.
+## Task 5: Single-side geometry acceptance
 
-Implemented:
+Status: implementation candidate present; current full suite and visual evidence pending.
 
-- Foreground-only grayscale normalization.
-- Deterministic full-height plateau for a uniform-brightness foreground.
-- Invert mode with `inverted = 1 - normal` inside the mask.
-- Set/add/subtract markers.
-- Circle, rectangle and polygon regions.
-- Rim clipping count and warning.
+Keep direct topology assertions for:
 
-Next:
+- single cell;
+- rectangle;
+- circle-like footprint;
+- ring/hole;
+- adjacent unequal heights;
+- 2×2 varying heights;
+- disconnected fragments;
+- border contact;
+- empty mask;
+- exact layered plateaus;
+- straight, sloped, bevel and rounded edges.
 
-- Optionally expose a user-selectable uniform-height value.
-- Add smoothing/soften brush.
-- Add region layers and local height locks.
-- Add GUI editing and saved visual overlays.
+Every successful fixture must have zero open/non-manifold/inconsistent-winding edges, valid indices, zero zero-area faces, outward components and correct dimensions.
 
-## Task 5: Closed single-side solid
+## Task 6: Manufacturing analysis hardening
 
-Status: indexed height-field implementation and generated fixture tests present; full CI evidence pending.
+Status: advisory implementation present.
 
-Implemented fixtures:
-
-- Single cell.
-- Rectangle and varying rectangular height field.
-- Ring with a hole.
-- Two unequal adjacent cells.
-- 2×2 varying heights.
-- Multiple fragments.
-- Border-touching foreground.
-- Empty mask export blocking.
-- Preview/standard/high physical-size consistency.
-
-Still required:
-
-- Dedicated circle-like fixture.
-- Full Windows suite result.
-- Stable external image/mesh fixture artifacts where useful.
-
-Next geometry work:
-
-- Self-intersection detection.
-- Component-level automatic orientation repair.
-- True sharp constrained height steps.
-- True bevelled and rounded rims.
-
-## Task 6: Export and report
-
-Status: OBJ, ASCII STL and GLB implemented.
-
-Implemented:
-
-- Shared finite `N×3` mesh validation.
-- Integer and in-range face indices.
-- Mirrored face winding correction.
-- Atomic file replacement and parent creation.
-- Unique project output names.
-- Component-level closure and signed-volume report.
-- Explicit `blocked` versus `review_required` manufacturing gate.
-- STL millimeter convention recorded in build reports.
+Current implementation includes topology, orientation repair, bounded self-intersection broad phase, vertical-thickness, feature-size, tiny-component and orientation-based process checks.
 
 Next:
 
-- Blender round-trip fixtures and recorded manual checks.
-- Mesh read-back tests where practical.
-- Local wall-thickness and minimum-feature analysis.
-- Self-intersection report.
-- Block zero-volume closed components explicitly.
+- quantify and test the self-intersection candidate-limit behavior;
+- add representative false-positive/false-negative fixtures;
+- extend local thickness beyond vertical height-field estimates where practical;
+- distinguish isolated decorative components from intended multi-part output;
+- add more explicit mould draft and CNC tool-access summaries;
+- keep `review_required` for every non-blocked result.
 
-## Task 7: Desktop GUI single-side workflow
+## Task 7: Fused double-side acceptance
 
-Status: partial.
+Status: implementation candidate present; external alignment validation pending.
 
-Implemented:
+Required:
 
-- New/open/save project.
-- Front/back/reference import.
-- Persisted width, height, base, relief, mask, invert, quality and rim controls.
-- Controls are applied to the requested front/back build side and the active side is retained for later save.
-- Worker-thread builds with duplicate-build prevention and worker cleanup.
-- OBJ/STL/GLB actions.
-- Readable error dialog/log output.
-- Open output folder.
+- asymmetric front/back fixtures that reveal horizontal flip errors;
+- scale, rotation and positive/negative X/Y offset tests;
+- union, intersection, front and back footprint tests;
+- one shared body and exactly one final component;
+- no internal overlapping shells or gaps;
+- correct body-plus-relief Z dimensions;
+- correct viewed-front/viewed-back orientation in Blender;
+- matching or explicitly resolved process profiles.
 
-Required before completion:
+Do not confuse this with the two-object inspection placeholder.
 
-- Original image preview.
-- Exact mask overlay preview.
-- Heightmap preview.
-- Manual crop and mask editing.
-- Explicit front/back parameter-side selector.
-- Full report/warning panel.
-- Unsaved-change prompt.
-- GUI automated smoke tests on Windows.
+## Task 8: Export and external import evidence
 
-## Task 8: Double-side production mode
+Status: programmatic reload implemented; manual evidence pending.
 
-Status: not implemented. Current output is inspection-only.
+For OBJ, STL and GLB:
 
-Current placeholder:
+- use the same accepted single-side fixture;
+- verify dimensions, normals, object count, edit mode and non-manifold selection in Blender;
+- verify STL millimeter interpretation;
+- verify fused output as one object/component;
+- retain representative sample exports and report JSON where repository size permits.
 
-- Builds two complete single-side solids.
-- Mirrors the back mesh and reverses winding.
-- Exports named front/back objects for OBJ and GLB.
-- Is explicitly marked non-fused and manufacturing-blocked.
+Then record slicer and CAM results separately. Programmatic trimesh reload is not a substitute.
 
-Production requirements:
+## Task 9: Physical validation
 
-- Alignment controls for center, scale, rotation and X/Y offsets.
-- One shared central body.
-- No overlapping internal shells or gaps.
-- One closed oriented final component.
-- Unambiguous total-thickness semantics.
+Status: external and pending.
 
-Do not mark this task complete until those requirements pass.
+Produce at least one representative sample and record:
 
-## Task 9: Windows delivery
+- process, machine and material;
+- nominal and measured X/Y/Z;
+- minimum surviving line width and relief depth;
+- edge-profile quality;
+- shrinkage, warping and unsupported-detail failures;
+- adjustments required in Blender/slicer/CAM.
 
-Status: not implemented.
+Only after this evidence may process-specific tolerance guidance be written.
 
-The old misleading `build_windows.bat` placeholder was removed. `run_windows.bat` is a development GUI launcher only.
+## Task 10: Optional assistance
 
-Next:
-
-- Choose PyInstaller or Nuitka.
-- Build a versioned Windows executable.
-- Test on a clean Windows machine without a development environment.
-- Preserve CLI diagnostics.
-- Include known limitations and manufacturing disclaimer.
+Optional AI segmentation/depth suggestions may be considered only after Tasks 0–9 establish stable deterministic behavior. AI output must remain editable, non-authoritative and local where practical.
