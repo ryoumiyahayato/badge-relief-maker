@@ -45,6 +45,20 @@ def test_uniform_foreground_has_defined_full_height_and_inverts():
         (
             np.asarray(
                 [
+                    [False, True, True, True, False],
+                    [True, True, True, True, True],
+                    [True, True, True, True, True],
+                    [True, True, True, True, True],
+                    [False, True, True, True, False],
+                ],
+                dtype=bool,
+            ),
+            np.ones((5, 5), dtype=float),
+            1,
+        ),
+        (
+            np.asarray(
+                [
                     [True, True, True, True, True],
                     [True, False, False, False, True],
                     [True, False, False, False, True],
