@@ -5,6 +5,14 @@ from .image_transform import ImageTransform
 
 
 _POLYGON_SHAPES = {"polygon", "poly", "freeform", "free_form"}
+_NORMALIZED_GRID_SPACES = {
+    "final_normalized",
+    "geometry_normalized",
+    "target_normalized",
+    "processed_normalized",
+    "heightmap_normalized",
+    "resized_normalized",
+}
 
 
 def _marker_list(markers):
@@ -36,10 +44,47 @@ def _transform_original_points(points, normalized, transform):
 
 def _transform_grid_points(points, coordinate_space, transform):
     result = []
+    normalized = coordinate_space in _NORMALIZED_GRID_SPACES
     for point in points:
         x_value, y_value = _point_values(point)
-        result.append(transform.input_grid_to_target_point(x_value, y_value, coordinate_space))
+        if normalized:
+            mapped = transform.normalized_grid_to_target_point(x_value, y_value, coordinate_space)
+        else:
+            mapped = transform.input_grid_to_target_point(x_value, y_value, coordinate_space)
+        result.append(mapped)
     return result
+
+
+def _transform_grid_dimensions(data, coordinate_space, transform):
+    """Normalize grid-space marker dimensions to target-grid pixels."""
+    space = str(coordinate_space).lower()
+    if space in {"final_normalized", "geometry_normalized", "target_normalized"}:
+        target_rows, target_cols = transform.target_shape
+        if "radius_normalized" in data:
+            data["radius_px"] = float(data.pop("radius_normalized")) * min(target_rows, target_cols)
+        for key in ["width_normalized", "rect_width_normalized", "region_width_normalized", "box_width_normalized"]:
+            if key in data:
+                data["width_px"] = float(data.pop(key)) * max(target_cols - 1, 1)
+                break
+        for key in ["rect_height_normalized", "region_height_normalized", "box_height_normalized", "height_size_normalized"]:
+            if key in data:
+                data["height_px"] = float(data.pop(key)) * max(target_rows - 1, 1)
+                break
+        return data
+
+    if space in {"processed_normalized", "heightmap_normalized", "resized_normalized"}:
+        resized_rows, resized_cols = transform.resized_shape
+        if "radius_normalized" in data:
+            data["radius_px"] = float(data.pop("radius_normalized")) * min(resized_rows, resized_cols)
+        for key in ["width_normalized", "rect_width_normalized", "region_width_normalized", "box_width_normalized"]:
+            if key in data:
+                data["width_px"] = float(data.pop(key)) * max(resized_cols - 1, 1)
+                break
+        for key in ["rect_height_normalized", "region_height_normalized", "box_height_normalized", "height_size_normalized"]:
+            if key in data:
+                data["height_px"] = float(data.pop(key)) * max(resized_rows - 1, 1)
+                break
+    return data
 
 
 def _map_grid_marker_to_target(data, shape, coordinate_space, transform):
@@ -55,9 +100,13 @@ def _map_grid_marker_to_target(data, shape, coordinate_space, transform):
         y_key = "y" if "y" in data else "center_y" if "center_y" in data else None
         if x_key is None or y_key is None:
             return None
-        data["x"], data["y"] = transform.input_grid_to_target_point(data[x_key], data[y_key], coordinate_space)
+        if coordinate_space in _NORMALIZED_GRID_SPACES:
+            data["x"], data["y"] = transform.normalized_grid_to_target_point(data[x_key], data[y_key], coordinate_space)
+        else:
+            data["x"], data["y"] = transform.input_grid_to_target_point(data[x_key], data[y_key], coordinate_space)
         data.pop("center_x", None)
         data.pop("center_y", None)
+    _transform_grid_dimensions(data, coordinate_space, transform)
     data["coordinate_space"] = "pixel"
     return data
 
@@ -70,7 +119,7 @@ def _transform_marker(marker, transform):
     coordinate_space = str(data.get("coordinate_space", data.get("space", "normalized"))).lower()
     shape = str(data.get("shape", data.get("shape_type", data.get("region_shape", "circle")))).lower()
 
-    if coordinate_space in {"processed", "heightmap", "final"}:
+    if coordinate_space in {"processed", "heightmap", "final", *_NORMALIZED_GRID_SPACES}:
         data = _map_grid_marker_to_target(data, shape, coordinate_space, transform)
         return data if data is not None and normalize_manual_height_marker(data, transform.target_shape) is not None else None
 
@@ -131,8 +180,9 @@ def transform_manual_height_markers(
     """Map valid marker geometry into the actual marker-application grid.
 
     With a geometry crop, original and processed coordinates are shifted into the
-    final tight grid. ``coordinate_space='final'`` is already relative to that
-    final grid. Existing callers may still provide individual processing values.
+    final tight grid. ``coordinate_space='final'`` is already expressed in final
+    pixels. ``final_normalized`` and aliases are normalized to that same grid.
+    Existing callers may still provide individual processing values.
     """
     transform = image_transform
     if transform is None:
