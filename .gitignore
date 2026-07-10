@@ -6,6 +6,8 @@ venv/
 dist/
 build/
 outputs/
+acceptance_fixtures/
+validation_assets/
 *.stl
 *.obj
 *.glb
