@@ -116,22 +116,17 @@ def _validate_double_alignment(project):
 def _validate_project_parameters(project, *, double_side=False, side_name=None, fused=False):
     """Validate dimensions and only the settings consumed by the requested build.
 
-    ``double_side=True`` retains the historical non-fused placeholder rule that
-    two complete single-side bases need room. ``fused=True`` instead treats
-    ``total_thickness_mm`` as the shared central body thickness; it is independent
-    from the single-side ``base_thickness_mm`` setting.
+    ``total_thickness_mm`` is a fused-body setting and is not consumed by a
+    single-side build. The non-fused placeholder is the only mode that needs
+    room for two complete single-side bases.
     """
     dimensions = project.dimensions
     width = _number(dimensions.width_mm, "width_mm", positive=True)
     height = _number(dimensions.height_mm, "height_mm", positive=True)
     total = _number(dimensions.total_thickness_mm, "total_thickness_mm", positive=True)
     base = _number(dimensions.base_thickness_mm, "base_thickness_mm", nonnegative=True)
-    if not fused:
-        minimum_total = base * (2.0 if double_side else 1.0)
-        if total < minimum_total:
-            if double_side:
-                raise ValueError("total_thickness_mm must be at least twice base_thickness_mm for a double-side placeholder")
-            raise ValueError("total_thickness_mm must be at least base_thickness_mm for a single-side build")
+    if double_side and not fused and total < base * 2.0:
+        raise ValueError("total_thickness_mm must be at least twice base_thickness_mm for a double-side placeholder")
 
     if double_side or fused or side_name is None:
         sides = [(project.front_relief, "front"), (project.back_relief, "back")]
