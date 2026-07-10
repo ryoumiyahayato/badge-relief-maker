@@ -101,7 +101,10 @@ def _is_row_like(value):
 
 
 def _face_row_count(faces):
-    faces = np.asarray(faces, dtype=object)
+    try:
+        faces = np.asarray(faces, dtype=object)
+    except (TypeError, ValueError):
+        return 1
     if faces.ndim == 0:
         return 0
     if faces.ndim == 1:
@@ -117,17 +120,17 @@ def _is_triangular_face_array(faces):
 
 def edge_usage_report(faces):
     """Return open-edge, non-manifold and winding diagnostics."""
-    faces = _faces_array(faces)
-    if faces is None:
+    normalized_faces = _faces_array(faces)
+    if normalized_faces is None:
         return _empty_topology_report(malformed_face_array=True)
-    if faces.size == 0:
+    if normalized_faces.size == 0:
         return _empty_topology_report()
-    if not _is_triangular_face_array(faces):
+    if not _is_triangular_face_array(normalized_faces):
         return _empty_topology_report(malformed_face_array=True)
 
     undirected = Counter()
     directed = Counter()
-    for a, b, c in faces:
+    for a, b, c in normalized_faces:
         for u, v in [(a, b), (b, c), (c, a)]:
             u = int(u)
             v = int(v)
@@ -155,19 +158,20 @@ def edge_usage_report(faces):
 def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
     """Return triangle area, volume and normal-orientation diagnostics."""
     vertices = np.asarray(vertices, dtype=float)
-    faces = _faces_array(faces)
-    if faces is None:
-        return _empty_face_geometry_report(invalid_face_count=1, malformed_face_array=True)
-    if len(vertices) == 0 or faces.size == 0:
+    malformed_row_count = _face_row_count(faces)
+    normalized_faces = _faces_array(faces)
+    if normalized_faces is None:
+        return _empty_face_geometry_report(invalid_face_count=malformed_row_count, malformed_face_array=True)
+    if len(vertices) == 0 or normalized_faces.size == 0:
         return _empty_face_geometry_report()
     if vertices.ndim != 2 or vertices.shape[1] != 3 or not np.isfinite(vertices).all():
         raise ValueError("vertices must be a finite Nx3 array")
-    if not _is_triangular_face_array(faces):
-        return _empty_face_geometry_report(invalid_face_count=_face_row_count(faces), malformed_face_array=True)
+    if not _is_triangular_face_array(normalized_faces):
+        return _empty_face_geometry_report(invalid_face_count=malformed_row_count, malformed_face_array=True)
 
-    valid_mask = np.all((faces >= 0) & (faces < len(vertices)), axis=1)
-    valid_faces = faces[valid_mask]
-    invalid_count = int(len(faces) - len(valid_faces))
+    valid_mask = np.all((normalized_faces >= 0) & (normalized_faces < len(vertices)), axis=1)
+    valid_faces = normalized_faces[valid_mask]
+    invalid_count = int(len(normalized_faces) - len(valid_faces))
     if len(valid_faces) == 0:
         return _empty_face_geometry_report(invalid_face_count=invalid_count)
 
