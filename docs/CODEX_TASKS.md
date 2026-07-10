@@ -1,159 +1,218 @@
 # Codex Tasks
 
-This file is the execution guide for future Codex work. Do not turn this project into a general AI image to 3D application. Build the local relief pipeline first.
+This file is the execution guide for future automated coding work. `docs/BASELINE_V1.md` is the acceptance source of truth.
 
-## Task 1: Make the single image pipeline runnable
+Do not turn this project into a general AI image-to-3D application. Preserve the deterministic local relief pipeline and fix correctness, coordinates, topology and engineering stability before adding optional AI.
 
-Status: first version implemented.
+## Working rule for every task
 
-Input:
+1. Audit the affected existing code for obvious regressions first.
+2. Fix blockers before adding features.
+3. Add or update tests for every core behavior change.
+4. Do not mark a feature complete until its acceptance tests pass.
+5. Keep all processing local and offline.
+6. Keep the double-side placeholder explicitly non-fused and manufacturing-blocked.
 
-- A local PNG path
-- Width in mm
-- Height in mm
-- Relief height in mm
+## Task 0: Windows quality gate
 
-Output:
+Status: implemented in workflow; successful run evidence pending.
 
-- Vertices and faces
-- OBJ or STL file
-- Build report
+Required commands:
 
-Acceptance:
-
-- A small test image produces a non empty mesh.
-- OBJ file contains vertex and face records.
-- STL file contains facet records.
-- Smoke test passes.
-
-## Task 2: Add mask preview assets
-
-Status: first version implemented.
-
-Input:
-
-- RGBA image
-
-Output:
-
-- Foreground mask
-- Mask preview image
-- Heightmap preview image
+```powershell
+python -m pip install -e ".[dev]"
+python -m badge_relief_maker.app
+python -m badge_relief_maker.app --help
+python -m ruff check badge_relief_maker tests
+python -m pytest -q
+```
 
 Acceptance:
 
-- Transparent areas become background.
-- Foreground is visible in preview.
+- Python 3.10 and 3.12 pass on Windows.
+- Package and GUI modules import from the repository root package.
+- No obsolete nested package is used.
 
-## Task 3: Add base and side closure
+## Task 1: Project format and resource safety
 
-Status: first masked footprint version implemented.
+Status: core implemented; migration and GUI recovery tests pending.
 
-Input:
+Implemented:
 
-- Heightmap
-- Foreground mask
-- Base thickness
-- Total dimensions
+- Atomic JSON replacement with flush/fsync.
+- Strict supported file-version ceiling.
+- Explicit boolean parsing.
+- Malformed nested-record filtering.
+- Unique imported asset names and export names.
+- Asset-root containment checks.
+- Persisted front/back image-processing settings.
 
-Output:
+Next acceptance work:
 
-- Mask footprint relief solid
+- Add formal version migration when version 2 is introduced.
+- Add GUI tests for corrupt JSON and unsupported versions.
+- Document the `.medalproj` schema with examples.
 
-Acceptance:
+## Task 2: Input image and mask pipeline
 
-- The mesh has a back plate.
-- Side walls connect the front surface to the back plate.
-- Exported OBJ can be opened by Blender.
+Status: controlled-image MVP implemented.
 
-Next refinement:
+Implemented:
 
-- Replace per-pixel solid cells with contour-based side closure.
-- Remove duplicate vertices.
-- Smooth stair-step boundaries.
+- EXIF-aware loading and source metadata.
+- Alpha, contrast luminance, dark-foreground and light-foreground modes.
+- Auto mode only trusts alpha when it contains variation.
+- Mask cleanup, preview files, crop and downsampling.
+- Empty masks block model export.
 
-## Task 4: Add STL and GLB export
+Next:
 
-Status: ASCII STL first version implemented. GLB remains pending.
+- Manual crop UI.
+- User-editable mask input.
+- Preview overlay showing the exact final mask.
+- Perspective correction for photographed paper drawings.
 
-Input:
+## Task 3: Unified coordinates
 
-- Mesh data
-- Export path
+Status: core transform implemented.
 
-Output:
+Implemented:
 
-- OBJ
-- STL
-- GLB later
+- `ImageTransform` records original, crop, resized and final geometry stages.
+- Circle, rectangle and polygon markers use the same transform.
+- Pixel radii and rectangular dimensions scale with resize.
+- Processing padding does not change final requested XY dimensions.
 
-Acceptance:
+Next:
 
-- Unsupported extensions fail with clear error.
-- Exported files are written to the selected output folder.
-- ASCII STL starts with solid and contains facet normal records.
+- Use `ImageTransform` directly in GUI preview hit testing.
+- Add physical millimeter editing and manual crop transforms.
+- Verify marker location across preview/standard/high fixtures within one final grid cell.
 
-## Task 5: Add manufacturing report
+## Task 4: Heightmap and local edits
 
-Status: first advisory report implemented.
+Status: grayscale and marker core implemented.
 
-Report fields:
+Implemented:
 
-- Vertex count
-- Face count
-- Bounding box size
-- Thickness parameters
-- Crop and resize metadata
-- Early warnings
-- Open edge warning later
-- Minimum feature warning later
+- Foreground-only grayscale normalization.
+- Invert mode.
+- Set/add/subtract markers.
+- Circle, rectangle and polygon regions.
+- Rim clipping count and warning.
 
-Acceptance:
+Next:
 
-- The report is returned after every build.
-- Warnings use cautious language.
+- Define a user-selectable policy for uniform-brightness foregrounds.
+- Add smoothing/soften brush.
+- Add region layers and local height locks.
+- Add GUI editing and saved visual overlays.
 
-## Task 6: Add GUI shell
+## Task 5: Closed single-side solid
 
-Panels:
+Status: indexed height-field implementation present; full fixture gate pending.
 
-- Image import
-- Preview
-- Parameters
-- Build and export
-- Warnings
+Implemented:
 
-Acceptance:
+- Shared indexed top, bottom and boundary walls.
+- Separate vertex namespaces for disconnected mask components.
+- Closed-edge, winding and signed-volume regression checks.
+- Severe topology errors block export.
 
-- GUI launches on Windows.
-- User can select image and output folder.
-- Buttons call existing core functions.
+Required remaining fixtures:
 
-## Task 7: Add double side mode later
+- Single cell.
+- Rectangle.
+- Circle-like mask.
+- Ring with a hole.
+- Two unequal adjacent cells.
+- 2×2 varying heights.
+- Multiple fragments.
+- Border-touching foreground.
+- Empty mask.
 
-Do this only after single side MVP works.
+Next geometry work:
 
-Input:
+- Self-intersection detection.
+- Component-level automatic orientation repair.
+- True sharp constrained height steps.
+- True bevelled and rounded rims.
 
-- Front image
-- Back image
-- Alignment settings
-- Total thickness
+## Task 6: Export and report
 
-Output:
+Status: OBJ, ASCII STL and GLB implemented.
 
-- One combined model
+Implemented:
 
-Acceptance:
+- Shared finite `N×3` mesh validation.
+- Integer and in-range face indices.
+- Mirrored face winding correction.
+- Atomic file replacement and parent creation.
+- Unique project output names.
+- Component-level closure and signed-volume report.
+- Explicit `blocked` versus `review_required` manufacturing gate.
+- STL millimeter convention recorded in build reports.
 
-- Front and back test patterns are both visible.
-- The model uses one shared output scale.
+Next:
 
-## Rules for every change
+- Blender round-trip fixtures and recorded manual checks.
+- Mesh read-back tests where practical.
+- Local wall-thickness and minimum-feature analysis.
+- Self-intersection report.
 
-- Keep local offline operation working.
-- Do not require cloud APIs.
-- Do not require high end GPU.
-- Do not bind to Paint 3D.
-- Keep Blender as optional downstream workflow.
-- Add or update tests when adding core functions.
+## Task 7: Desktop GUI single-side workflow
+
+Status: partial.
+
+Implemented:
+
+- New/open/save project.
+- Front/back/reference import.
+- Persisted front size, base, relief, mask, invert, quality and rim controls.
+- Worker-thread builds with duplicate-build prevention.
+- OBJ/STL/GLB actions.
+- Readable error dialog/log output.
+- Open output folder.
+
+Required before completion:
+
+- Original image preview.
+- Exact mask overlay preview.
+- Heightmap preview.
+- Manual crop and mask editing.
+- Full report/warning panel.
+- Unsaved-change prompt.
+- GUI automated smoke tests on Windows.
+
+## Task 8: Double-side production mode
+
+Status: not implemented. Current output is inspection-only.
+
+Current placeholder:
+
+- Builds two complete single-side solids.
+- Mirrors the back mesh and reverses winding.
+- Exports named front/back objects for OBJ and GLB.
+- Is explicitly marked non-fused and manufacturing-blocked.
+
+Production requirements:
+
+- Alignment controls for center, scale, rotation and X/Y offsets.
+- One shared central body.
+- No overlapping internal shells or gaps.
+- One closed oriented final component.
+- Unambiguous total-thickness semantics.
+
+Do not mark this task complete until those requirements pass.
+
+## Task 9: Windows delivery
+
+Status: not implemented.
+
+Next:
+
+- Choose PyInstaller or Nuitka.
+- Build a versioned Windows executable.
+- Test on a clean Windows machine without a development environment.
+- Preserve CLI diagnostics.
+- Include known limitations and manufacturing disclaimer.
