@@ -4,6 +4,9 @@ from .height_markers import normalize_manual_height_marker
 from .image_transform import ImageTransform
 
 
+_POLYGON_SHAPES = {"polygon", "poly", "freeform", "free_form"}
+
+
 def _marker_list(markers):
     if markers is None:
         return []
@@ -17,16 +20,46 @@ def _marker_list(markers):
         return [markers]
 
 
-def _transform_points(points, normalized, transform):
+def _point_values(point):
+    if isinstance(point, dict):
+        return point.get("x"), point.get("y")
+    return point[0], point[1]
+
+
+def _transform_original_points(points, normalized, transform):
     result = []
     for point in points:
-        if isinstance(point, dict):
-            x_value = point.get("x")
-            y_value = point.get("y")
-        else:
-            x_value, y_value = point[0], point[1]
-        result.append(transform.original_to_processed_point(x_value, y_value, normalized=normalized))
+        x_value, y_value = _point_values(point)
+        result.append(transform.original_to_target_point(x_value, y_value, normalized=normalized))
     return result
+
+
+def _transform_grid_points(points, coordinate_space, transform):
+    result = []
+    for point in points:
+        x_value, y_value = _point_values(point)
+        result.append(transform.input_grid_to_target_point(x_value, y_value, coordinate_space))
+    return result
+
+
+def _map_grid_marker_to_target(data, shape, coordinate_space, transform):
+    if shape in _POLYGON_SHAPES:
+        points_key = next((key for key in ["points", "vertices", "polygon_points"] if key in data), None)
+        if points_key is None:
+            return None
+        data["points"] = _transform_grid_points(list(data[points_key]), coordinate_space, transform)
+        for key in ["vertices", "polygon_points"]:
+            data.pop(key, None)
+    else:
+        x_key = "x" if "x" in data else "center_x" if "center_x" in data else None
+        y_key = "y" if "y" in data else "center_y" if "center_y" in data else None
+        if x_key is None or y_key is None:
+            return None
+        data["x"], data["y"] = transform.input_grid_to_target_point(data[x_key], data[y_key], coordinate_space)
+        data.pop("center_x", None)
+        data.pop("center_y", None)
+    data["coordinate_space"] = "pixel"
+    return data
 
 
 def _transform_marker(marker, transform):
@@ -38,15 +71,15 @@ def _transform_marker(marker, transform):
     shape = str(data.get("shape", data.get("shape_type", data.get("region_shape", "circle")))).lower()
 
     if coordinate_space in {"processed", "heightmap", "final"}:
-        data["coordinate_space"] = "pixel"
-        return data if normalize_manual_height_marker(data, transform.resized_shape) is not None else None
+        data = _map_grid_marker_to_target(data, shape, coordinate_space, transform)
+        return data if data is not None and normalize_manual_height_marker(data, transform.target_shape) is not None else None
 
     normalized = coordinate_space not in {"pixel", "pixels", "image_pixel"}
-    if shape in {"polygon", "poly", "freeform", "free_form"}:
+    if shape in _POLYGON_SHAPES:
         points_key = next((key for key in ["points", "vertices", "polygon_points"] if key in data), None)
         if points_key is None:
             return None
-        data["points"] = _transform_points(list(data[points_key]), normalized, transform)
+        data["points"] = _transform_original_points(list(data[points_key]), normalized, transform)
         for key in ["vertices", "polygon_points"]:
             data.pop(key, None)
     else:
@@ -54,7 +87,7 @@ def _transform_marker(marker, transform):
         y_key = "y" if "y" in data else "center_y" if "center_y" in data else None
         if x_key is None or y_key is None:
             return None
-        data["x"], data["y"] = transform.original_to_processed_point(data[x_key], data[y_key], normalized=normalized)
+        data["x"], data["y"] = transform.original_to_target_point(data[x_key], data[y_key], normalized=normalized)
         data.pop("center_x", None)
         data.pop("center_y", None)
 
@@ -84,7 +117,7 @@ def _transform_marker(marker, transform):
             break
 
     data["coordinate_space"] = "pixel"
-    return data if normalize_manual_height_marker(data, transform.resized_shape) is not None else None
+    return data if normalize_manual_height_marker(data, transform.target_shape) is not None else None
 
 
 def transform_manual_height_markers(
@@ -95,11 +128,11 @@ def transform_manual_height_markers(
     resized_shape=None,
     image_transform=None,
 ):
-    """Map valid marker geometry from original image to the processed grid.
+    """Map valid marker geometry into the actual marker-application grid.
 
-    Existing callers may provide the individual processing-step values. New code
-    should pass one :class:`ImageTransform` so every marker shape uses the same
-    coordinate chain. Malformed markers are ignored independently.
+    With a geometry crop, original and processed coordinates are shifted into the
+    final tight grid. ``coordinate_space='final'`` is already relative to that
+    final grid. Existing callers may still provide individual processing values.
     """
     transform = image_transform
     if transform is None:
