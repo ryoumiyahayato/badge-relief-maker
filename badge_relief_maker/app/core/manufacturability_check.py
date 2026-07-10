@@ -27,6 +27,10 @@ def mesh_bounds(vertices):
     if len(vertices) == 0:
         return _empty_bbox()
     data = np.asarray(vertices, dtype=float)
+    if data.ndim != 2 or data.shape[1] != 3:
+        raise ValueError("vertices must be an Nx3 array")
+    if not np.isfinite(data).all():
+        raise ValueError("vertices contain non-finite coordinates")
     mins = data.min(axis=0)
     maxs = data.max(axis=0)
     sizes = maxs - mins
@@ -48,7 +52,9 @@ def _empty_topology_report(malformed_face_array=False):
         "unique_edge_count": 0,
         "boundary_edge_count": 0,
         "non_manifold_edge_count": 0,
+        "inconsistent_winding_edge_count": 0,
         "closed_edge_manifold": False,
+        "closed_oriented_manifold": False,
         "malformed_face_array": bool(malformed_face_array),
     }
 
@@ -61,6 +67,8 @@ def _empty_face_geometry_report(invalid_face_count=0, malformed_face_array=False
         "total_surface_area_mm2": 0.0,
         "min_face_area_mm2": 0.0,
         "max_face_area_mm2": 0.0,
+        "signed_volume_mm3": 0.0,
+        "absolute_volume_mm3": 0.0,
         "up_facing_face_count": 0,
         "down_facing_face_count": 0,
         "side_facing_face_count": 0,
@@ -70,9 +78,16 @@ def _empty_face_geometry_report(invalid_face_count=0, malformed_face_array=False
 
 def _faces_array(faces):
     try:
-        return np.asarray(faces, dtype=np.int64)
+        values = np.asarray(faces, dtype=float)
     except (TypeError, ValueError):
         return None
+    if values.size == 0:
+        return np.zeros((0, 3), dtype=np.int64)
+    if values.ndim != 2 or values.shape[1] != 3:
+        return values
+    if not np.isfinite(values).all() or not np.equal(values, np.rint(values)).all():
+        return None
+    return values.astype(np.int64)
 
 
 def _is_row_like(value):
@@ -97,15 +112,11 @@ def _face_row_count(faces):
 
 
 def _is_triangular_face_array(faces):
-    return faces is not None and faces.ndim == 2 and faces.shape[1] == 3
+    return faces is not None and faces.ndim == 2 and faces.shape[1] == 3 and np.issubdtype(faces.dtype, np.integer)
 
 
 def edge_usage_report(faces):
-    """Return simple open-edge and non-manifold edge diagnostics.
-
-    The check assumes triangular faces. It is intentionally lightweight and is
-    suitable for warnings, not for proving production-grade mesh validity.
-    """
+    """Return open-edge, non-manifold and winding diagnostics."""
     faces = _faces_array(faces)
     if faces is None:
         return _empty_topology_report(malformed_face_array=True)
@@ -114,31 +125,43 @@ def edge_usage_report(faces):
     if not _is_triangular_face_array(faces):
         return _empty_topology_report(malformed_face_array=True)
 
-    counter = Counter()
+    undirected = Counter()
+    directed = Counter()
     for a, b, c in faces:
         for u, v in [(a, b), (b, c), (c, a)]:
-            edge = tuple(sorted((int(u), int(v))))
-            counter[edge] += 1
+            u = int(u)
+            v = int(v)
+            undirected[tuple(sorted((u, v)))] += 1
+            directed[(u, v)] += 1
 
-    boundary_edges = sum(1 for count in counter.values() if count == 1)
-    non_manifold_edges = sum(1 for count in counter.values() if count > 2)
+    boundary_edges = sum(1 for count in undirected.values() if count == 1)
+    non_manifold_edges = sum(1 for count in undirected.values() if count > 2)
+    inconsistent_winding = 0
+    for a, b in undirected:
+        if undirected[(a, b)] == 2 and not (directed[(a, b)] == 1 and directed[(b, a)] == 1):
+            inconsistent_winding += 1
+    closed = boundary_edges == 0 and non_manifold_edges == 0 and len(undirected) > 0
     return {
-        "unique_edge_count": int(len(counter)),
+        "unique_edge_count": int(len(undirected)),
         "boundary_edge_count": int(boundary_edges),
         "non_manifold_edge_count": int(non_manifold_edges),
-        "closed_edge_manifold": bool(boundary_edges == 0 and non_manifold_edges == 0 and len(counter) > 0),
+        "inconsistent_winding_edge_count": int(inconsistent_winding),
+        "closed_edge_manifold": bool(closed),
+        "closed_oriented_manifold": bool(closed and inconsistent_winding == 0),
         "malformed_face_array": False,
     }
 
 
 def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
-    """Return lightweight triangle area and normal-orientation diagnostics."""
+    """Return triangle area, volume and normal-orientation diagnostics."""
     vertices = np.asarray(vertices, dtype=float)
     faces = _faces_array(faces)
     if faces is None:
         return _empty_face_geometry_report(invalid_face_count=1, malformed_face_array=True)
     if len(vertices) == 0 or faces.size == 0:
         return _empty_face_geometry_report()
+    if vertices.ndim != 2 or vertices.shape[1] != 3 or not np.isfinite(vertices).all():
+        raise ValueError("vertices must be a finite Nx3 array")
     if not _is_triangular_face_array(faces):
         return _empty_face_geometry_report(invalid_face_count=_face_row_count(faces), malformed_face_array=True)
 
@@ -156,6 +179,7 @@ def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
     areas = double_areas * 0.5
     nonzero = double_areas > float(zero_area_epsilon)
     zero_area_count = int(np.count_nonzero(~nonzero))
+    signed_volume = float(np.einsum("ij,ij->i", p0, np.cross(p1, p2)).sum() / 6.0)
 
     up_count = 0
     down_count = 0
@@ -173,6 +197,8 @@ def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
         "total_surface_area_mm2": float(areas.sum()),
         "min_face_area_mm2": float(areas.min()) if len(areas) else 0.0,
         "max_face_area_mm2": float(areas.max()) if len(areas) else 0.0,
+        "signed_volume_mm3": signed_volume,
+        "absolute_volume_mm3": abs(signed_volume),
         "up_facing_face_count": up_count,
         "down_facing_face_count": down_count,
         "side_facing_face_count": side_count,
@@ -181,12 +207,7 @@ def face_geometry_report(vertices, faces, zero_area_epsilon=1e-12):
 
 
 def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_faces=200000):
-    """Return a simple mesh diagnostic report.
-
-    These checks are advisory only. They do not prove the model is ready for
-    manufacturing, but they provide enough information for the early GUI and
-    CLI to warn about obvious risks.
-    """
+    """Return a simple advisory mesh diagnostic report."""
     vertex_count = int(len(vertices))
     face_count = _face_row_count(faces)
     bounds = mesh_bounds(vertices)
@@ -204,6 +225,10 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         warnings.append("open boundary edges detected")
     if topology["non_manifold_edge_count"] > 0:
         warnings.append("non-manifold edges detected")
+    if topology["inconsistent_winding_edge_count"] > 0:
+        warnings.append("inconsistent face winding detected")
+    if topology.get("closed_oriented_manifold") and face_geometry["signed_volume_mm3"] < 0.0:
+        warnings.append("closed mesh orientation appears inward")
     if topology.get("malformed_face_array") or face_geometry.get("malformed_face_array"):
         warnings.append(_MALFORMED_FACE_WARNING)
     if face_geometry["invalid_face_count"] > 0:
@@ -215,16 +240,12 @@ def basic_report(vertices, faces, minimum_thickness_mm=None, max_recommended_fac
         "vertex_count": vertex_count,
         "face_count": face_count,
         "bbox": bounds,
-        "size_mm": {
-            "x": bounds["size_x"],
-            "y": bounds["size_y"],
-            "z": bounds["size_z"],
-        },
+        "size_mm": {"x": bounds["size_x"], "y": bounds["size_y"], "z": bounds["size_z"]},
         "estimated_total_thickness_mm": bounds["size_z"],
         "minimum_thickness_mm": minimum_thickness_mm,
         "topology": topology,
         "face_geometry": face_geometry,
         "warnings": warnings,
-        "watertight_check": "edge manifold heuristic only",
+        "watertight_check": "oriented edge-manifold heuristic",
         "thin_region_check": "not implemented",
     }
