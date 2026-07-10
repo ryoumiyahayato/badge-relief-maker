@@ -30,7 +30,7 @@ Build a Windows executable:
 ./build_windows.ps1
 ```
 
-The script installs the packaging extra, builds `dist/BadgeReliefMaker.exe` with PyInstaller and smoke-tests its `--help` entry point. GitHub Actions also contains a Windows 3.12 packaging job that uploads the executable when the complete Windows quality gate passes.
+The script installs the packaging extra, builds `dist/BadgeReliefMaker.exe` with PyInstaller and smoke-tests its `--help` entry point. GitHub Actions also contains a Windows 3.12 packaging job that uploads the executable when the complete Windows quality gate passes. Opening the packaged application without command-line arguments launches the GUI; explicit arguments retain the diagnostic CLI.
 
 ## Current deterministic pipeline
 
@@ -45,7 +45,7 @@ The current single-side path performs:
 7. Processing crop and quality-dependent grid resize.
 8. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
 9. Region layers, local locks and circle/rectangle/polygon height edits.
-10. Set, add, subtract and smooth brush operations.
+10. Set, add, subtract and mask-aware smooth brush operations.
 11. Optional global smoothing and detail sharpening.
 12. Millimeter-aware rim height processing.
 13. Shared-index closed single-side or fused double-side mesh construction.
@@ -115,7 +115,9 @@ The GUI distinguishes two editing surfaces:
 
 Final-grid mask clicks are transformed back to source pixels before persistence because mask edits are applied before crop and resize. Height and layer brushes remain in final-grid normalized coordinates. Changing perspective requires clearing coordinate-dependent crop, mask, layer and height edits rather than silently drifting them.
 
-All mutable controls are disabled while a background build reads the project.
+The editor can copy a completed project-owned export into a user-selected output folder. Existing filenames receive stable `_2`, `_3`, and later suffixes; history is changed only after the external copy succeeds, and the project-owned source export remains recorded in the report as a recovery path.
+
+All mutable controls, including export-folder controls, are disabled while a background build reads the project.
 
 ## Double-side modes
 
@@ -125,6 +127,8 @@ Two deliberately different operations remain available:
 - **Fused double-side:** front/back fields are resampled to a common grid, the viewed back is optionally flipped and manually scaled/rotated/offset, and one shared central body is generated.
 
 For fused output, `total_thickness_mm` means central body thickness and excludes outward front/back relief. It is independent of `base_thickness_mm`, which is used only by single-side and placeholder workflows. Fused output requires one connected aligned footprint and one closed final component.
+
+A two-sided build uses one quality mode for both fields. An explicit build quality overrides the two saved values; without an override, saved front/back quality modes must normalize to the same mode. A fused model also requires one common process profile because it represents one physical object.
 
 ## Reports and limits
 
