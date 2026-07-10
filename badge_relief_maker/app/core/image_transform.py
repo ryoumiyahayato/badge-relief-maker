@@ -57,6 +57,10 @@ class ImageTransform:
         return (self.crop_box[0], self.crop_box[1]) if self.crop_box is not None else (0, 0)
 
     @property
+    def geometry_crop_offset(self):
+        return (self.geometry_crop_box[0], self.geometry_crop_box[1]) if self.geometry_crop_box is not None else (0, 0)
+
+    @property
     def target_shape(self):
         return self.geometry_shape or self.resized_shape
 
@@ -87,6 +91,25 @@ class ImageTransform:
         processed = self.original_to_processed_point(x, y, normalized=normalized)
         return self.processed_to_geometry_point(*processed)
 
+    def target_to_original_point(self, x, y, normalized=False):
+        """Map a final-grid point back to the post-EXIF/perspective source grid.
+
+        This is primarily used by visual editors that display the exact final mask
+        but persist source-space mask edits. Points outside the current target grid
+        are not clipped so callers can decide whether to reject or retain them.
+        """
+        target_rows, target_cols = self.target_shape
+        x_value = float(x) * max(target_cols - 1, 1) if normalized else float(x)
+        y_value = float(y) * max(target_rows - 1, 1) if normalized else float(y)
+        geometry_x0, geometry_y0 = self.geometry_crop_offset
+        processed_x = x_value + geometry_x0
+        processed_y = y_value + geometry_y0
+        crop_x0, crop_y0 = self.crop_offset
+        x_scale, y_scale = self.point_scale
+        original_x = crop_x0 if x_scale == 0.0 else processed_x / x_scale + crop_x0
+        original_y = crop_y0 if y_scale == 0.0 else processed_y / y_scale + crop_y0
+        return float(original_x), float(original_y)
+
     def original_length_to_processed(self, value, axis, normalized=False):
         original_rows, original_cols = self.original_shape
         x_scale, y_scale = self.dimension_scale
@@ -104,6 +127,14 @@ class ImageTransform:
         source_value = float(value) * min(original_rows, original_cols) if normalized else float(value)
         return source_value * ((x_scale + y_scale) * 0.5)
 
+    def target_radius_to_original(self, value, normalized=False):
+        """Convert a target-grid brush radius back to source-image pixels."""
+        target_rows, target_cols = self.target_shape
+        target_value = float(value) * min(target_rows, target_cols) if normalized else float(value)
+        x_scale, y_scale = self.dimension_scale
+        average_scale = (x_scale + y_scale) * 0.5
+        return 0.0 if average_scale <= 0.0 else target_value / average_scale
+
     def with_geometry_crop(self, geometry_crop_box, geometry_shape):
         """Return a transform extended with the final tight geometry crop."""
         return replace(self, geometry_crop_box=geometry_crop_box, geometry_shape=geometry_shape)
@@ -119,6 +150,19 @@ class ImageTransform:
         if space == "final":
             return float(x), float(y)
         return self.processed_to_geometry_point(x, y)
+
+    def normalized_grid_to_target_point(self, x, y, coordinate_space):
+        """Map normalized processed/final coordinates into target pixel coordinates."""
+        space = str(coordinate_space).lower()
+        if space in {"final_normalized", "geometry_normalized", "target_normalized"}:
+            rows, cols = self.target_shape
+            return float(x) * max(cols - 1, 1), float(y) * max(rows - 1, 1)
+        if space in {"processed_normalized", "heightmap_normalized", "resized_normalized"}:
+            rows, cols = self.resized_shape
+            processed_x = float(x) * max(cols - 1, 1)
+            processed_y = float(y) * max(rows - 1, 1)
+            return self.processed_to_geometry_point(processed_x, processed_y)
+        raise ValueError(f"unsupported normalized grid coordinate space: {coordinate_space}")
 
     def geometry_cell_size_mm(self, width_mm, height_mm):
         rows, cols = self.target_shape
