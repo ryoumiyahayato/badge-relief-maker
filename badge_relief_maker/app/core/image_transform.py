@@ -49,10 +49,16 @@ class ImageTransform:
         object.__setattr__(self, "geometry_crop_box", _box(self.geometry_crop_box, "geometry_crop_box"))
         if self.geometry_shape is not None:
             object.__setattr__(self, "geometry_shape", _shape(self.geometry_shape, "geometry_shape"))
+        if self.geometry_crop_box is not None and self.geometry_shape is None:
+            raise ValueError("geometry_shape is required when geometry_crop_box is provided")
 
     @property
     def crop_offset(self):
         return (self.crop_box[0], self.crop_box[1]) if self.crop_box is not None else (0, 0)
+
+    @property
+    def target_shape(self):
+        return self.geometry_shape or self.resized_shape
 
     @property
     def point_scale(self):
@@ -75,6 +81,11 @@ class ImageTransform:
         y_value = float(y) * max(original_rows - 1, 1) if normalized else float(y)
         x_scale, y_scale = self.point_scale
         return (x_value - crop_x0) * x_scale, (y_value - crop_y0) * y_scale
+
+    def original_to_target_point(self, x, y, normalized=False):
+        """Map an original-image point into the grid where markers are applied."""
+        processed = self.original_to_processed_point(x, y, normalized=normalized)
+        return self.processed_to_geometry_point(*processed)
 
     def original_length_to_processed(self, value, axis, normalized=False):
         original_rows, original_cols = self.original_shape
@@ -102,8 +113,15 @@ class ImageTransform:
             return float(x), float(y)
         return float(x) - self.geometry_crop_box[0], float(y) - self.geometry_crop_box[1]
 
+    def input_grid_to_target_point(self, x, y, coordinate_space):
+        """Map processed or final-grid input coordinates to the marker target grid."""
+        space = str(coordinate_space).lower()
+        if space == "final":
+            return float(x), float(y)
+        return self.processed_to_geometry_point(x, y)
+
     def geometry_cell_size_mm(self, width_mm, height_mm):
-        rows, cols = self.geometry_shape or self.resized_shape
+        rows, cols = self.target_shape
         return float(width_mm) / float(cols), float(height_mm) / float(rows)
 
     def to_report(self):
@@ -117,6 +135,7 @@ class ImageTransform:
             "resized_shape": list(self.resized_shape),
             "geometry_crop_box": list(self.geometry_crop_box) if self.geometry_crop_box is not None else None,
             "geometry_shape": list(self.geometry_shape) if self.geometry_shape is not None else None,
+            "target_shape": list(self.target_shape),
             "point_scale_xy": [x_point_scale, y_point_scale],
             "dimension_scale_xy": [x_dimension_scale, y_dimension_scale],
         }
