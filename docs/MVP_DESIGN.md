@@ -1,184 +1,143 @@
 # MVP Design
 
-## Part 1: Requirement understanding
+`docs/BASELINE_V1.md` is the acceptance source of truth. This document describes the current technical design for the single-side MVP.
 
-This project is a local Windows desktop tool for generating a rough 2.5D or relief-style base mesh from badge, medal, award, crest, plaque and similar relief object images.
+## Product boundary
 
-The output is not intended to be a final production-ready replica. The output is a Blender-friendly rough base model that should complete roughly 60% to 80% of the repetitive setup work: outline, base thickness, side structure, coarse relief layers and exportable objects.
+Badge Relief Maker is a Windows local/offline 2.5D relief base-model generator. It should automate a large part of outline, base, coarse-height and export work, while leaving artistic correction and production preparation to Blender or other manufacturing software.
 
-The tool must support these input states:
+Out of scope for the single-side MVP:
 
-- Front image only.
-- Front and back images.
-- A back image added later to an existing project.
-- Uneven image quality between front and back.
-- Reference images that are similar objects but not guaranteed to be the same physical piece.
+- general image-to-complete-3D reconstruction;
+- cloud-only or GPU-heavy AI;
+- guaranteed manufacturing-ready output;
+- automatic recovery of true physical depth from brightness;
+- fused production double-side geometry;
+- process-independent claims of print, CNC or mould safety.
 
-The tool must not infer missing real side geometry. When there is no side image, the side should be generated parametrically.
-
-## Part 2: MVP boundary
-
-The first MVP should do:
-
-- Create, save and open a project file.
-- Import front, back and reference images.
-- Store project metadata and assets locally.
-- Run basic image preprocessing and mask cleanup.
-- Generate a rough single-side relief from a front image.
-- Keep a placeholder back when only the front exists.
-- Add base thickness and simple side closure.
-- Export OBJ and STL.
-- Preserve enough project state to add a back image later.
-
-The first MVP should not do:
-
-- Cloud AI.
-- Online inference.
-- Full automatic final replica generation.
-- Advanced material simulation.
-- Real side reconstruction.
-- Factory process optimization.
-- Universal image-to-3D.
-- Complex sculpting inside this app.
-
-## Part 3: Technology choice
-
-Recommended stack for MVP:
-
-- Python for fastest local MVP iteration.
-- PySide6 for Windows desktop UI.
-- Pillow and NumPy for light image processing.
-- OpenCV can be added later for stronger contour and perspective operations.
-- Custom mesh generation first, then trimesh or pymeshlab later for stronger mesh repair.
-- OBJ and ASCII STL first because they are easy to inspect and Blender-friendly.
-
-This stack is appropriate because the current product is a practical local preprocessor for Blender, not a real-time sculpting engine or heavy AI research project.
-
-## Part 4: System architecture and modules
-
-Core modules:
-
-- project_model: project data structures.
-- project_io: create, save, load and import project assets.
-- image_preprocess: image loading and basic normalization.
-- mask_generator: foreground mask generation.
-- mask_processing: mask cleanup, crop and grid size control.
-- heightmap_generator: grayscale and layered heightmap generation.
-- masked_solid_builder: rough relief solid generation from a mask footprint.
-- mesh_optimize: vertex cleanup and degenerate face removal.
-- manufacturability_check: advisory size and warning report.
-- mesh_exporter: OBJ and STL export.
-- ui: desktop shell and later editing panels.
-
-Application flow:
+## Supported workflow
 
 ```text
-Project
-  -> Import front/back/reference images
-  -> Save project state
-  -> Preprocess selected face
-  -> Mask cleanup
-  -> Heightmap generation
-  -> Relief mesh build
-  -> Mesh optimization
-  -> Report
-  -> Export OBJ/STL
-  -> Reopen later and add back image
+open/create .medalproj or direct image build
+-> EXIF-aware image load
+-> alpha/luminance foreground mask
+-> deterministic mask cleanup
+-> foreground-only grayscale heightmap
+-> ImageTransform coordinate chain
+-> manual circle/rectangle/polygon height edits
+-> tight geometry crop and physical scaling
+-> optional heightmap rim
+-> closed indexed relief solid
+-> conservative repair
+-> advisory manufacturing report
+-> atomic OBJ/STL/GLB export
 ```
 
-## Part 5: Project file and data structure
+## Module responsibilities
 
-Project storage should use one project file plus a local resource folder:
+### Application layer
 
-```text
-sample.medalproj
-sample_assets/
-  images/
-  previews/
-  exports/
-```
+- `app/main.py`: CLI parsing, action exclusivity and readable command errors.
+- `app/ui/main_window.py`: optional PySide6 project shell, parameter controls and worker-thread build dispatch.
 
-The `.medalproj` file is JSON. It stores:
+### Project layer
 
-- Project name.
-- Version.
-- Front image record.
-- Back image record.
-- Reference image records.
-- Whether front and back are the same physical object.
-- Outline data.
-- Dimensions.
-- Edge parameters.
-- Front relief parameters.
-- Back relief parameters.
-- Manual correction markers.
-- Export history.
+- `project_model.py`: versioned project dataclasses and tolerant parsing of known fields.
+- `project_io.py`: strict version ceiling, atomic save, unique assets, path containment and export history.
+- `project_build.py`: conversion from persisted project settings to runtime parameters and project export workflows.
 
-Image records include role, path, whether it is a reference image, quality label and preprocessing metadata.
+### Image and coordinate layer
 
-This allows a front-only project to be created first, then reopened later and updated with a back image without rebuilding the whole project from scratch.
+- `image_preprocess.py`: EXIF orientation, RGBA conversion and source metadata.
+- `mask_generator.py`: alpha, contrast, dark and light foreground modes.
+- `mask_processing.py`: component cleanup, hole filling, smoothing, crop and downsampling.
+- `image_transform.py`: original-image, crop, resized-grid, geometry-grid and millimeter transform record.
+- `marker_transform.py`: applies the shared transform to all marker geometry.
 
-## Part 6: Development plan
+### Relief and mesh layer
 
-### Phase 1: Project-based single front MVP
+- `heightmap_generator.py`: foreground-only normalized grayscale height.
+- `height_markers.py`: set/add/subtract operations for circle, rectangle and polygon regions.
+- `rim_builder.py`: heightmap rim and clipping metadata.
+- `masked_solid_builder.py`: shared-index closed masked height-field solid.
+- `solid_builder.py`: rectangular solid path using the same indexed builder.
+- `mesh_repair.py`: conservative invalid, zero-area, duplicate-face and unused-vertex cleanup.
+- `manufacturability_check.py`: edge, winding, area, volume, component and advisory gate reports.
+- `mesh_exporter.py`: shared mesh validation and atomic OBJ/STL/GLB writing.
 
-- Add project model.
-- Add save/open project file.
-- Add front image import.
-- Generate rough front relief.
-- Export OBJ/STL.
-- Save export history.
+## Coordinate contract
 
-### Phase 2: Better mask and outline controls
+All array shapes use `(rows, columns)` and all geometric coordinates use `(x, y)`.
 
-- Add manual foreground hints.
-- Add contour preview.
-- Add common outline templates: circle, ellipse, shield, polygon.
-- Add simple perspective correction.
+`ImageTransform` records:
 
-### Phase 3: Desktop UI shell
+1. EXIF-oriented original shape;
+2. processing crop box in original-image pixels;
+3. cropped shape;
+4. resized processing-grid shape;
+5. final tight geometry crop in processing-grid pixels;
+6. final geometry shape.
 
-- New/open/save project.
-- Import front/back/reference image.
-- Parameter panel.
-- Preview panel.
-- Generate and export actions.
+Marker coordinate spaces:
 
-### Phase 4: Back image and incremental generation
+- omitted/`normalized`: normalized original-image coordinates;
+- `pixel`/`image_pixel`: original-image pixel coordinates;
+- `processed`/`heightmap`: resized processing-grid pixels before final tight crop;
+- `final`: final geometry-grid pixels.
 
-- Add back image to existing project.
-- Reuse known outline, dimensions, thickness and center alignment.
-- Generate back relief into the same project.
+The final tight crop changes position but not radius or width scale. Physical width and height are applied only after the final geometry grid is known.
 
-### Phase 5: Blender-friendly split export
+## Mesh contract
 
-- Export separate objects for base, rim, front relief, front text, back relief and back text when available.
-- Keep combined export as a simple fallback.
+A successful exported single-side mesh must use finite `N×3` vertices and integer triangular faces with valid indices. The checked topology must have:
 
-### Phase 6: Higher quality modes
+- zero boundary edges;
+- zero non-manifold edges;
+- zero inconsistent-winding edges;
+- zero invalid face references;
+- zero zero-area faces;
+- at least one closed oriented component;
+- no inward closed components.
 
-- Low precision preview mode.
-- Standard mode.
-- High precision export mode.
-- Better contour smoothing and mesh repair.
+The current indexed height field uses shared corner heights and therefore produces a continuous top surface. It does not preserve exact sharp jumps between adjacent source pixels. A future constrained mesh mode is required for sharp steps.
 
-## Part 7: First code skeleton
+## Physical dimensions
 
-The first code skeleton should contain:
+For a masked footprint, the final foreground grid maps to the requested width and height. Processing padding is not part of the product dimensions. Quality modes may change grid density but must not change physical size.
 
-```text
-badge_relief_maker/app/core/project_model.py
-badge_relief_maker/app/core/project_io.py
-badge_relief_maker/app/ui/main_window.py
-```
+`base_thickness_mm` defines the flat one-side base. A single-side output thickness is the base plus generated relief actually present. `total_thickness_mm` is currently a double-side body/spacing budget and must not be interpreted as a guaranteed final placeholder bbox.
 
-The first runnable project features are:
+## Mask behavior
 
-- Create a MedalProject object.
-- Save it as `.medalproj` JSON.
-- Load it later.
-- Import image assets into a sibling asset folder.
-- Keep front/back/reference images separate.
-- Keep export history inside the project.
+- `alpha`: use visible alpha pixels.
+- `luminance`: absolute brightness difference from border background.
+- `luminance-dark`: pixels darker than border background.
+- `luminance-light`: pixels lighter than border background.
+- `auto`: use alpha only when alpha contains useful variation; otherwise use luminance contrast.
 
-The existing single-side relief pipeline remains the first mesh generation path. The project layer is added above it so later front/back incremental workflows do not require users to start over.
+An empty cleaned mask blocks mesh export. The caller may still request diagnostic preview files.
+
+## Export contract
+
+OBJ, STL and GLB use the same array validation. Writers create parent directories, write a temporary sibling file, flush/fsync and atomically replace the destination. Project builds choose a unique output name before writing.
+
+STL coordinates are millimeters by convention because STL has no unit field. Blender import size and normal direction still require recorded manual acceptance.
+
+## Manufacturing gate
+
+The report distinguishes:
+
+- `blocked`: a known severe geometry defect is present;
+- `review_required`: checked topology passed, but manufacturing is not certified.
+
+The gate always sets `unattended_manufacturing_recommended` to false. Missing checks include self-intersection, local wall thickness, minimum feature size and process-specific tool access or overhang constraints.
+
+## GUI scope
+
+The current GUI shell persists core front parameters and runs builds in a worker thread. MVP completion still requires exact source/mask/heightmap previews, manual crop and mask editing, a dedicated report panel and unsaved-change handling.
+
+## Double-side scope
+
+The current double-side path is an inspection placeholder with two independently closed solids. The back is reflected across Z and face winding is reversed. It is not fused and is always manufacturing-blocked.
+
+A production double-side design must add center/scale/rotation/offset alignment, one shared central body, no overlapping internal shells, one final closed oriented component and one unambiguous total-thickness definition.
