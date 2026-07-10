@@ -1,238 +1,180 @@
 # Badge Relief Maker
 
-Badge Relief Maker is an experimental Windows-first desktop tool for converting 2D images of badges, medals, crests, emblems, award plates and relief-style decorative designs into editable 3D relief meshes.
+Badge Relief Maker is an experimental Windows-first local tool for converting 2D badge, medal, crest, emblem and award artwork into editable 2.5D relief meshes for Blender, 3D printing, CNC work, mould design and manual refinement.
 
-The project is not intended to be a general-purpose AI image-to-3D system. Its first target is narrower and more practical: take one front image, or a front/back image pair, extract the visible face details, build layered relief height, add thickness and side closure, and export a manufacturable base model for Blender, 3D printing, CNC engraving, mould design or further manual refinement.
+It is not a general AI image-to-3D system and does not promise an automatic production-perfect replica. The current target is a deterministic local pipeline that produces a repairable base mesh from one front image or a front/back project.
 
-## Current scope
+## Installation and entry point
 
-The first implementation prioritizes local/offline processing so it can run on ordinary Windows laptops. Heavy image-to-3D AI models, cloud APIs and GPU servers are intentionally outside the MVP.
+The repository root is the only supported Python package root.
 
-The project now has these layers:
+```bash
+python -m pip install -e .
+python -m badge_relief_maker.app
+```
 
-- A project layer that can create, save and open `.medalproj` JSON files with a sibling asset folder.
-- A project-aware side relief workflow that imports front or back images, builds rough side meshes and records export history.
-- A double-side placeholder workflow that places front and mirrored back relief meshes into one combined OBJ/STL/GLB for Blender inspection.
-- Split OBJ/GLB exporters for Blender-friendly front/back object separation.
-- A single-side relief pipeline that can generate a rough OBJ, ASCII STL or binary GLB from one image.
-- A lightweight outline report, contour side wall builder, optional smoothed side wall builder, manual height markers, outer rim height boost with flat/linear/smooth profiles, mesh repair pass, topology report and face-geometry diagnostics for early warnings.
+Install test dependencies and run the suite:
 
-The current runnable mesh path is a simple single-side proof of concept:
+```bash
+python -m pip install -e ".[test]"
+python -m pytest
+```
 
-- Load one image.
-- Build a foreground mask.
-- Remove small isolated mask fragments.
-- Fill small enclosed mask holes.
-- Optionally smooth mask noise with a small majority filter.
-- Crop to the foreground bounding box.
-- Downsample very large masks before mesh generation.
-- Optionally apply manual circular, rectangular or polygon height edits to the normalized heightmap.
-- Optionally apply an outer rim height boost along the foreground boundary.
-- Support flat, linear or smooth rim height profiles.
-- Extract outline boundary metrics from the final mask.
-- Trace boundary loops, remove collinear contour points and calculate smoothed-loop metrics.
-- Convert brightness to a heightmap.
-- Build a masked footprint relief solid by default.
-- Add base thickness and contour-driven external side walls.
-- Optionally use experimental smoothed contour side walls.
-- Add internal vertical walls where neighboring relief cells have different heights.
-- Deduplicate repeated vertices.
-- Run basic mesh repair to remove invalid faces, zero-area faces, duplicate faces and unreferenced vertices.
-- Report face area, face normal orientation and malformed face-array diagnostics.
-- Export optional mask and heightmap previews.
+The obsolete nested placeholder package has been removed from the runnable path.
+
+## Current pipeline
+
+The single-side build path now performs the following steps:
+
+- Load JPG or PNG as RGBA.
+- Select an explicit `alpha`, `luminance` or `auto` foreground-mask mode.
+- In `auto` mode, use alpha only when the image contains meaningful transparency; otherwise compare luminance against the image border, supporting both dark-on-light and light-on-dark artwork.
+- Remove small components, fill small holes and optionally smooth the mask.
+- Generate a grayscale heightmap normalized only from masked foreground pixels.
+- Crop and resize the processing grid.
+- Transform saved manual markers from original-image coordinates through crop and resize.
+- Apply circular, rectangular or polygon height edits.
+- Tight-crop the geometry mask so processing padding does not change final physical dimensions.
+- Convert rim width in millimeters using the actual final grid rather than the quality preset limit.
+- Build a closed stepped mask solid using shared vertices and height slabs.
+- Optimize and conservatively repair the mesh.
+- Report boundary edges, non-manifold edges, inconsistent edge winding, face areas and signed volume.
 - Export OBJ, ASCII STL or binary GLB.
-- Return a basic manufacturing report with size, outline, manual-height, rim, topology, face-geometry, repair metadata and warning fields.
 
-The `.medalproj` file stores project name, front image, back image, reference images, same-object flag, outline state, dimensions, edge parameters, relief parameters, manual correction markers and export history. This is required so a front-only project can later receive a back image without starting over.
+For a masked build, the foreground bounding box is scaled to the requested `width_mm × height_mm`. Crop padding affects image processing only, not the finished XY size.
 
-Project manual markers can now drive simple height edits during side builds. Supported marker types are `height`, `height_override` and `set_height`; target can be `front`, `back`, `both`, `heightmap` or `relief`. Marker data supports normalized or pixel x/y coordinates, circular radius, rectangular width/height, polygon `points`, normalized height, and set/add/subtract operation modes. For rectangle size, use pixel dimensions or explicit normalized region keys such as `width_normalized` plus `region_height_normalized`, `rect_height_normalized` or `box_height_normalized`; `height_normalized` remains the target height value.
+The closed grid-contour path is currently preferred over the older experimental smoothed wall path. When smoothed walls are requested, the build defers them and keeps the closed grid solid rather than emitting the known non-watertight preview geometry.
 
-Project edge settings are now used by project builds. The project can store rim enablement, rim width in pixels or millimeters, rim height, rim profile, smoothed side-wall mode and contour smoothing iterations. When rim width is supplied in millimeters, project export converts it to an approximate pixel width using the selected quality preset.
+## Project files
 
-Quality modes are available for project builds: preview, standard and high. They currently map to different grid-size and mask-cleanup presets, not to a full sculpting engine.
+A `.medalproj` file stores project metadata, front and back assets, reference images, dimensions, edge settings, relief settings, manual markers and export history.
 
-The back-side workflow is currently incremental but independent: a back image can be added to an existing project and exported as its own back relief OBJ/STL/GLB.
+Project handling includes:
 
-The double-side placeholder workflow requires both front and back images. It combines the generated front relief and a mirrored generated back relief into one output file, but it is explicitly not a fused production body yet. OBJ placeholder export writes named objects `front_relief` and `back_relief` so Blender users can select and edit the two sides separately. GLB placeholder export now writes named glTF nodes and meshes for the same two parts.
+- Atomic JSON saves through a temporary file and replace operation.
+- Sanitized asset roles and filenames.
+- A resolved-path containment check that prevents image imports or stored asset paths from escaping the project directory.
+- Unique imported asset filenames instead of silent overwrite.
+- Unique export filenames so multiple history entries do not point to the same overwritten file.
+- Explicit parsing of saved boolean strings.
+- Numeric and cross-field validation before project builds.
+- Filtering of malformed nested project records and malformed manual markers.
 
-The GLB exporter writes a minimal binary glTF 2.0 mesh with positions, vertex normals, triangle indices and simple PBR material records. Multi-object GLB export can preserve named mesh nodes and give each mesh a separate basic material. It does not yet write UVs or textures.
-
-The outline report counts mask boundary edges, horizontal and vertical boundary edges, estimated boundary length, boundary loop counts, simplified contour point counts, smoothed contour point counts and a rough outline type label. The contour side wall builder uses the external mask boundary as a separate side-wall layer. The optional smoothed side wall path can already export experimental smoother walls, but it may need Blender cleanup because it does not yet share vertices perfectly with the pixel-cell top surface.
-
-The outer rim height boost raises foreground cells near the mask boundary before mesh generation. Flat profile raises all rim cells equally; linear profile tapers the rim inward with a straight ramp; smooth profile uses a smoothstep ramp for a softer rounded-looking transition. This is a simple way to create a badge-like raised border; it is not yet a true bevelled or rounded rim mesh.
-
-The topology report counts unique edges, boundary edges and non-manifold edges. Face-geometry diagnostics report valid and invalid faces, malformed face arrays, zero-area faces, total surface area and rough up/down/side face-normal counts. The repair pass removes simple invalid or redundant geometry. These are lightweight diagnostics and cleanup steps, not proof that a mesh is production-ready.
-
-The masked footprint mode follows transparent foreground pixels, so it is closer to a badge outline than the first rectangular proof of concept. It is still intentionally simple and uses one solid cell per foreground pixel.
-
-Internal height step closure is now included so adjacent high and low relief cells do not leave obvious vertical cracks in the MVP mesh.
-
-The report is advisory only. It currently includes vertex count, face count, bounding box, estimated total thickness, crop/resize metadata, mask cleanup metadata, outline metadata, manual-height metadata, rim metadata, face-geometry metadata, repair metadata, topology metadata and early warnings. It does not yet prove that a model is watertight or production safe.
-
-The intended MVP still includes stronger side/rim generation, stronger mesh repair, richer desktop UI and later fused double-side mode.
-
-## Planned modes
-
-### Single-side mode
-
-Input one front image and generate a raised relief surface with a flat back, base plate, mirrored back, or simple reverse impression.
-
-### Double-side mode
-
-Input one front image and one back image, align both sides, generate relief for each side, connect them by a controlled thickness, and output a closed solid.
-
-### Reference mode
-
-Input similar-object images as references without assuming that front and back belong to the same physical object.
-
-## Project workflow
-
-Create a project file:
+Create a project:
 
 ```bash
 python -m badge_relief_maker.app --new-project "Test Medal" --project-path test.medalproj
 ```
 
-This creates:
-
-```text
-test.medalproj
-test_assets/
-  images/
-  previews/
-  exports/
-```
-
-Import a front image into the project:
+Import front and back images:
 
 ```bash
 python -m badge_relief_maker.app --project-path test.medalproj --import-front front.png
-```
-
-Build front relief from the project and record export history:
-
-```bash
-python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format obj --quality preview
-```
-
-Build front relief as GLB:
-
-```bash
-python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format glb --quality preview
-```
-
-Add a back image later to the same project:
-
-```bash
 python -m badge_relief_maker.app --project-path test.medalproj --import-back back.png
 ```
 
-Build back relief from the same project and record export history:
-
-```bash
-python -m badge_relief_maker.app --project-path test.medalproj --build-back --project-export-format stl --quality preview
-```
-
-Build a combined front/back placeholder assembly:
-
-```bash
-python -m badge_relief_maker.app --project-path test.medalproj --build-double-placeholder --project-export-format obj --quality preview
-```
-
-Build the same placeholder assembly as split-node GLB:
-
-```bash
-python -m badge_relief_maker.app --project-path test.medalproj --build-double-placeholder --project-export-format glb --quality preview
-```
-
-The placeholder assembly is useful for Blender inspection and layout checking. It is not a finished fused double-side production model. OBJ and GLB placeholder output preserve named `front_relief` and `back_relief` parts.
-
-A generic side build form is also available:
-
-```bash
-python -m badge_relief_maker.app --project-path test.medalproj --build-side front --project-export-format obj --quality standard
-```
-
-Import a reference image without treating it as the same physical object:
+Import a reference image:
 
 ```bash
 python -m badge_relief_maker.app --project-path test.medalproj --import-reference ref.png --reference-role same_type_front
 ```
 
-Run the GUI skeleton if PySide6 is installed:
+Build one side:
 
 ```bash
-python -m badge_relief_maker.app --gui
+python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format obj --quality preview
+python -m badge_relief_maker.app --project-path test.medalproj --build-side back --project-export-format glb --quality standard
 ```
 
-Install optional GUI dependency:
+Build the front/back inspection assembly:
 
 ```bash
-pip install -r requirements-gui.txt
+python -m badge_relief_maker.app --project-path test.medalproj --build-double-placeholder --project-export-format glb --quality preview
 ```
 
-## Direct CLI proof of concept
+The generic side-build wrapper used by the CLI is part of `project_build.py`. The back mesh is reflected across Z and its triangle winding is reversed so the reflection does not turn outward normals inward.
 
-Export OBJ without a project file:
+The double-side result is still an inspection placeholder, not a fused production body. OBJ and GLB preserve named `front_relief` and `back_relief` parts.
+
+## Direct image builds
 
 ```bash
-python -m badge_relief_maker.app --input input.png --output output.obj --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
+python -m badge_relief_maker.app \
+  --input input.jpg \
+  --output output.obj \
+  --width-mm 80 \
+  --height-mm 80 \
+  --base-mm 2 \
+  --relief-mm 3 \
+  --mask-mode auto
 ```
 
-Export ASCII STL without a project file:
+Force luminance masking for an opaque scan or photograph:
 
 ```bash
-python -m badge_relief_maker.app --input input.png --output output.stl --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
+python -m badge_relief_maker.app --input scan.jpg --output scan.stl --mask-mode luminance --luminance-threshold 20
 ```
 
-Export GLB without a project file:
+Force alpha masking for a transparent PNG:
 
 ```bash
-python -m badge_relief_maker.app --input input.png --output output.glb --width-mm 80 --height-mm 80 --base-mm 2 --relief-mm 3
+python -m badge_relief_maker.app --input artwork.png --output artwork.glb --mask-mode alpha
 ```
 
-Use experimental smoothed side walls:
-
-```bash
-python -m badge_relief_maker.app --input input.png --output output.obj --smoothed-side-walls --contour-smoothing-iterations 1
-```
-
-Add a simple raised outer rim:
+Add a simple heightmap rim:
 
 ```bash
 python -m badge_relief_maker.app --input input.png --output output.obj --rim-width-px 2 --rim-height-mm 1.0 --rim-profile smooth
 ```
 
-To export mask and heightmap preview images:
+Export previews:
 
 ```bash
 python -m badge_relief_maker.app --input input.png --output output.obj --preview-dir previews
 ```
 
-To control crop, grid size and mask cleanup:
+The CLI rejects conflicting primary actions instead of silently choosing one import or build option.
 
-```bash
-python -m badge_relief_maker.app --input input.png --output output.obj --crop-padding-px 2 --max-grid-cells 20000 --min-component-pixels 8 --fill-hole-pixels 16 --mask-smooth-iterations 1
+## Manual marker coordinates
+
+Project marker coordinates are interpreted in the original source image:
+
+```text
+original image coordinates
+→ processing crop
+→ grid resize
+→ final geometry crop
+→ millimeter mesh
 ```
 
-Use the rectangular debugging fallback when needed:
+Normalized marker coordinates are relative to the original image. Pixel centers, pixel radii, rectangular dimensions and polygon points are transformed before the marker is applied. Already processed coordinates may opt out with `coordinate_space: "processed"` or `"heightmap"`.
 
-```bash
-python -m badge_relief_maker.app --input input.png --output output.obj --rectangle-footprint
-```
+Supported marker shapes and operations include:
 
-Disable foreground crop when debugging full image scale:
+- Circle/brush: `x`, `y`, `radius_px` or `radius_normalized`.
+- Rectangle: center plus pixel dimensions, or explicit normalized region dimensions such as `width_normalized` and `region_height_normalized`.
+- Polygon/freeform: `points`, `vertices` or `polygon_points`.
+- Operations: set, add and subtract.
 
-```bash
-python -m badge_relief_maker.app --input input.png --output output.obj --no-crop
-```
+`height_normalized` is the target relief value, not the normalized rectangle height.
 
-These commands should be treated as first pipeline tests, not production-grade model generation.
+## GLB output
 
-## Suggested development order
+GLB output contains glTF 2.0 positions, vertex normals, triangle indices and simple PBR material records. Multi-object GLB keeps separate named nodes and materials. UVs and textures are not implemented yet.
 
-1. Add bevel/rim mesh parameters beyond heightmap boosting.
-2. Add stronger mesh repair and hole-fill actions.
-3. Expand PySide6 UI panels.
-4. Add fused double-side alignment and solid generation.
-5. Expand region-based manual height editing.
+OBJ, STL and GLB now share the same mesh-array validation: vertices and faces must be finite `N×3` arrays, face indices must be integers, and indices must stay inside the vertex array.
+
+## Manufacturing status
+
+The default stepped mask surface now passes an oriented edge-manifold heuristic for representative non-uniform height fields: each undirected edge must occur twice with opposite directed use. The report also calculates signed volume and warns about inward orientation.
+
+This remains an advisory MVP, not a manufacturing certification system. The following remain incomplete:
+
+1. True bevelled or rounded rim geometry.
+2. Hole filling, self-intersection repair and component-level orientation repair.
+3. Fused and aligned front/back production solids.
+4. Text, motif and decorative-region separation.
+5. Higher-quality contour and layer generation.
+6. Visual GUI editing for masks, polygons, brushes and local height locks.
+7. UV and texture export.
+8. Physical validation against real print/CNC tolerances.
