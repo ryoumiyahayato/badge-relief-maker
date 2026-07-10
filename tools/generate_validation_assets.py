@@ -6,7 +6,11 @@ claim those external applications have been tested.
 """
 
 import json
+import sys
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from badge_relief_maker.app.core.double_side_builder import build_fused_double_sided_relief
 from badge_relief_maker.app.core.export_validation import validate_export
