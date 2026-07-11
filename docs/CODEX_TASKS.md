@@ -14,7 +14,7 @@
 
 ## Task 0: Current Windows quality gate
 
-Status: **highest priority; evidence pending**.
+Status: **local Windows Python 3.10/3.12 evidence passed; GitHub Actions evidence pending**.
 
 Run on the current head:
 
@@ -34,9 +34,11 @@ Required:
 - Inspect any failure as a real regression until proven otherwise.
 - Do not rely on the earlier intermediate 168-test run for the current commit.
 
+Current local evidence: Python 3.10.20 and 3.12.13 both pass the entry points, GUI import, Ruff and `226` tests on the working tree based on `e15ebe79`.
+
 ## Task 1: Package artifact and clean-machine run
 
-Status: build configuration implemented; evidence pending.
+Status: **local versioned artifact, CLI/GUI smoke and single/fused export read-back passed; CI artifact and clean-machine run pending**.
 
 Required:
 
@@ -44,11 +46,11 @@ Required:
 2. Download and launch it on a machine without the source checkout or Python environment.
 3. Verify `--help`, GUI launch, project create/open/save and one sample export.
 4. Record Windows version, artifact commit, file hash and result.
-5. Add version metadata/icon only after the functional artifact passes.
+5. Windows file/product version metadata and `--version` are implemented. A product icon and code signing remain release-branding work, not runtime acceptance.
 
 ## Task 2: Cross-quality visual-coordinate fixture
 
-Status: core transforms and unit tests implemented; end-to-end fixture pending.
+Status: **automated end-to-end fixture passed; manual Windows interaction record pending**.
 
 Required fixture:
 
@@ -62,9 +64,16 @@ Required fixture:
 
 Also test that changing perspective prompts for clearing dependent edits and that clearing one side converts a `both` marker to the other side rather than deleting it globally.
 
+Current automated evidence on the working tree based on `e15ebe79` covers the complete saved-project chain:
+non-trivial perspective, manual and automatic crop, source-space mask removal,
+final-grid layer and height edits, preview/standard/high physical placement,
+requested X/Y dimensions and save/reopen persistence. The confirmation dialog
+and single-side clearing behavior remain separately covered by GUI-focused tests;
+the full mouse-driven Windows interaction record is still manual acceptance.
+
 ## Task 3: GUI Windows interaction acceptance
 
-Status: implementation candidate present; manual record pending.
+Status: **automated editor/coordinate/build-freeze tests and packaged offscreen startup passed; mouse-driven Windows record pending**.
 
 Verify:
 
@@ -81,7 +90,7 @@ Add focused GUI tests where deterministic; keep screenshot/manual evidence in th
 
 ## Task 4: Project v2 robustness
 
-Status: migration and schema implemented; adversarial coverage should continue.
+Status: **migration/schema and the listed automated adversarial cases pass; future parser fields still require equivalent validation**.
 
 Required:
 
@@ -98,9 +107,11 @@ Fused validation rule:
 - the two-base minimum applies only to the non-fused placeholder;
 - front/back process profiles must be reconciled explicitly before one fused report is produced.
 
+Current coverage includes recursive non-finite JSON rejection, malformed v2 visual-record filtering, wrong-type numeric build rejection, Windows junction escape prevention, v1→v2 equivalent rebuild and collision-safe repeated imports/exports. Single-side validation no longer consumes the independent fused-body thickness.
+
 ## Task 5: Single-side geometry acceptance
 
-Status: implementation candidate present; current full suite and visual evidence pending.
+Status: **current automated topology suite passed; Blender edge-profile visual evidence pending**.
 
 Keep direct topology assertions for:
 
@@ -124,18 +135,19 @@ Status: advisory implementation present.
 
 Current implementation includes topology, orientation repair, bounded self-intersection broad phase, vertical-thickness, feature-size, tiny-component and orientation-based process checks.
 
-Next:
+Completed in the current automated follow-up:
 
 - quantify and test the self-intersection candidate-limit behavior;
 - add representative false-positive/false-negative fixtures;
-- extend local thickness beyond vertical height-field estimates where practical;
 - distinguish isolated decorative components from intended multi-part output;
 - add more explicit mould draft and CNC tool-access summaries;
 - keep `review_required` for every non-blocked result.
 
+Still external/approximate: extend thickness analysis beyond vertical height-field and footprint estimates, then calibrate it against slicer/CAM/physical failures. This cannot be represented as a manufacturing certificate.
+
 ## Task 7: Fused double-side acceptance
 
-Status: implementation candidate present; external alignment validation pending.
+Status: **all listed deterministic alignment/topology/Z tests passed; viewed orientation in Blender remains pending**.
 
 Required:
 
@@ -150,9 +162,11 @@ Required:
 
 Do not confuse this with the two-object inspection placeholder.
 
+The expanded fixture found and fixed two real defects: 16-bit Pillow affine height truncation and a one-pixel rotation-center offset. Alignment now uses a normalized float field and explicit pixel-center inverse mapping.
+
 ## Task 8: Export and external import evidence
 
-Status: programmatic reload implemented; manual evidence pending.
+Status: **source and packaged single/fused OBJ/STL/GLB programmatic reload passed; Blender/slicer/CAM evidence pending**.
 
 For OBJ, STL and GLB:
 

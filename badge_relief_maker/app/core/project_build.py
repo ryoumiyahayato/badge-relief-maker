@@ -123,8 +123,10 @@ def _validate_project_parameters(project, *, double_side=False, side_name=None, 
     dimensions = project.dimensions
     width = _number(dimensions.width_mm, "width_mm", positive=True)
     height = _number(dimensions.height_mm, "height_mm", positive=True)
-    total = _number(dimensions.total_thickness_mm, "total_thickness_mm", positive=True)
     base = _number(dimensions.base_thickness_mm, "base_thickness_mm", nonnegative=True)
+    total = None
+    if double_side or fused or side_name is None:
+        total = _number(dimensions.total_thickness_mm, "total_thickness_mm", positive=True)
     if double_side and not fused and total < base * 2.0:
         raise ValueError("total_thickness_mm must be at least twice base_thickness_mm for a double-side placeholder")
 

@@ -30,6 +30,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=True,
+    version=str(root / "version_info.txt"),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

@@ -1,6 +1,7 @@
 """Project save, load and asset import helpers."""
 
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -109,6 +110,18 @@ def migrate_project_data(data):
     return migrated
 
 
+def _reject_non_finite_json(value, path="project"):
+    """Reject NaN/Infinity anywhere in an untrusted project document."""
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ProjectFormatError(f"{path} contains a non-finite number")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _reject_non_finite_json(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _reject_non_finite_json(item, f"{path}[{index}]")
+
+
 def save_project(project, path):
     """Flush and atomically save a project as JSON .medalproj."""
     if not isinstance(project, MedalProject):
@@ -157,6 +170,7 @@ def load_project(path):
         raise ProjectFormatError(f"project file contains invalid JSON: {path}") from exc
     if not isinstance(data, dict):
         raise ProjectFormatError("project root must be a JSON object")
+    _reject_non_finite_json(data)
     data = migrate_project_data(data)
     project = MedalProject.from_dict(data)
     project.file_version = PROJECT_FILE_VERSION

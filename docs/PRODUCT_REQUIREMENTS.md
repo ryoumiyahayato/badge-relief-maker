@@ -26,7 +26,7 @@ The product must not promise:
 - automatic reconstruction of unseen side geometry;
 - a production-ready result without inspection;
 - universal print, CNC, mould, casting or stamping safety;
-- a fused double-side model while only the placeholder path exists;
+- production acceptance for fused double-side output before alignment, topology and external import gates pass;
 - generic AI image-to-complete-3D reconstruction.
 
 ## Target users
@@ -94,13 +94,13 @@ A successful checked mesh is `review_required`, not certified safe. A known seve
 
 The single-side GUI must eventually support project operations, front-image import, source/mask/heightmap previews, parameter controls, background generation, export selection, report/warning display and opening the output directory.
 
-Core builds must not block the UI thread. Errors must be shown in user-readable form. The current GUI is partial until visual preview/editing and unsaved-change handling are completed.
+Core builds must not block the UI thread. Errors must be shown in user-readable form. Source/mask/height previews, visual editing, unsaved-change handling and build-time control freezing are implemented; mouse-driven clean-machine acceptance remains external evidence.
 
 ### Double-side mode
 
-The current placeholder may be retained for inspection, provided it remains clearly named and manufacturing-blocked.
+The non-fused placeholder is retained for inspection, remains clearly named and is manufacturing-blocked.
 
-A complete double-side feature requires manual alignment, one shared central body, no internal shell overlap/gap, one final closed component and a singular definition of total thickness. It must not be counted as complete before those conditions pass.
+The fused double-side implementation provides manual alignment, one shared central body, no internal shell overlap/gap, one final closed component and a singular definition of total thickness. It remains a production candidate until representative Blender/slicer evidence is recorded.
 
 ### Windows delivery
 

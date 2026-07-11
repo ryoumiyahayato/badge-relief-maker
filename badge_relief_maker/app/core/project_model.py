@@ -2,6 +2,7 @@
 
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
+import math
 
 
 PROJECT_FILE_VERSION = 2
@@ -58,6 +59,38 @@ def _coerce_int(value, default):
 
 def _nonempty_text(value):
     return isinstance(value, str) and bool(value.strip())
+
+
+def _finite_float(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _crop_box_record(value):
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    converted = [_finite_float(item) for item in value]
+    return converted if all(item is not None for item in converted) else None
+
+
+def _perspective_record(value):
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    converted = []
+    for point in value:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            return None
+        x = _finite_float(point[0])
+        y = _finite_float(point[1])
+        if x is None or y is None or not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+            return None
+        converted.append([x, y])
+    return converted
 
 
 def _image_record_from_dict(data):
@@ -287,14 +320,10 @@ class MedalProject:
             relief.enabled = _coerce_bool(relief.enabled, default_enabled)
             relief.invert_height = _coerce_bool(relief.invert_height, False)
             relief.crop_to_foreground = _coerce_bool(relief.crop_to_foreground, True)
-            if not isinstance(relief.manual_crop_box, list):
-                relief.manual_crop_box = None
-            if not isinstance(relief.perspective_quad, list):
-                relief.perspective_quad = None
-            if not isinstance(relief.mask_edits, list):
-                relief.mask_edits = []
-            if not isinstance(relief.region_layers, list):
-                relief.region_layers = []
+            relief.manual_crop_box = _crop_box_record(relief.manual_crop_box)
+            relief.perspective_quad = _perspective_record(relief.perspective_quad)
+            relief.mask_edits = _dict_list(relief.mask_edits)
+            relief.region_layers = _dict_list(relief.region_layers)
         project.double_side.enabled = _coerce_bool(project.double_side.enabled, False)
         project.double_side.flip_back_horizontal = _coerce_bool(project.double_side.flip_back_horizontal, True)
         return project

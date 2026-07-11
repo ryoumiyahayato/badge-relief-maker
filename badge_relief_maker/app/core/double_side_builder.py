@@ -20,20 +20,22 @@ def common_grid_shape(width_mm, height_mm, max_cells):
 def _resize_field(mask, heightmap, shape):
     rows, cols = shape
     mask_image = Image.fromarray(np.where(mask, 255, 0).astype(np.uint8), mode="L")
-    height_image = Image.fromarray(np.clip(np.asarray(heightmap) * 65535.0, 0, 65535).astype(np.uint16))
+    # Pillow's affine/resize path can clamp ``I;16`` values to 8-bit range.
+    # Keep normalized relief values in floating-point mode throughout alignment.
+    height_image = Image.fromarray(np.clip(np.asarray(heightmap, dtype=np.float32), 0.0, 1.0), mode="F")
     resized_mask = np.asarray(mask_image.resize((cols, rows), Image.Resampling.NEAREST)) > 0
-    resized_height = np.asarray(height_image.resize((cols, rows), Image.Resampling.BILINEAR)).astype(np.float32) / 65535.0
+    resized_height = np.asarray(height_image.resize((cols, rows), Image.Resampling.BILINEAR), dtype=np.float32)
     return resized_mask, np.where(resized_mask, resized_height, 0.0).astype(np.float32)
 
 
 def _affine_back(mask, heightmap, width_mm, height_mm, scale, rotation_deg, offset_x_mm, offset_y_mm, flip_horizontal):
-    rows, cols = mask.shape
-    mask_image = Image.fromarray(np.where(mask, 255, 0).astype(np.uint8), mode="L")
-    height_image = Image.fromarray(np.clip(heightmap * 65535.0, 0, 65535).astype(np.uint16))
+    source_mask = np.asarray(mask, dtype=bool)
+    source_height = np.clip(np.asarray(heightmap, dtype=np.float32), 0.0, 1.0)
     if flip_horizontal:
-        mask_image = mask_image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-        height_image = height_image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        source_mask = np.fliplr(source_mask)
+        source_height = np.fliplr(source_height)
 
+    rows, cols = source_mask.shape
     scale = float(scale)
     if not np.isfinite(scale) or scale <= 0.0:
         raise ValueError("double-side back_scale must be positive and finite")
@@ -44,30 +46,32 @@ def _affine_back(mask, heightmap, width_mm, height_mm, scale, rotation_deg, offs
     center_y = (rows - 1.0) / 2.0
     offset_x = float(offset_x_mm) / float(width_mm) * cols
     offset_y = float(offset_y_mm) / float(height_mm) * rows
-    inverse_scale = 1.0 / scale
-    a = cosine * inverse_scale
-    b = sine * inverse_scale
-    d = -sine * inverse_scale
-    e = cosine * inverse_scale
-    c = center_x - a * (center_x + offset_x) - b * (center_y + offset_y)
-    f = center_y - d * (center_x + offset_x) - e * (center_y + offset_y)
-    coefficients = (a, b, c, d, e, f)
-    transformed_mask = mask_image.transform(
-        (cols, rows),
-        Image.Transform.AFFINE,
-        coefficients,
-        resample=Image.Resampling.NEAREST,
-        fillcolor=0,
-    )
-    transformed_height = height_image.transform(
-        (cols, rows),
-        Image.Transform.AFFINE,
-        coefficients,
-        resample=Image.Resampling.BILINEAR,
-        fillcolor=0,
-    )
-    result_mask = np.asarray(transformed_mask) > 0
-    result_height = np.asarray(transformed_height).astype(np.float32) / 65535.0
+    yy, xx = np.mgrid[:rows, :cols]
+    output_x = xx - center_x - offset_x
+    output_y = yy - center_y - offset_y
+    source_x = (cosine * output_x + sine * output_y) / scale + center_x
+    source_y = (-sine * output_x + cosine * output_y) / scale + center_y
+
+    nearest_x = np.floor(source_x + 0.5).astype(int)
+    nearest_y = np.floor(source_y + 0.5).astype(int)
+    nearest_valid = (nearest_x >= 0) & (nearest_x < cols) & (nearest_y >= 0) & (nearest_y < rows)
+    result_mask = np.zeros((rows, cols), dtype=bool)
+    result_mask[nearest_valid] = source_mask[nearest_y[nearest_valid], nearest_x[nearest_valid]]
+
+    sample_valid = (source_x >= 0.0) & (source_x <= cols - 1.0) & (source_y >= 0.0) & (source_y <= rows - 1.0)
+    x0 = np.clip(np.floor(source_x).astype(int), 0, cols - 1)
+    y0 = np.clip(np.floor(source_y).astype(int), 0, rows - 1)
+    x1 = np.minimum(x0 + 1, cols - 1)
+    y1 = np.minimum(y0 + 1, rows - 1)
+    wx = source_x - x0
+    wy = source_y - y0
+    result_height = (
+        source_height[y0, x0] * (1.0 - wx) * (1.0 - wy)
+        + source_height[y0, x1] * wx * (1.0 - wy)
+        + source_height[y1, x0] * (1.0 - wx) * wy
+        + source_height[y1, x1] * wx * wy
+    ).astype(np.float32)
+    result_height[~sample_valid] = 0.0
     return result_mask, np.where(result_mask, result_height, 0.0).astype(np.float32)
 
 

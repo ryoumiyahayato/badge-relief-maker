@@ -269,6 +269,9 @@ class MainWindow(_BaseMainWindow):
             return
         if self.project is None or self._image_record() is None:
             return
+        if self._build_thread is not None:
+            self._log("Wait for the active build before editing previews.")
+            return
         tool = self.edit_tool_combo.currentText()
         if tool == "inspect":
             self._log(f"{preview_space} preview point: x={x_normalized:.4f}, y={y_normalized:.4f}")
@@ -285,6 +288,9 @@ class MainWindow(_BaseMainWindow):
                     }
                 )
             elif tool in {"height set", "height add", "height subtract", "height smooth"}:
+                if preview_space != "final":
+                    self._log("Height edits must be applied on the final height or mask preview.")
+                    return
                 self.project.manual_markers.append(
                     ManualMarker(
                         marker_type="height",
@@ -298,6 +304,9 @@ class MainWindow(_BaseMainWindow):
                     )
                 )
             elif tool in {"layer set", "layer locked"}:
+                if preview_space != "final":
+                    self._log("Layer edits must be applied on the final height or mask preview.")
+                    return
                 side.region_layers.append(
                     {
                         "shape": "circle",
@@ -368,3 +377,5 @@ class MainWindow(_BaseMainWindow):
             control.setEnabled(enabled)
         if getattr(self, "side_combo", None) is not None:
             self.side_combo.setEnabled(enabled)
+        for preview in (self.source_preview, self.mask_preview, self.height_preview):
+            preview.setEnabled(enabled)

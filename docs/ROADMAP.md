@@ -4,7 +4,7 @@
 
 ## Phase 0: Engineering baseline
 
-Status: **implementation complete, current CI evidence pending**.
+Status: **implementation and local Windows 3.10/3.12 gates complete; GitHub Actions evidence pending**.
 
 Present:
 
@@ -19,7 +19,7 @@ Exit gate: the current commit passes both Windows quality jobs and the package j
 
 ## Phase 1: Safe project and image pipeline
 
-Status: **implementation complete, fixture acceptance pending**.
+Status: **implementation and deterministic fixture acceptance complete locally; CI evidence pending**.
 
 Present:
 
@@ -37,7 +37,7 @@ Exit gate: fixed transparent, dark-on-light and light-on-dark fixtures plus corr
 
 ## Phase 2: Coordinates and physical dimensions
 
-Status: **core implementation complete, cross-quality visual fixture pending**.
+Status: **core implementation and saved-project cross-quality fixture complete locally**.
 
 Present:
 
@@ -53,7 +53,7 @@ Exit gate: the same source and final-preview edits land within one final cell ac
 
 ## Phase 3: Single-side geometry
 
-Status: **implementation candidate complete, current topology gate pending**.
+Status: **implementation candidate and current automated topology gate complete locally; visual evidence pending**.
 
 Present:
 
@@ -70,7 +70,7 @@ Exit gate: all required single-cell, rectangle, circle, ring, varying-height, di
 
 ## Phase 4: Export and advisory manufacturing report
 
-Status: **implementation candidate complete, external import evidence pending**.
+Status: **implementation and programmatic import evidence complete; Blender/slicer/CAM evidence pending**.
 
 Present:
 
@@ -88,7 +88,7 @@ Exit gate: current automated tests pass and Blender imports for all formats are 
 
 ## Phase 5: Single-side desktop workflow
 
-Status: **implementation candidate complete, Windows interaction record pending**.
+Status: **implementation, automated editor tests and packaged GUI startup complete; mouse-driven Windows record pending**.
 
 Present:
 
@@ -107,7 +107,7 @@ Exit gate: a non-technical user completes the documented front-image-to-STL flow
 
 ## Phase 6: Fused double-side geometry
 
-Status: **implementation candidate complete, alignment/external validation pending**.
+Status: **implementation and deterministic alignment/topology validation complete; Blender/slicer validation pending**.
 
 Present:
 
@@ -125,7 +125,7 @@ Exit gate: representative asymmetric front/back artwork aligns correctly, produc
 
 ## Phase 7: Windows delivery
 
-Status: **build configuration complete, clean-machine validation pending**.
+Status: **local versioned build, CLI/GUI smoke and sample exports complete; CI artifact and clean-machine validation pending**.
 
 Present:
 

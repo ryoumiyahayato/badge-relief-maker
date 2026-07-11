@@ -3,6 +3,8 @@
 import argparse
 import sys
 
+from badge_relief_maker import __version__
+
 from .core.project_build import (
     build_double_side_placeholder_from_project_file,
     build_fused_double_side_from_project_file,
@@ -163,6 +165,7 @@ def main(argv=None) -> int:
         argv = []
 
     parser = argparse.ArgumentParser(description="Build a rough local badge relief OBJ, STL or GLB from one image.")
+    parser.add_argument("--version", action="version", version=f"Badge Relief Maker {__version__}")
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--new-project", dest="new_project_name")
     parser.add_argument("--project-path", dest="project_path")

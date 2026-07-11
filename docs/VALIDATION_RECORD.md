@@ -4,7 +4,7 @@ This file records acceptance evidence that cannot be inferred from the presence 
 
 ## Automated Windows quality gate
 
-Current-commit status: **pending**.
+Current working-tree status: **local Windows gates passed; GitHub Actions run still pending**.
 
 The latest workflow is configured for Windows Python 3.10 and 3.12 and runs installation, CLI entry points, corrected GUI import, Ruff and full pytest. A dependent Windows 3.12 job builds, smoke-tests and uploads `BadgeReliefMaker.exe`.
 
@@ -30,17 +30,55 @@ This is useful historical evidence, but it is not acceptance evidence for the cu
 
 | Field | Value |
 |---|---|
-| Commit | pending current head |
-| Windows version | pending |
-| Python 3.10 quality job | pending |
-| Python 3.12 quality job | pending |
-| Package build job | pending |
-| Executable artifact | pending |
+| Base commit | `e15ebe79b4c1672f968ba316441390e603cb30f1` |
+| Working tree under test | base commit plus coordinate/project/manufacturing/double-alignment/GUI regressions, fixes, Windows version metadata/build checks and documentation; not yet committed |
+| Windows version | Windows NT 10.0.26100.0; Windows 10 IoT Enterprise LTSC 2024, build 26100 |
+| Python 3.10 local quality gate | Python 3.10.20; CLI, `--help`, `--version`, corrected GUI import, Ruff and `226 passed` |
+| Python 3.12 local quality gate | Python 3.12.13; CLI, `--help`, `--version`, corrected GUI import, Ruff and `226 passed` |
+| GitHub Actions Python 3.10/3.12 jobs | pending; combined status and available commit workflow-run queries returned no records |
+| Local package build | passed with PyInstaller 6.21.0 on Python 3.12.13 |
+| Executable artifact | `dist/BadgeReliefMaker.exe`, 65,449,711 bytes, file/product/CLI version `0.3.0`, SHA-256 `AAE579BCC1A850B0DF7B628D5DD8E0FABBC759E2A5A08E722751B601B018B97B` |
+| Packaged CLI smoke | `--help` and `--version` passed; direct single and project-based fused OBJ/STL/GLB builds all passed independent trimesh read-back |
+| Packaged GUI smoke | no-argument offscreen launch remained alive for eight seconds; both PyInstaller parent/child test processes were stopped afterward |
 | Clean machine launch | pending |
+
+The local run is current-working-tree regression evidence, not a substitute for the
+configured GitHub Actions matrix or a clean Windows machine. The executable was
+built and launched on the development machine that contains Python and project
+dependencies, although the executable itself was launched through its PyInstaller
+bundle.
+
+## Programmatic validation assets
+
+Current working-tree status: **generated and independently reloaded; external applications pending**.
+
+`python -m tools.generate_validation_assets <temp-directory> --max-grid-cells 5000`
+generated the seven expected exports. Independent `trimesh 4.12.2` read-back
+reported one geometry, matching dimensions, watertight topology, consistent
+winding and positive volume for the single-circle and fused OBJ/STL/GLB files.
+The ring OBJ also passed its programmatic export validation. The fused mesh report
+recorded one closed, outward-oriented component with no boundary or non-manifold
+edges.
+
+| Artifact | Bytes | SHA-256 |
+|---|---:|---|
+| `fused_asymmetric_80x60.glb` | 378,704 | `326ACF251D8C23314B73D5834F629BF560DC0E4DBE7F1BDB6993E50E01624CDE` |
+| `fused_asymmetric_80x60.obj` | 507,341 | `B36455045CA9AC0C97ED6927215BD36B80896A7C1097F36ADA8FD4FA79A6CCB1` |
+| `fused_asymmetric_80x60.stl` | 3,266,313 | `E8A4D905D93CB6D51C6BC69BCB8DF23E3C4DB0902C76C68DDFCC3D530C6B8023` |
+| `single_circle_80x60.glb` | 374,672 | `06624A8EE67A9907F9EEAD2A2763BD0FB6F7307254AE657B2326D5460143A44B` |
+| `single_circle_80x60.obj` | 501,871 | `199D009B3759509FE63CA292A0C00E721E49FDE76817D3368420D807D1B0A5CE` |
+| `single_circle_80x60.stl` | 3,230,739 | `3E644C9244DC5B7D451FE4A059406E3D3878E59ADF3817269CBDDBA0D5BC5B4A` |
+| `single_ring_80x60.obj` | 387,052 | `8C082160505C30A7EE72DE04D1F2CF820C6AC47D517D9D2090FF953F763A63D1` |
+
+These hashes identify this local generation only. Dependency changes can alter
+serialization without changing geometry, so future acceptance runs must record
+their own hashes rather than treating these values as universal golden files.
+
+The fused hashes changed after two alignment defects were fixed: Pillow's 16-bit affine path truncated normalized back heights, and its affine center convention shifted 180-degree rotation by one pixel. The final implementation uses float height fields and explicit pixel-center inverse mapping. The final validation manifest SHA-256 is `9833FD364408740885E6AEC601D3774A63A7C644AEA052BCA5E637017CB9C402`.
 
 ## GUI interaction validation
 
-Status: not yet recorded on the current commit.
+Status: automated coordinate coverage passed on the current working tree; a mouse-driven Windows interaction record is still pending.
 
 Required flow:
 

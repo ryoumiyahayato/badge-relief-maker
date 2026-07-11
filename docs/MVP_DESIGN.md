@@ -138,6 +138,6 @@ The current GUI shell persists core front parameters and runs builds in a worker
 
 ## Double-side scope
 
-The current double-side path is an inspection placeholder with two independently closed solids. The back is reflected across Z and face winding is reversed. It is not fused and is always manufacturing-blocked.
+Two double-side paths are intentionally distinct. The inspection placeholder contains two independently closed solids; its back is reflected across Z with reversed winding and it is always manufacturing-blocked. The fused path independently preprocesses both faces, applies viewed-back flip/scale/rotation/X-Y offsets on one float alignment grid, creates one shared central body and requires one closed final component.
 
 A production double-side design must add center/scale/rotation/offset alignment, one shared central body, no overlapping internal shells, one final closed oriented component and one unambiguous total-thickness definition.

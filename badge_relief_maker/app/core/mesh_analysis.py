@@ -128,11 +128,19 @@ def triangles_intersect(first, second, epsilon=1e-9):
 
 def self_intersection_report(vertices, faces, max_candidate_pairs=2_000_000):
     """Detect non-adjacent triangle intersections using a uniform-grid broad phase."""
+    try:
+        candidate_limit = int(max_candidate_pairs)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("max_candidate_pairs must be a positive integer") from exc
+    if candidate_limit < 1 or candidate_limit != max_candidate_pairs:
+        raise ValueError("max_candidate_pairs must be a positive integer")
     vertices = np.asarray(vertices, dtype=float)
     faces = np.asarray(faces, dtype=np.int64)
     empty = {
         "checked": True,
         "complete": True,
+        "candidate_limit": candidate_limit,
+        "limit_reached": False,
         "candidate_pair_count": 0,
         "tested_pair_count": 0,
         "intersection_pair_count": 0,
@@ -169,7 +177,7 @@ def self_intersection_report(vertices, faces, max_candidate_pairs=2_000_000):
             for right in indices[left_pos + 1 :]:
                 pair = (left, right) if left < right else (right, left)
                 candidates.add(pair)
-                if len(candidates) >= max_candidate_pairs:
+                if len(candidates) >= candidate_limit:
                     complete = False
                     break
             if not complete:
@@ -181,7 +189,7 @@ def self_intersection_report(vertices, faces, max_candidate_pairs=2_000_000):
             for right in range(len(faces)):
                 if left != right:
                     candidates.add((left, right) if left < right else (right, left))
-                    if len(candidates) >= max_candidate_pairs:
+                    if len(candidates) >= candidate_limit:
                         complete = False
                         break
             if not complete:
@@ -200,6 +208,8 @@ def self_intersection_report(vertices, faces, max_candidate_pairs=2_000_000):
     return {
         "checked": True,
         "complete": bool(complete),
+        "candidate_limit": candidate_limit,
+        "limit_reached": bool(not complete),
         "candidate_pair_count": int(len(candidates)),
         "tested_pair_count": int(tested),
         "intersection_pair_count": int(len(intersections)),
@@ -303,6 +313,8 @@ def footprint_feature_report(mask, heightmap, width_mm, height_mm, base_thicknes
             "component_areas_mm2": component_areas,
             "tiny_component_indices": tiny_indices,
             "tiny_component_count": len(tiny_indices),
+            "output_intent": "one fused body" if len(components) <= 1 else "multiple isolated decorative regions",
+            "requires_user_classification": bool(len(components) > 1),
         },
     }
 
@@ -324,10 +336,19 @@ def overhang_tool_access_report(vertices, faces, profile_name="general"):
     threshold = -np.cos(np.deg2rad(90.0 - profile["maximum_overhang_deg"]))
     unsupported = valid & (unit_z < threshold) & (centroids_z > bottom + 1e-6)
     count = int(np.count_nonzero(unsupported))
+    normalized_profile = str(profile_name or "general").strip().lower()
+    process_notes = {
+        "cnc": "Review cutter diameter, +Z reach, undercuts and narrow valleys in CAM; this orientation test does not calculate toolpaths.",
+        "mould": "Review parting line, negative draft, undercuts and release direction; this orientation test is not a mould-flow or draft simulation.",
+        "fdm": "Review supports, bridges and layer direction in a slicer; the count is based only on face orientation.",
+        "resin": "Review supports, suction cups and drainage in a resin slicer; the count is based only on face orientation.",
+        "general": "Review overhangs, draft and tool access in the selected downstream process.",
+    }
     return {
-        "profile": profile_name,
+        "profile": normalized_profile,
         "maximum_overhang_deg": profile["maximum_overhang_deg"],
         "unsupported_face_count": count,
-        "review_required": bool(count > 0 or profile_name in {"cnc", "mould"}),
-        "note": "orientation-only advisory; tool diameter, mould draft direction and support strategy still require review",
+        "review_required": bool(count > 0 or normalized_profile in {"cnc", "mould"}),
+        "direction_assumption": "+Z is the nominal build, pull or tool-access direction",
+        "note": process_notes[normalized_profile],
     }

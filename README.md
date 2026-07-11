@@ -138,10 +138,10 @@ A result is either `blocked` or `review_required`; it is never certified safe fo
 
 Current external acceptance still pending:
 
-1. A clean run of the latest commit on Windows Python 3.10 and 3.12.
+1. A GitHub Actions run after the current validation follow-up is committed and pushed; local gates on the `e15ebe79`-based working tree pass with `226` tests on Windows Python 3.10 and 3.12.
 2. Blender import records for OBJ, STL and GLB.
 3. Slicer and CAM records using representative fixtures.
-4. A clean-machine packaged executable test.
+4. A clean-machine packaged executable test; the local PyInstaller artifact, version metadata, CLI, GUI startup and six single/fused export read-backs already pass on the development machine.
 5. Physical print/CNC measurements and process-specific tolerances.
 
 Brightness is only a visual proxy for depth. Fine text, lines and decorative details may disappear during sampling or fail in the selected manufacturing process, so manual refinement remains part of the intended workflow.

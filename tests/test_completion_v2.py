@@ -228,6 +228,12 @@ def test_packaging_configuration_is_present():
     assert (root / "BadgeReliefMaker.spec").is_file()
     assert (root / "build_windows.ps1").is_file()
     assert (root / "packaging_entry.py").is_file()
+    assert (root / "version_info.txt").is_file()
+    assert 'version=str(root / "version_info.txt")' in (root / "BadgeReliefMaker.spec").read_text(encoding="utf-8")
+    version_text = (root / "version_info.txt").read_text(encoding="utf-8")
+    assert 'version = "0.3.0"' in (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "FileVersion" in version_text
+    assert "0.3.0" in version_text
 
 
 def test_all_export_formats_roundtrip_through_independent_loader(tmp_path):
