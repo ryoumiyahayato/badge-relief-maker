@@ -1,0 +1,148 @@
+yer, dict):
+             continue
+         marker = dict(layer)
+         marker.setdefault("operation", "set")
+-        if not any(key in marker for key in ("height_normalized", "normalized_height", "height", "value")):
++        if not any(key in marker for key in ("height_normalized", "normalized_height", "height", "value", "delta")):
++            continue
++        normalized = normalize_manual_height_marker(marker, foreground.shape)
++        if normalized is None:
+             continue
+         region = manual_height_marker_region(foreground, marker)
+         if not region.any():
+             continue
+-        candidate, marker_report = apply_manual_height_markers(result, foreground, marker)
+-        if marker_report["applied_marker_count"]:
+-            feather_px = layer.get("feather_px")
+-            if feather_px is None and "feather_normalized" in layer:
+-                feather_px = float(layer.get("feather_normalized", 0.0)) * min(foreground.shape)
+-            try:
+-                feather_px = max(float(feather_px or 0.0), 0.0)
+-            except (TypeError, ValueError):
+-                feather_px = 0.0
+-            if feather_px > 0.0:
+-                distance = ndi.distance_transform_edt(region)
+-                weight = np.clip(distance / feather_px, 0.0, 1.0)
+-                result[region] = result[region] * (1.0 - weight[region]) + candidate[region] * weight[region]
+-            else:
+-                result = candidate
+-            applied += 1
+-            if bool(layer.get("locked", False)):
+-                locked |= region
++
++        profile_name = str(layer.get("profile", layer.get("surface_profile", "flat"))).strip().lower()
++        if profile_name in {"rounded", "round", "domed", "dome", "ridge", "convex"}:
++            candidate = _rounded_layer(result, foreground, region, layer, normalized)
++            rounded += 1
++        else:
++            candidate, marker_report = apply_manual_height_markers(result, foreground, marker)
++            if not marker_report["applied_marker_count"]:
++                continue
++
++        feather_px = layer.get("feather_px")
++        if feather_px is None and "feather_normalized" in layer:
++            feather_px = _float(layer.get("feather_normalized"), 0.0) * min(foreground.shape)
++        feather_px = max(_float(feather_px, 0.0), 0.0)
++        if feather_px > 0.0:
++            distance = ndi.distance_transform_edt(region)
++            weight = np.clip(distance / feather_px, 0.0, 1.0)
++            result[region] = result[region] * (1.0 - weight[region]) + candidate[region] * weight[region]
++        else:
++            result[region] = candidate[region]
++        applied += 1
++        if bool(layer.get("locked", False)):
++            locked |= region
++
++    result = np.where(foreground, np.clip(result, 0.0, 1.0), 0.0)
+     return result.astype(np.float32), locked, {
+         "requested_layer_count": requested,
+         "applied_layer_count": applied,
++        "rounded_layer_count": rounded,
+         "locked_pixel_count": int(locked.sum()),
+     }
+diff --git a/badge_relief_maker/app/core/lineart_region_graph.py b/badge_relief_maker/app/core/lineart_region_graph.py
+index 2d01e8e..b0a99aa 100644
+--- a/badge_relief_maker/app/core/lineart_region_graph.py
++++ b/badge_relief_maker/app/core/lineart_region_graph.py
+@@ -36,7 +36,13 @@ def segment_lineart_regions(rgba, footprint, light_threshold=0.70):
+ 
+ 
+ def analyze_lineart_regions(rgba, footprint, minimum_pixels=None):
+-    """Return a deterministic unresolved-region report for a line drawing."""
++    """Return a deterministic unresolved-region report for a line drawing.
++
++    ``display_id`` is assigned by descending region area and is included directly
++    in the report so screenshots and user feedback can reference a stable visible
++    number for the current processing grid. The underlying connected-component id
++    is retained as ``region_id``.
++    """
+     foreground = np.asarray(footprint, dtype=bool)
+     labels, count, _ = segment_lineart_regions(rgba, foreground)
+     minimum = int(minimum_pixels or max(48, round(max(int(foreground.sum()), 1) * 0.0012)))
+@@ -69,6 +75,8 @@ def analyze_lineart_regions(rgba, footprint, minimum_pixels=None):
+             }
+         )
+     regions.sort(key=lambda item: (-item["pixel_count"], item["region_id"]))
++    for display_id, item in enumerate(regions, start=1):
++        item["display_id"] = int(display_id)
+     return labels, {
+         "segmented_region_count": int(count),
+         "reported_region_count": len(regions),
+@@ -106,55 +114,133 @@ def _boundary_reference(values, foreground, region):
+     return float(np.median(sample)) if sample.size else 0.25
+ 
+ 
+-def apply_lineart_region_overrides(rgba, footprint, heightmap, overrides=()):
+-    """Apply click-selected region roles to the footprint and height field.
++def _component_profile(region, exponent=0.62):
++    labels, count = ndi.label(region)
++    result = np.zeros(region.shape, dtype=np.float32)
++    for label_id in range(1, int(count) + 1):
++        component = labels == label_id
++        distance = ndi.distance_transform_edt(component)
++        maximum = float(distance.max())
++        if maximum <= 0.0:
++            result[component] = 1.0
++        else:
++            result[component] = np.power(np.clip(distance[component] / maximum, 0.0, 1.0), float(exponent))
++    return result
++
++
++def _region_from_override(raw, labels, region_report):
++    if "region_id" in raw:
++        try:
++            label_id = int(raw.get("region_id"))
++        except (TypeError, ValueError):
++            label_id = 0
++    elif "display_id" in raw:
++        try:
++            display_id = int(raw.get("display_id"))
++        except (TypeError, ValueError):
++            display_id = 0
++        match = next((item for item in region_report.get("regions", []) if int(item.get("display_id", -1)) == display_id), None)
++        label_id = int(match.get("region_id", 0)) if match is not None else 0
++    else:
++        py, px = _normalized_point(raw, labels.shape)
++        label_id = int(labels[py, px])
++    return label_id, labels == label_id if label_id > 0 else np.zeros(labels.shape, dtype=bool)
++
++
++def apply_lineart_region_overrides(
++    rgba,
++    footprint,
++    heightmap,
++    overrides=(),
++    *,
++    region_labels=None,
++    region_report=None,
++):
++    """Apply explicit region roles to the footprint and height field.
+ 
+-    Supported roles:
+-    - ``background`` / ``hole``: remove the region from the physical footprint;
+-    - ``surface``: keep it on the same level as its surrounding surface;
+-    - ``raise``: add a smooth regional dome above the surrounding surface;
+-    - ``recess`` / ``shadow``: place it below the surrounding surface.
++    Overrides may select a region by a click point, raw ``region_id`` or visible
++    ``display_id``. ``raise``/``component`` can optionally include nearby dark ink
++    with ``grow_into_ink_px`` so a white ribbon panel and its outlined/hatched ed
