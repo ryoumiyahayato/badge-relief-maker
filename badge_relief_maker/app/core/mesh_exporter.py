@@ -411,3 +411,11 @@ def export_mesh(path, vertices, faces):
         export_glb(path, vertices, faces)
     else:
         raise ValueError(f"unsupported mesh export format: {suffix or '<none>'}")
+
+
+def supported_formats():
+    return {"stl", "obj", "glb"}
+
+
+def implemented_formats():
+    return {"obj", "stl", "glb"}
