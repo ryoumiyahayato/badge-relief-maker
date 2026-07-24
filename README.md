@@ -44,15 +44,15 @@ The current single-side path performs:
 6. `emboss`, `flat`, `grayscale`, `layers` or `hybrid` height generation.
 7. `emboss` separates two conservative interpretations:
    - continuous-tone photographs and shaded artwork use robust luminance plus multiscale detail;
-   - achromatic line drawings receive a broad silhouette relief and shallow engraved line detail. Enclosed white regions remain neutral and are never raised merely because they are closed.
+   - achromatic line drawings receive a broad silhouette relief. Thick contours remain structural grooves while fine hatching is much shallower. Enclosed white regions remain neutral and are never raised merely because they are closed.
 8. Line-art regions separated by ink are reported as unresolved until their roles are confirmed. The editor can assign an entire selected region as `background`, `surface`, `raise` or `recess`.
 9. Processing crop and quality-dependent grid resize.
 10. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
-11. Feathered region layers, local locks and circle/rectangle/polygon height edits.
+11. Feathered region layers, local locks and circle/rectangle/ellipse/annulus/polygon height edits. Rounded profiles create broad component mass without flattening all source engraving.
 12. Set, add, subtract and mask-aware smooth brush operations. Smoothing excludes background and true-void pixels instead of bleeding across physical boundaries.
 13. Optional global smoothing and detail sharpening.
 14. Millimeter-aware rim height processing.
-15. Shared-index closed single-side or fused double-side mesh construction.
+15. Shared-index closed single-side or fused double-side mesh construction, including local corner-sector splitting around checkerboard void contacts.
 16. Straight, sloped, bevelled or rounded boundary profiles.
 17. Conservative face cleanup and component orientation repair.
 18. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
@@ -62,17 +62,18 @@ Processing padding and grid density do not define the finished physical size. Th
 
 ## Visual preview and masking
 
-The desktop editor shows three distinct views before export:
+The desktop editor shows four distinct views before export:
 
 - the source artwork;
 - the exact final silhouette overlay;
+- a numbered, colour-coded line-art topology and region-role pane;
 - a studio-style relief render generated from the same final height field used by the mesh.
 
-The relief render is not an invented image effect. Its normals, lighting, cavity darkening and cast shadow are calculated from the generated heightmap. It is intended to expose whether broad high/low form exists before the user exports a model.
+The relief render is not an invented image effect. Its normals, lighting, cavity darkening and cast shadow are calculated from the generated heightmap at the configured physical X/Y and relief scale. Dense hatching contributes less to preview lighting than broad form so the user can judge component depth before export.
 
 For opaque badge artwork on a plain background, leave mask mode on `auto`. The editor will use border-connected background removal when that recovers enclosed white or pale regions that a simple luminance threshold would otherwise punch out as holes.
 
-For line drawings, the summary reports unresolved regions and the preview directory includes a numbered, colour-coded region map. Use `region background`, `region surface`, `region raise` or `region recess` on the final mask or relief preview. `background` removes the whole selected region from the physical footprint; the other three roles place it relative to its carrier surface. These confirmations are persisted in the project.
+For line drawings, the summary reports unresolved regions and the preview directory includes the numbered region map. Use `region background`, `region surface`, `region raise` or `region recess` on the topology pane. `background` removes the whole selected region from the physical footprint; the other three roles place it relative to its carrier surface. These confirmations are persisted in the project.
 
 `emboss` is the recommended automatic starting point. `flat` creates a uniform plaque for manual layer editing, while `grayscale` retains literal brightness-to-depth behaviour for images whose brightness genuinely represents height.
 
@@ -131,7 +132,7 @@ Version 1 projects are migrated in memory to version 2. Unsupported newer versio
 The GUI distinguishes two editing surfaces:
 
 - **Source preview:** perspective selection uses the EXIF-oriented source; crop and source-space edits use the post-perspective source.
-- **Final mask/height previews:** clicks use `final_normalized` coordinates tied to the exact tight geometry grid.
+- **Final mask/topology/height previews:** clicks use `final_normalized` coordinates tied to the exact tight geometry grid.
 
 Final-grid mask clicks are transformed back to source pixels before persistence because mask edits are applied before crop and resize. Height, layer and line-art region selections remain in final-grid normalized coordinates. Changing perspective requires clearing coordinate-dependent crop, mask, region, layer and height edits rather than silently drifting them.
 
