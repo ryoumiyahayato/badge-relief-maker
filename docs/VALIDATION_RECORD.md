@@ -2,93 +2,53 @@
 
 This file records acceptance evidence that cannot be inferred from the presence of code. Do not mark a current status as passed without the tested commit, environment, fixture and observed result.
 
-## PR #5 boundary-aware line-art correction
+## PR #5 boundary-aware V10 review
 
-The earlier black-and-white `relief_preview.png` and the subsequent enclosed-region dome preview were rejected as acceptance evidence. They did not establish valid foreground/background boundaries or component depth ordering. The enclosed-region rule incorrectly turned letter interiors, shadows, holes and background gaps into raised solids and has been removed.
+Tested implementation commit: `45262ba648b4f409b3bacba3adfc15826b32545a`
+Documentation follow-up commit: `a02926b4200bc4089da0eca57d7aebe8a3549bed`
 
-The current line-art workflow is conservative:
+### User-confirmed French emblem line-art fixture
 
-- the automatic field provides broad silhouette form and shallow engraved ink detail;
-- a closed white region remains neutral and is never raised merely because it is enclosed;
-- major regions separated by ink are reported as unresolved;
-- the GUI can assign the selected region as `background`, `surface`, `raise` or `recess`;
-- `background` removes the whole region from the physical footprint;
-- region roles persist in the project;
-- height smoothing excludes background and true-void pixels;
-- feathered generic region layers establish broader carrier ordering without hard-coded object names.
+The fixture uses the user-provided French emblem line drawing. The core library contains no France-, RF-, axe-, ribbon-, oak-, laurel- or leaf-specific rules. The following region assignments are project-level review annotations supplied or confirmed during the visual review:
 
-Using the supplied French emblem line drawing, a boundary-confirmed demonstration generated:
+- true void/background display regions: `7, 8, 11, 12, 17, 26, 38`;
+- carrier surfaces: `1, 4, 6, 15, 19`;
+- recessed/shadow region: `23`;
+- foreground component regions: `10, 35`;
+- lower-left oak branch and lower-right laurel branch receive separate rounded component layers;
+- the RF outer surround uses a raised annular layer while the carrier and letter interiors stay below that surround;
+- the upper fasces/axe and ribbons use separate rounded component mass.
 
-- requested size: 100 × 150 mm;
-- automatic flat back: 2.5 mm;
-- configured outward relief budget: 4.0 mm;
-- vertices: 216,160;
-- triangles: 430,788;
-- one shared editable OBJ with `front_relief`, `side_wall` and `flat_back` groups;
+Observed generated model:
+
+- requested X/Y size: 100 × 150 mm;
+- base thickness: 2.5 mm;
+- configured front relief budget: 8.0 mm;
+- observed maximum front relief: approximately 7.527 mm;
+- observed total Z bounding-box thickness: approximately 10.027 mm;
+- vertices: 210,240;
+- triangles: 420,484;
 - boundary edges: 0;
 - non-manifold edges: 0;
-- inconsistent-winding edges: 0;
-- closed oriented manifold: yes.
+- inconsistent winding edges: 0;
+- closed oriented manifold: yes;
+- OBJ groups: `front_relief`, `side_wall`, `flat_back`.
 
-The review board is generated from the same final floating-point height field used by the editable OBJ. It includes a shaded front view, an oblique view of the actual mesh, a real-millimetre centre cross-section and a region-role map. The oblique display expands the visible Z scale for inspection but does not alter the exported OBJ coordinates.
+The front render, oblique surface and millimetre cross-sections were generated from the same final floating-point height field used to construct the OBJ. The oblique review view documented a 1.35× Z display exaggeration; the OBJ coordinates remained in true millimetres.
 
-Observed role corrections in this demonstration:
+### Automated Windows validation
 
-- RF/interior white regions remain near the central carrier surface rather than becoming the highest layer;
-- the wreath is in front of the central panel;
-- the flags and lower branches are behind the central assembly;
-- the large white gap under the wreath is removed from the solid as a true void;
-- the small region below the upper axe/fasces is recessed as shadow rather than raised.
+For documentation commit `a02926b4200bc4089da0eca57d7aebe8a3549bed`, the Windows Python 3.12 quality gate completed successfully, including package install, entry points, GUI import, Ruff and the complete pytest suite. The Python 3.10 gate completed the same checks successfully. The packaging smoke job was still running when this record was written and must be checked before presenting a new packaged EXE as verified.
 
-These settings use generic region and polygon tools; the core algorithm contains no France, RF, wreath, flag, axe, animal or leaf-specific rules. The required confirmations are example-specific because one line drawing cannot unambiguously encode all occlusion and depth roles.
+### Remaining external validation
 
-## Automated Windows quality gate
+Not completed:
 
-Commit `487c0e41b5824a2111fe838abd93d81b676c7235` passed the complete GitHub Actions quality gate:
+- Blender manual editability and visual inspection record;
+- slicer import and printability review;
+- CAM/tool-access review;
+- mould/draft review;
+- physical print or machined sample measurement;
+- validation across multiple unrelated medal, badge and award artwork classes.
 
-- Windows Python 3.10 installation, entry points, GUI import, Ruff and full pytest: passed;
-- Windows Python 3.12 installation, entry points, GUI import, Ruff and full pytest: passed;
-- Windows PyInstaller executable build: passed;
-- packaged executable `--help` smoke test: passed;
-- executable artifact upload: passed.
-
-A later documentation-only commit may produce a separate run; code acceptance evidence above identifies the exact tested commit.
-
-## Programmatic validation assets
-
-Programmatic mesh checks cover requested dimensions, closed topology, consistent winding, positive volume, OBJ/STL/GLB read-back and fused double-side output. These checks are necessary but do not establish sculptural quality or manufacturing fitness.
-
-## GUI interaction validation
-
-Status: automated coordinate coverage exists; a mouse-driven Windows interaction record is still pending.
-
-Required flow:
-
-1. Create and save a project.
-2. Import a transparent PNG and an opaque controlled-background image.
-3. Confirm the source, exact final mask and studio relief previews.
-4. For a line drawing, inspect the numbered region map and unresolved count.
-5. Apply `region background`, `region surface`, `region raise` and `region recess` on final previews.
-6. Confirm that background regions become true voids and that smoothing does not bridge them.
-7. Confirm explicit region roles persist after save/reopen.
-8. Select a perspective quadrilateral and confirm dependent edits are reset rather than drifting.
-9. Draw a crop on the post-perspective source.
-10. Apply final-grid height and locked-layer brushes.
-11. Change preview/standard/high and confirm the edit remains on the same physical region within one final cell.
-12. Start a build and confirm mutable controls remain disabled until completion.
-
-Record the commit, Windows scaling, display resolution, source fixture, exact clicks and screenshots.
-
-## External application validation
-
-Status: not yet recorded.
-
-Use the same accepted single-side fixture for OBJ, STL and GLB. For OBJ, verify that `front_relief`, `side_wall` and `flat_back` are selectable groups within one closed object. Record dimensions, outward normals, non-manifold selection and side-view relief depth.
-
-STL must be interpreted as millimeters because STL does not contain a unit declaration.
-
-## Manufacturing validation
-
-Status: not yet recorded.
-
-Required evidence includes representative slicer import, CNC/CAM reachability, mould draft review where applicable, a physical sample and measured dimensions/tolerances. Automated topology checks are not a substitute for these records.
+The V10 fixture demonstrates the corrected region-role workflow and closed editable mesh structure. It does not prove fully automatic semantic depth recovery from arbitrary line art.
