@@ -61,7 +61,7 @@ def test_lineart_uses_sculptural_domming_instead_of_a_flat_white_plate():
     assert height[0, 0] == 0.0
     assert float(np.ptp(height[mask])) > 0.25
     assert float(height[48, 48]) > float(height[21, 48]) + 0.08
-    assert float(height[48, 44]) > float(height[48, 48])
+    assert float(height[44, 44]) > float(height[48, 48]) + 0.05
 
 
 def test_new_projects_keep_general_emboss_defaults():
