@@ -2,25 +2,25 @@
 
 
 QUALITY_PRESETS = {
-    # Preview must be detailed enough to judge text and decorative lines. The old
-    # 5k-cell preview produced roughly 80x60 grids and hid exactly the defects the
-    # user needed to see before export.
+    # Fidelity takes priority over low-end hardware. Preview keeps at least the
+    # native grid for typical web images; export modes only downsample genuinely
+    # large sources instead of collapsing text and engraving into tiny grids.
     "preview": {
-        "max_grid_cells": 20000,
-        "min_component_pixels": 4,
+        "max_grid_cells": 150000,
+        "min_component_pixels": 2,
         "fill_hole_pixels": 8,
-        "mask_smooth_iterations": 1,
+        "mask_smooth_iterations": 0,
     },
     "standard": {
-        "max_grid_cells": 80000,
-        "min_component_pixels": 2,
-        "fill_hole_pixels": 16,
+        "max_grid_cells": 1000000,
+        "min_component_pixels": 1,
+        "fill_hole_pixels": 8,
         "mask_smooth_iterations": 0,
     },
     "high": {
-        "max_grid_cells": 250000,
+        "max_grid_cells": 4000000,
         "min_component_pixels": 1,
-        "fill_hole_pixels": 8,
+        "fill_hole_pixels": 4,
         "mask_smooth_iterations": 0,
     },
 }
