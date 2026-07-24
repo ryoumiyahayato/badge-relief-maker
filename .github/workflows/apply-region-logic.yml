@@ -5,7 +5,7 @@ on:
     branches:
       - fix/usable-relief-preview-and-mask
     paths:
-      - tools/region_logic_full.patch
+      - tools/region_logic_ready.txt
 
 permissions:
   contents: write
@@ -21,9 +21,11 @@ jobs:
       - name: Apply tested region-logic patch
         shell: bash
         run: |
-          git apply --check tools/region_logic_full.patch
-          git apply tools/region_logic_full.patch
-          rm tools/region_logic_full.patch
+          cat tools/region_logic_patch_*.part > /tmp/region_logic_full.patch
+          git apply --check /tmp/region_logic_full.patch
+          git apply /tmp/region_logic_full.patch
+          rm tools/region_logic_patch_*.part
+          rm tools/region_logic_ready.txt
           rm .github/workflows/apply-region-logic.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
