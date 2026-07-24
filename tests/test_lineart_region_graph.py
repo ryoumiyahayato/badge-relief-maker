@@ -61,3 +61,16 @@ def test_region_surface_override_matches_surrounding_level_instead_of_raising():
     assert report["applied_override_count"] == 1
     assert new_mask[28, 50]
     assert abs(float(new_height[28, 50]) - float(new_height[19, 50])) < 0.12
+
+
+def test_region_raise_and_recess_are_ordered_around_the_carrier_surface():
+    rgba, mask = _fixture()
+    height = emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72)
+    point = {"x": 0.50, "y": 0.30, "coordinate_space": "final_normalized", "amount": 0.20}
+
+    _, surface_height, _ = apply_lineart_region_overrides(rgba, mask, height, [{**point, "role": "surface"}])
+    _, raised_height, _ = apply_lineart_region_overrides(rgba, mask, height, [{**point, "role": "raise"}])
+    _, recessed_height, _ = apply_lineart_region_overrides(rgba, mask, height, [{**point, "role": "recess"}])
+
+    assert float(raised_height[28, 50]) > float(surface_height[28, 50])
+    assert float(surface_height[28, 50]) > float(recessed_height[28, 50])
