@@ -1,0 +1,94 @@
+name: Apply editable master export integration
+
+on:
+  push:
+    branches:
+      - fix/usable-relief-preview-and-mask
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/usable-relief-preview-and-mask
+          fetch-depth: 0
+      - name: Patch single-side OBJ export and UI labels
+        shell: python
+        run: |
+          from pathlib import Path
+
+          pipeline = Path("badge_relief_maker/app/core/single_side_pipeline.py")
+          text = pipeline.read_text(encoding="utf-8")
+          old_import = "from .mesh_exporter import export_mesh"
+          new_import = "from .mesh_exporter import export_mesh, export_obj_face_groups, single_side_surface_face_groups"
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+
+          old_block = '''        written = str(Path(output_path))
+        export_mesh(written, vertices, faces)
+        report["export_path"] = written
+        report["export_format"] = Path(written).suffix.lower().lstrip(".")
+        report["unit_convention"] = "millimeters (STL stores no explicit unit metadata)"
+'''
+          new_block = '''        written = str(Path(output_path))
+        export_format = Path(written).suffix.lower().lstrip(".")
+        if export_format == "obj":
+            surface_groups = single_side_surface_face_groups(vertices, faces)
+            export_obj_face_groups(written, vertices, faces, surface_groups, object_name="complete_medal")
+            report["editable_surface_groups"] = {
+                name: int(len(indices)) for name, indices in surface_groups.items()
+            }
+            report["editable_master"] = True
+        else:
+            export_mesh(written, vertices, faces)
+            report["editable_master"] = False
+        report["back_surface_mode"] = "flat_plane"
+        report["assembly_mode"] = "single_relief_closed_solid_with_flat_back"
+        report["export_path"] = written
+        report["export_format"] = export_format
+        report["unit_convention"] = "millimeters (STL stores no explicit unit metadata)"
+'''
+          if old_block in text:
+              text = text.replace(old_block, new_block, 1)
+          elif 'report["editable_master"]' not in text:
+              raise SystemExit("single-side export block no longer matches expected source")
+          pipeline.write_text(text, encoding="utf-8")
+
+          ui = Path("badge_relief_maker/app/ui/main_window.py")
+          ui_text = ui.read_text(encoding="utf-8")
+          ui_text = ui_text.replace('(\"Front OBJ\", self.build_front_obj, True)', '(\"Front Editable OBJ\", self.build_front_obj, True)')
+          ui_text = ui_text.replace('(\"Back OBJ\", self.build_back_obj, True)', '(\"Back Editable OBJ\", self.build_back_obj, True)')
+          ui.write_text(ui_text, encoding="utf-8")
+
+          readme = Path("README.md")
+          readme_text = readme.read_text(encoding="utf-8")
+          marker = "## Editable master model\n"
+          if marker not in readme_text:
+              readme_text += '''
+
+## Editable master model
+
+A single-side OBJ export is a real closed 3D solid, not a rendered effect image. Its front follows the generated relief, its back is an automatically generated flat plane, and the boundary is closed by side walls. The OBJ keeps one shared vertex pool and names three face groups:
+
+- `front_relief`
+- `side_wall`
+- `flat_back`
+
+This makes the same complete model easier to continue editing in Blender, 3ds Max, Maya, ZBrush and other OBJ-compatible tools. STL remains the manufacturing/printing mesh, while GLB remains the compact interchange and viewing format.
+'''
+              readme.write_text(readme_text, encoding="utf-8")
+      - name: Commit integration
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add badge_relief_maker/app/core/single_side_pipeline.py badge_relief_maker/app/ui/main_window.py README.md
+          git commit -m "feat: integrate complete editable single-side master export"
+          git push origin HEAD:fix/usable-relief-preview-and-mask
