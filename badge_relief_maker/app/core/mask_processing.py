@@ -136,9 +136,9 @@ def resize_mask_and_heightmap(mask, heightmap, max_cells):
     new_rows = max(2, int(rows * scale))
 
     mask_img = Image.fromarray(np.where(mask, 255, 0).astype(np.uint8), mode="L")
-    height_img = Image.fromarray(np.clip(heightmap * 255.0, 0, 255).astype(np.uint8), mode="L")
+    height_img = Image.fromarray(np.asarray(heightmap, dtype=np.float32), mode="F")
 
     resized_mask = np.asarray(mask_img.resize((new_cols, new_rows), Image.Resampling.NEAREST)) > 0
-    resized_height = np.asarray(height_img.resize((new_cols, new_rows), Image.Resampling.BILINEAR)).astype(np.float32) / 255.0
+    resized_height = np.asarray(height_img.resize((new_cols, new_rows), Image.Resampling.BILINEAR), dtype=np.float32)
     resized_height = np.where(resized_mask, resized_height, 0.0).astype(np.float32)
     return resized_mask, resized_height, scale

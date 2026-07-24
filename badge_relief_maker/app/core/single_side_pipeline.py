@@ -7,7 +7,7 @@ from PIL import Image
 
 from .height_markers import apply_manual_height_markers
 from .height_processing import apply_region_layers, refine_heightmap
-from .heightmap_generator import grayscale_heightmap
+from .heightmap_generator import emboss_heightmap, flat_heightmap, grayscale_heightmap
 from .image_editing import apply_mask_edits, crop_rgba, rectify_perspective
 from .image_preprocess import load_image, normalize_alpha_background
 from .image_transform import ImageTransform
@@ -19,15 +19,15 @@ from .masked_solid_builder import build_layered_relief_solid, build_masked_relie
 from .mesh_exporter import export_mesh
 from .mesh_repair import repair_mesh_basic
 from .outline_extractor import outline_report
-from .preview_exporter import save_heightmap_preview, save_mask_overlay_preview, save_mask_preview, save_source_preview
+from .preview_exporter import save_heightmap_preview, save_mask_overlay_preview, save_mask_preview, save_relief_preview, save_source_preview
 from .relief_parameters import PreparedReliefField, ReliefBuildResult, ReliefParameters
 from .rim_builder import apply_outer_rim_to_heightmap
 from .solid_builder import build_rectangular_relief_solid
 
 
-_SUPPORTED_MASK_MODES = {"auto", "alpha", "luminance", "luminance-dark", "luminance-light"}
+_SUPPORTED_MASK_MODES = {"auto", "alpha", "background", "luminance", "luminance-dark", "luminance-light"}
 _SUPPORTED_RIM_PROFILES = {"flat", "linear", "smooth"}
-_SUPPORTED_HEIGHT_MODES = {"grayscale", "layers", "hybrid"}
+_SUPPORTED_HEIGHT_MODES = {"emboss", "flat", "grayscale", "layers", "hybrid"}
 _SUPPORTED_EDGE_STYLES = {"straight", "bevel", "rounded", "sloped"}
 _SUPPORTED_PROCESS_PROFILES = {"general", "fdm", "resin", "cnc", "mould"}
 
@@ -95,7 +95,7 @@ def _validate_parameters(params):
     if str(params.rim_profile).strip().lower() not in _SUPPORTED_RIM_PROFILES:
         raise ValueError("rim_profile must be 'flat', 'linear' or 'smooth'")
     if str(params.height_mode).strip().lower() not in _SUPPORTED_HEIGHT_MODES:
-        raise ValueError("height_mode must be 'grayscale', 'layers' or 'hybrid'")
+        raise ValueError("height_mode must be 'emboss', 'flat', 'grayscale', 'layers' or 'hybrid'")
     if str(params.edge_style).strip().lower() not in _SUPPORTED_EDGE_STYLES:
         raise ValueError("edge_style must be 'straight', 'sloped', 'bevel' or 'rounded'")
     if str(params.process_profile).strip().lower() not in _SUPPORTED_PROCESS_PROFILES:
@@ -182,6 +182,18 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
     if height_mode == "layers":
         background = 0.0 if float(params.relief_height_mm) <= 0.0 else float(params.background_depth_mm) / float(params.relief_height_mm)
         heightmap = np.where(mask, np.clip(background, 0.0, 1.0), 0.0).astype(np.float32)
+    elif height_mode == "flat":
+        heightmap = flat_heightmap(mask, params.uniform_height_normalized)
+        if params.invert_height:
+            heightmap = np.where(mask, 1.0 - heightmap, 0.0).astype(np.float32)
+    elif height_mode == "emboss":
+        heightmap = emboss_heightmap(
+            rgba,
+            mask=mask,
+            base_level=min(float(params.uniform_height_normalized), 0.55),
+            detail_strength=max(0.0, 1.0 - min(float(params.uniform_height_normalized), 0.55)),
+            invert=params.invert_height,
+        )
     else:
         heightmap = grayscale_heightmap(
             rgba,
@@ -252,6 +264,7 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
         preview_paths["mask_preview"] = save_mask_preview(mask, preview_base / "mask_preview.png")
         preview_paths["mask_overlay_preview"] = save_mask_overlay_preview(rgba, mask, preview_base / "mask_overlay_preview.png")
         preview_paths["heightmap_preview"] = save_heightmap_preview(heightmap, preview_base / "heightmap_preview.png")
+        preview_paths["relief_preview"] = save_relief_preview(heightmap, mask, preview_base / "relief_preview.png")
 
     source_report = loaded_image.report()
     source_report["processing_shape_after_perspective"] = list(processing_shape)

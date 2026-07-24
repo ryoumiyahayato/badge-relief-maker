@@ -195,7 +195,7 @@ class ReliefSideParameters:
     relief_height_mm: float = 3.0
     background_depth_mm: float = 0.0
     layer_count: int = 4
-    height_mode: str = "grayscale"
+    height_mode: str = "emboss"
     quality_mode: str = "standard"
     invert_height: bool = False
     mask_mode: str = "auto"
@@ -204,7 +204,7 @@ class ReliefSideParameters:
     minimum_thickness_mm: float = 0.8
     crop_to_foreground: bool = True
     crop_padding_px: int = 1
-    uniform_height_normalized: float = 1.0
+    uniform_height_normalized: float = 0.28
     smooth_strength: float = 0.0
     detail_sharpness: float = 0.0
     process_profile: str = "general"

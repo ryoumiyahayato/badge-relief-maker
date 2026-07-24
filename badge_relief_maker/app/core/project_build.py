@@ -25,8 +25,8 @@ _HEIGHT_VALUE_KEYS = {
     "height_delta",
     "strength",
 }
-_SIDE_MODES = {"auto", "alpha", "luminance", "luminance-dark", "luminance-light"}
-_HEIGHT_MODES = {"grayscale", "layers", "hybrid"}
+_SIDE_MODES = {"auto", "alpha", "background", "luminance", "luminance-dark", "luminance-light"}
+_HEIGHT_MODES = {"emboss", "flat", "grayscale", "layers", "hybrid"}
 _PROCESS_PROFILES = {"general", "fdm", "resin", "cnc", "mould"}
 _EDGE_STYLES = {"straight", "sloped", "bevel", "rounded"}
 _FOOTPRINT_MODES = {"union", "intersection", "front", "back"}
@@ -250,7 +250,7 @@ def _relief_parameters_from_project(project, side_name="front", quality_mode=Non
         edge_style=str(getattr(edge, "edge_style", "straight") or "straight"),
         bevel_mm=float(getattr(edge, "bevel_mm", 0.0)),
         radius_mm=float(getattr(edge, "radius_mm", 0.0)),
-        height_mode=str(getattr(side, "height_mode", "grayscale") or "grayscale"),
+        height_mode=str(getattr(side, "height_mode", "emboss") or "emboss"),
         background_depth_mm=float(getattr(side, "background_depth_mm", 0.0)),
         uniform_height_normalized=float(getattr(side, "uniform_height_normalized", 1.0)),
         smooth_strength=float(getattr(side, "smooth_strength", 0.0)),

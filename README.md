@@ -38,10 +38,10 @@ The current single-side path performs:
 
 1. EXIF-aware JPG/PNG loading.
 2. Optional normalized four-point perspective rectification.
-3. `auto`, `alpha`, `luminance`, `luminance-dark` or `luminance-light` foreground masking.
+3. `auto`, `background`, `alpha`, `luminance`, `luminance-dark` or `luminance-light` foreground masking. `auto` preserves enclosed pale artwork by removing only background-like pixels connected to the image border.
 4. Source-space manual mask additions/removals.
 5. Optional manual crop, component cleanup, hole filling and mask smoothing.
-6. Foreground-only grayscale height normalization with a defined uniform-brightness policy.
+6. `emboss`, `flat`, `grayscale`, `layers` or `hybrid` height generation. New projects default to `emboss`, which uses a stable plateau plus local edge detail instead of treating paint brightness as literal depth.
 7. Processing crop and quality-dependent grid resize.
 8. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
 9. Region layers, local locks and circle/rectangle/polygon height edits.
@@ -55,6 +55,18 @@ The current single-side path performs:
 17. Atomic OBJ, STL or GLB export.
 
 Processing padding and grid density do not define the finished physical size. The final foreground bounding box is scaled to the requested X/Y dimensions.
+
+## Visual preview and masking
+
+The desktop editor shows three distinct views before export:
+
+- the source artwork;
+- the exact final silhouette overlay;
+- a neutral shaded relief preview generated from the same final geometry grid.
+
+For opaque badge artwork on a plain background, leave mask mode on `auto`. The editor will use border-connected background removal when that recovers enclosed white or pale regions that a simple luminance threshold would otherwise punch out as holes. The preview now uses the selected quality level rather than a fixed tiny draft grid.
+
+`emboss` is the recommended automatic starting point for coloured artwork. `flat` creates a uniform plaque for manual layer editing, while `grayscale` retains the legacy brightness-to-depth behaviour for images whose brightness genuinely represents height.
 
 ## Direct image build
 
@@ -76,7 +88,7 @@ python -m badge_relief_maker.app `
 Useful options include:
 
 - `--manual-crop-box X0 Y0 X1 Y1`
-- `--height-mode grayscale|layers|hybrid`
+- `--height-mode emboss|flat|grayscale|layers|hybrid`
 - `--smooth-strength 0..1`
 - `--detail-sharpness 0..1`
 - `--rim-width-mm` and `--rim-height-mm`

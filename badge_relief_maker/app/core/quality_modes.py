@@ -2,20 +2,23 @@
 
 
 QUALITY_PRESETS = {
+    # Preview must be detailed enough to judge text and decorative lines. The old
+    # 5k-cell preview produced roughly 80x60 grids and hid exactly the defects the
+    # user needed to see before export.
     "preview": {
-        "max_grid_cells": 5000,
+        "max_grid_cells": 20000,
         "min_component_pixels": 4,
         "fill_hole_pixels": 8,
         "mask_smooth_iterations": 1,
     },
     "standard": {
-        "max_grid_cells": 20000,
+        "max_grid_cells": 80000,
         "min_component_pixels": 2,
         "fill_hole_pixels": 16,
         "mask_smooth_iterations": 0,
     },
     "high": {
-        "max_grid_cells": 80000,
+        "max_grid_cells": 250000,
         "min_component_pixels": 1,
         "fill_hole_pixels": 8,
         "mask_smooth_iterations": 0,

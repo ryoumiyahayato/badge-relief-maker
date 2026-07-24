@@ -206,7 +206,7 @@ def main(argv=None) -> int:
     parser.add_argument("--edge-style", default="straight", choices=["straight", "sloped", "bevel", "rounded"])
     parser.add_argument("--bevel-mm", type=float, default=0.0)
     parser.add_argument("--radius-mm", type=float, default=0.0)
-    parser.add_argument("--height-mode", default="grayscale", choices=["grayscale", "layers", "hybrid"])
+    parser.add_argument("--height-mode", default="emboss", choices=["emboss", "flat", "grayscale", "layers", "hybrid"])
     parser.add_argument("--background-depth-mm", type=float, default=0.0)
     parser.add_argument("--uniform-height", type=float, default=1.0)
     parser.add_argument("--smooth-strength", type=float, default=0.0)

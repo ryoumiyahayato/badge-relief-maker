@@ -198,8 +198,8 @@ class MainWindow(QMainWindow):
         self.sharp_spin = self._double_spin(0.0, 1.0, 0.0)
         self.invert_check = QCheckBox()
         self._controls.append(self.invert_check)
-        self.mask_mode_combo = self._combo(["auto", "alpha", "luminance", "luminance-dark", "luminance-light"], "auto")
-        self.height_mode_combo = self._combo(["grayscale", "layers", "hybrid"], "grayscale")
+        self.mask_mode_combo = self._combo(["auto", "background", "alpha", "luminance", "luminance-dark", "luminance-light"], "auto")
+        self.height_mode_combo = self._combo(["emboss", "flat", "grayscale", "layers", "hybrid"], "emboss")
         self.quality_combo = self._combo(["preview", "standard", "high"], "standard")
         self.process_combo = self._combo(["general", "fdm", "resin", "cnc", "mould"], "general")
         controls_layout.addWidget(
@@ -210,7 +210,7 @@ class MainWindow(QMainWindow):
                     ("Minimum wall warning (mm)", self.minimum_thickness_spin),
                     ("Mask mode", self.mask_mode_combo),
                     ("Height mode", self.height_mode_combo),
-                    ("Uniform height", self.uniform_height_spin),
+                    ("Base relief level", self.uniform_height_spin),
                     ("Global smoothing", self.smooth_spin),
                     ("Detail sharpness", self.sharp_spin),
                     ("Invert height", self.invert_check),
@@ -306,7 +306,7 @@ class MainWindow(QMainWindow):
         preview_layout = QHBoxLayout()
         self.source_preview = _PreviewLabel("Source image")
         self.mask_preview = _PreviewLabel("Exact final mask overlay")
-        self.height_preview = _PreviewLabel("Final heightmap")
+        self.height_preview = _PreviewLabel("Shaded relief preview")
         for preview in (self.source_preview, self.mask_preview, self.height_preview):
             preview_layout.addWidget(preview)
         self.source_preview.clicked.connect(self._preview_clicked)
@@ -345,9 +345,12 @@ class MainWindow(QMainWindow):
         tabs = QTabWidget()
         self.report_box = QTextEdit()
         self.report_box.setReadOnly(True)
+        self.details_box = QTextEdit()
+        self.details_box.setReadOnly(True)
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        tabs.addTab(self.report_box, "Build report")
+        tabs.addTab(self.report_box, "Summary")
+        tabs.addTab(self.details_box, "Technical details")
         tabs.addTab(self.log_box, "Log")
         right_layout.addWidget(tabs, 1)
         splitter.addWidget(right)
@@ -578,7 +581,9 @@ class MainWindow(QMainWindow):
         self.mask_preview.clear()
         self.mask_preview.setText("Exact final mask overlay")
         self.height_preview.clear()
-        self.height_preview.setText("Final heightmap")
+        self.height_preview.setText("Shaded relief preview")
+        if hasattr(self, "details_box"):
+            self.details_box.clear()
 
     def refresh_previews(self):
         record = self._image_record()
@@ -587,18 +592,54 @@ class MainWindow(QMainWindow):
             return
         try:
             self._apply_controls_to_project(self.active_side)
-            params, _ = relief_parameters_from_project(self.project, self.active_side, "preview")
+            params, _ = relief_parameters_from_project(self.project, self.active_side, self.quality_combo.currentText())
             source_path = resolve_project_asset(self.project_path, record.path)
             preview_dir = asset_root_for(self.project_path) / "previews" / "gui" / self.active_side
             prepared = prepare_relief_field(source_path, params, preview_dir=preview_dir)
             paths = prepared.report["preview_paths"]
             self._set_preview(self.source_preview, source_path, "Source image unavailable")
             self._set_preview(self.mask_preview, paths.get("mask_overlay_preview"), "Mask preview unavailable")
-            self._set_preview(self.height_preview, paths.get("heightmap_preview"), "Height preview unavailable")
-            self.report_box.setPlainText(json.dumps(prepared.report, indent=2, ensure_ascii=False, default=str))
+            self._set_preview(self.height_preview, paths.get("relief_preview") or paths.get("heightmap_preview"), "Relief preview unavailable")
+            self.report_box.setPlainText(self._preview_summary(prepared.report))
+            self.details_box.setPlainText(json.dumps(prepared.report, indent=2, ensure_ascii=False, default=str))
             self._log(f"Refreshed {self.active_side} previews")
         except Exception as exc:
             self._error("Could not refresh previews", exc)
+
+    @staticmethod
+    def _preview_summary(report):
+        mode = report.get("mask_mode_used", "unknown")
+        height_mode = report.get("height_mode", "unknown")
+        rows, cols = report.get("shape_for_geometry", (0, 0))
+        foreground = int(report.get("mask_pixel_count", 0))
+        total = max(int(rows) * int(cols), 1)
+        coverage = foreground / total * 100.0
+        downsampled = "yes" if report.get("downsampled") else "no"
+        return (
+            "Preview ready. Inspect all three panes before exporting.\n\n"
+            f"Silhouette method: {mode}\n"
+            f"Relief method: {height_mode}\n"
+            f"Geometry grid: {cols} x {rows} ({int(rows) * int(cols):,} cells)\n"
+            f"Foreground coverage: {coverage:.1f}%\n"
+            f"Downsampled: {downsampled}\n\n"
+            "The red overlay should cover the complete physical badge silhouette, including enclosed white areas. "
+            "The shaded pane is the relief surface that will be sent to the mesh builder."
+        )
+
+    @staticmethod
+    def _build_summary(report, output_path):
+        gate = report.get("manufacturing_gate", {})
+        topology = report.get("topology", {})
+        bbox = report.get("bbox_size_mm") or report.get("dimensions_mm") or []
+        return (
+            f"Export completed\n\nFile: {output_path}\n"
+            f"Manufacturing status: {gate.get('status', 'unknown')}\n"
+            f"Boundary edges: {topology.get('boundary_edge_count', 'unknown')}\n"
+            f"Non-manifold edges: {topology.get('non_manifold_edge_count', 'unknown')}\n"
+            f"Dimensions: {bbox}\n\n"
+            "Open the Technical details tab for the full diagnostic report. "
+            "A successful export still requires visual inspection in Blender or a slicer."
+        )
 
     def _preview_clicked(self, x_normalized, y_normalized):
         if self.project is None or self._image_record() is None:
@@ -723,7 +764,8 @@ class MainWindow(QMainWindow):
             save_project(self.project, self.project_path)
             self._dirty = False
             gate = result.report.get("manufacturing_gate", {})
-            self.report_box.setPlainText(json.dumps(result.report, indent=2, ensure_ascii=False, default=str))
+            self.report_box.setPlainText(self._build_summary(result.report, result.output_path))
+            self.details_box.setPlainText(json.dumps(result.report, indent=2, ensure_ascii=False, default=str))
             self._log(f"Built: {result.output_path} | manufacturing gate: {gate.get('status', 'unknown')}")
         except Exception as exc:
             self._error("Could not finalize build", exc)

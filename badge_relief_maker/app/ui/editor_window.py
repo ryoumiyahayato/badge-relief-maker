@@ -170,7 +170,7 @@ class MainWindow(_BaseMainWindow):
             return
         try:
             self._apply_controls_to_project(self.active_side)
-            params, _ = relief_parameters_from_project(self.project, self.active_side, "preview")
+            params, _ = relief_parameters_from_project(self.project, self.active_side, self.quality_combo.currentText())
             source_path = resolve_project_asset(self.project_path, record.path)
             preview_dir = asset_root_for(self.project_path) / "previews" / "gui" / self.active_side
             preview_dir.mkdir(parents=True, exist_ok=True)
@@ -183,8 +183,9 @@ class MainWindow(_BaseMainWindow):
             paths = prepared.report["preview_paths"]
             self._set_preview(self.source_preview, self._source_preview_path_for_tool(), "Source image unavailable")
             self._set_preview(self.mask_preview, paths.get("mask_overlay_preview"), "Mask preview unavailable")
-            self._set_preview(self.height_preview, paths.get("heightmap_preview"), "Height preview unavailable")
-            self.report_box.setPlainText(json.dumps(prepared.report, indent=2, ensure_ascii=False, default=str))
+            self._set_preview(self.height_preview, paths.get("relief_preview") or paths.get("heightmap_preview"), "Relief preview unavailable")
+            self.report_box.setPlainText(self._preview_summary(prepared.report))
+            self.details_box.setPlainText(json.dumps(prepared.report, indent=2, ensure_ascii=False, default=str))
             self._log(f"Refreshed {self.active_side} previews")
         except Exception as exc:
             self._error("Could not refresh previews", exc)
