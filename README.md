@@ -41,18 +41,21 @@ The current single-side path performs:
 3. `auto`, `background`, `alpha`, `luminance`, `luminance-dark` or `luminance-light` foreground masking. `auto` preserves enclosed pale artwork by removing only background-like pixels connected to the image border.
 4. Source-space manual mask additions/removals.
 5. Optional manual crop, component cleanup, hole filling and mask smoothing.
-6. `emboss`, `flat`, `grayscale`, `layers` or `hybrid` height generation. New projects default to `emboss`, which uses a stable plateau plus local edge detail instead of treating paint brightness as literal depth.
-7. Processing crop and quality-dependent grid resize.
-8. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
-9. Region layers, local locks and circle/rectangle/polygon height edits.
-10. Set, add, subtract and mask-aware smooth brush operations.
-11. Optional global smoothing and detail sharpening.
-12. Millimeter-aware rim height processing.
-13. Shared-index closed single-side or fused double-side mesh construction.
-14. Straight, sloped, bevelled or rounded boundary profiles.
-15. Conservative face cleanup and component orientation repair.
-16. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
-17. Atomic OBJ, STL or GLB export.
+6. `emboss`, `flat`, `grayscale`, `layers` or `hybrid` height generation.
+7. `emboss` automatically separates two interpretations:
+   - continuous-tone photographs and shaded artwork use robust luminance plus multiscale detail;
+   - achromatic line drawings use a sculptural bas-relief inference made from silhouette doming, enclosed-region doming, broad ink density and shallow engraved line detail.
+8. Processing crop and quality-dependent grid resize.
+9. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
+10. Region layers, local locks and circle/rectangle/polygon height edits.
+11. Set, add, subtract and mask-aware smooth brush operations.
+12. Optional global smoothing and detail sharpening.
+13. Millimeter-aware rim height processing.
+14. Shared-index closed single-side or fused double-side mesh construction.
+15. Straight, sloped, bevelled or rounded boundary profiles.
+16. Conservative face cleanup and component orientation repair.
+17. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
+18. Atomic OBJ, STL or GLB export.
 
 Processing padding and grid density do not define the finished physical size. The final foreground bounding box is scaled to the requested X/Y dimensions.
 
@@ -62,11 +65,13 @@ The desktop editor shows three distinct views before export:
 
 - the source artwork;
 - the exact final silhouette overlay;
-- a neutral shaded relief preview generated from the same final geometry grid.
+- a studio-style relief render generated from the same final height field used by the mesh.
 
-For opaque badge artwork on a plain background, leave mask mode on `auto`. The editor will use border-connected background removal when that recovers enclosed white or pale regions that a simple luminance threshold would otherwise punch out as holes. The preview now uses the selected quality level rather than a fixed tiny draft grid.
+The relief render is not an invented image effect. Its normals, lighting, cavity darkening and cast shadow are calculated from the generated heightmap. It is intended to expose whether broad high/low form exists before the user exports a model.
 
-`emboss` is the recommended automatic starting point for coloured artwork. `flat` creates a uniform plaque for manual layer editing, while `grayscale` retains the legacy brightness-to-depth behaviour for images whose brightness genuinely represents height.
+For opaque badge artwork on a plain background, leave mask mode on `auto`. The editor will use border-connected background removal when that recovers enclosed white or pale regions that a simple luminance threshold would otherwise punch out as holes.
+
+`emboss` is the recommended automatic starting point. `flat` creates a uniform plaque for manual layer editing, while `grayscale` retains literal brightness-to-depth behaviour for images whose brightness genuinely represents height.
 
 ## Direct image build
 
@@ -148,16 +153,9 @@ The report includes dimensions, topology, winding, zero-area faces, component or
 
 A result is either `blocked` or `review_required`; it is never certified safe for unattended manufacturing. Automated checks do not replace Blender, slicer, CAM, mould-draft or physical tolerance validation.
 
-Current external acceptance still pending:
+Brightness alone is not physical depth. In particular, black-and-white line art must not be interpreted as one flat white maximum surface with black grooves. The sculptural line-art path now creates broad domed form before restoring shallow line detail, but it still does not semantically know that a particular contour is a lion, leaf, flag or separate foreground layer.
 
-1. A GitHub Actions run after the current validation follow-up is committed and pushed; local gates on the `e15ebe79`-based working tree pass with `226` tests on Windows Python 3.10 and 3.12.
-2. Blender import records for OBJ, STL and GLB.
-3. Slicer and CAM records using representative fixtures.
-4. A clean-machine packaged executable test; the local PyInstaller artifact, version metadata, CLI, GUI startup and six single/fused export read-backs already pass on the development machine.
-5. Physical print/CNC measurements and process-specific tolerances.
-
-Brightness is only a visual proxy for depth. Fine text, lines and decorative details may disappear during sampling or fail in the selected manufacturing process, so manual refinement remains part of the intended workflow.
-
+The current system therefore remains a general 2.5D bas-relief base-model generator, not an automatic professional sculptor. Exact object ordering, undercuts, hidden surfaces and fully semantic multi-part modelling still require manual refinement or a future learned depth/normal inference stage.
 
 ## Editable master model
 
