@@ -25,7 +25,7 @@ def save_heightmap_preview(heightmap, path):
     return str(path)
 
 
-def save_relief_preview(heightmap, mask, path, vertical_scale=5.0):
+def save_relief_preview(heightmap, mask, path, vertical_scale=8.0):
     """Save a neutral shaded preview of the relief surface.
 
     This is not a manufacturing render; it is a fast diagnostic view that makes
