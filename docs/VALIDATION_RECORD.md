@@ -38,7 +38,7 @@ The front render, oblique surface and millimetre cross-sections were generated f
 
 ### Automated Windows validation
 
-For documentation commit `a02926b4200bc4089da0eca57d7aebe8a3549bed`, both Windows Python 3.10 and 3.12 quality gates completed successfully, including package installation, entry points, GUI import, Ruff and the complete pytest suite. The PyInstaller packaging smoke job was still running when this record was last updated; a packaged executable must not be presented as verified until that job and artifact upload complete.
+For documentation commit `a02926b4200bc4089da0eca57d7aebe8a3549bed`, both Windows Python 3.10 and 3.12 quality gates completed successfully, including package installation, entry points, GUI import, Ruff and the complete pytest suite. The PyInstaller Windows executable build, packaged `--help` smoke test and artifact upload also completed successfully in workflow run `30106307192`.
 
 ### Remaining external validation
 
