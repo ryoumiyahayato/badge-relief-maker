@@ -5,40 +5,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  restore-exporter-compatibility:
-    if: github.event_name == 'push' && github.ref_name == 'fix/usable-relief-preview-and-mask' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: fix/usable-relief-preview-and-mask
-          fetch-depth: 0
-      - name: Restore exporter compatibility functions
-        shell: python
-        run: |
-          from pathlib import Path
-          path = Path("badge_relief_maker/app/core/mesh_exporter.py")
-          text = path.read_text(encoding="utf-8")
-          if "def supported_formats():" not in text:
-              text += "\n\ndef supported_formats():\n    return {\"stl\", \"obj\", \"glb\"}\n"
-          if "def implemented_formats():" not in text:
-              text += "\n\ndef implemented_formats():\n    return {\"obj\", \"stl\", \"glb\"}\n"
-          path.write_text(text, encoding="utf-8")
-      - name: Commit compatibility fix
-        run: |
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add badge_relief_maker/app/core/mesh_exporter.py
-          git commit -m "fix: restore exporter format compatibility helpers"
-          git push origin HEAD:fix/usable-relief-preview-and-mask
-
   windows-quality-gate:
     runs-on: windows-latest
     strategy:
