@@ -63,7 +63,7 @@ def test_editable_obj_keeps_one_object_and_named_shared_vertex_face_groups(tmp_p
     assert "g front_relief\n" in text
     assert "g side_wall\n" in text
     assert "g flat_back\n" in text
-    assert text.count("\nv ") == len(vertices) - 1
+    assert sum(line.startswith("v ") for line in text.splitlines()) == len(vertices)
     assert sum(line.startswith("f ") for line in text.splitlines()) == len(faces)
 
 
