@@ -44,3 +44,27 @@ def test_pipeline_preserves_component_vertex_namespaces(tmp_path):
     assert result.report["topology"]["boundary_edge_count"] == 0
     assert result.report["topology"]["non_manifold_edge_count"] == 0
     assert result.report["topology"]["closed_oriented_manifold"] is True
+
+
+def test_checkerboard_corner_sectors_do_not_create_non_manifold_edges():
+    from badge_relief_maker.app.core.manufacturability_check import basic_report
+    from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
+
+    mask = np.ones((7, 7), dtype=bool)
+    mask[2, 3] = False
+    mask[3, 2] = False
+    height = np.where(mask, 0.5, 0.0).astype(np.float32)
+
+    vertices, faces = build_masked_relief_solid(
+        height,
+        mask,
+        width_mm=20.0,
+        height_mm=20.0,
+        base_thickness_mm=2.0,
+        relief_height_mm=2.0,
+    )
+    report = basic_report(vertices, faces)
+
+    assert report["topology"]["boundary_edge_count"] == 0
+    assert report["topology"]["non_manifold_edge_count"] == 0
+    assert report["topology"]["closed_oriented_manifold"] is True

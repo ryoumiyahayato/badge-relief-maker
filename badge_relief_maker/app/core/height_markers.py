@@ -11,6 +11,8 @@ _SUBTRACT_OPERATIONS = {"subtract", "sub", "lower", "decrease"}
 _SMOOTH_OPERATIONS = {"smooth", "soften", "blur"}
 _POLYGON_SHAPES = {"polygon", "poly", "freeform", "free_form"}
 _RECTANGLE_SHAPES = {"rectangle", "rect", "box"}
+_ELLIPSE_SHAPES = {"ellipse", "oval"}
+_ANNULUS_SHAPES = {"annulus", "ring", "elliptical_ring"}
 
 
 def apply_manual_height_markers(heightmap, mask, markers=()):
@@ -147,12 +149,17 @@ def _normalize_marker(marker, default_shape):
         cx = x * max(cols - 1, 1)
         cy = y * max(rows - 1, 1)
 
-    if marker_shape in _RECTANGLE_SHAPES:
+    if marker_shape in _RECTANGLE_SHAPES | _ELLIPSE_SHAPES | _ANNULUS_SHAPES:
         width_px, height_px = _rectangle_size_px(marker, default_shape)
-        if width_px is None or height_px is None or width_px < 0.0 or height_px < 0.0:
+        if width_px is None or height_px is None or width_px <= 0.0 or height_px <= 0.0:
             return None
-        return {
-            "shape": "rectangle",
+        normalized_shape = "rectangle"
+        if marker_shape in _ELLIPSE_SHAPES:
+            normalized_shape = "ellipse"
+        elif marker_shape in _ANNULUS_SHAPES:
+            normalized_shape = "annulus"
+        result = {
+            "shape": normalized_shape,
             "cx": float(cx),
             "cy": float(cy),
             "width_px": float(width_px),
@@ -160,6 +167,19 @@ def _normalize_marker(marker, default_shape):
             "operation": operation,
             "value": float(value),
         }
+        if normalized_shape == "annulus":
+            inner_ratio = _float_or_none(marker.get("inner_ratio", marker.get("inner_scale", 0.72)))
+            thickness_px = _float_or_none(marker.get("thickness_px", marker.get("ring_width_px")))
+            thickness_normalized = _float_or_none(marker.get("thickness_normalized", marker.get("ring_width_normalized")))
+            if thickness_px is None and thickness_normalized is not None:
+                thickness_px = thickness_normalized * min(float(width_px), float(height_px))
+            if thickness_px is not None:
+                outer_radius = max(min(float(width_px), float(height_px)) * 0.5, 1e-6)
+                inner_ratio = 1.0 - max(float(thickness_px), 0.0) / outer_radius
+            if inner_ratio is None:
+                inner_ratio = 0.72
+            result["inner_ratio"] = float(np.clip(inner_ratio, 0.0, 0.98))
+        return result
 
     radius_px = _radius_px(marker, default_shape)
     if radius_px is None or radius_px < 0.0:
@@ -211,6 +231,14 @@ def _marker_region(mask, marker):
         half_w = marker["width_px"] / 2.0
         half_h = marker["height_px"] / 2.0
         region = (np.abs(xx - marker["cx"]) <= half_w) & (np.abs(yy - marker["cy"]) <= half_h)
+    elif marker["shape"] in {"ellipse", "annulus"}:
+        half_w = max(marker["width_px"] / 2.0, 1e-6)
+        half_h = max(marker["height_px"] / 2.0, 1e-6)
+        radius = ((xx - marker["cx"]) / half_w) ** 2 + ((yy - marker["cy"]) / half_h) ** 2
+        region = radius <= 1.0
+        if marker["shape"] == "annulus":
+            inner = float(marker.get("inner_ratio", 0.72))
+            region &= radius >= inner * inner
     elif marker["shape"] == "polygon":
         region = _polygon_region(rows, cols, marker["points"])
     else:

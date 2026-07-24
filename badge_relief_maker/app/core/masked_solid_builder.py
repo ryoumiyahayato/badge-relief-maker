@@ -101,6 +101,32 @@ def _boundary_inward_vectors(mask, labels):
     return normalized
 
 
+def _corner_sector(labels, component, grid_row, grid_col, owner_row, owner_col):
+    """Split diagonal-only cell sectors at one grid corner.
+
+    A binary cell mask may contain a checkerboard configuration at a corner. The
+    two foreground cells then touch only at a point and must not share the same
+    top/bottom/wall vertex, even when they connect elsewhere in the component.
+    Returning a local sector id prevents non-manifold vertical edges without
+    altering the user-confirmed hole or silhouette.
+    """
+    rows, cols = labels.shape
+    incident = [
+        (grid_row - 1, grid_col - 1),
+        (grid_row - 1, grid_col),
+        (grid_row, grid_col - 1),
+        (grid_row, grid_col),
+    ]
+    active = []
+    for row, col in incident:
+        active.append(0 <= row < rows and 0 <= col < cols and int(labels[row, col]) == int(component))
+    if active == [True, False, False, True]:
+        return 0 if (int(owner_row), int(owner_col)) == incident[0] else 1
+    if active == [False, True, True, False]:
+        return 0 if (int(owner_row), int(owner_col)) == incident[1] else 1
+    return 0
+
+
 def _profile_settings(edge_style, bevel_mm, radius_mm, cell_w, cell_h):
     style = str(edge_style or "straight").lower()
     if style not in {"straight", "sloped", "bevel", "rounded"}:
@@ -150,8 +176,8 @@ def _build_indexed_solid(
     def base_xy(grid_row, grid_col):
         return (float(grid_col) - float(col_min)) * cell_w, (float(grid_row) - float(row_min)) * cell_h
 
-    def vertex(component, grid_row, grid_col, level, x, y, z):
-        key = (int(component), int(grid_row), int(grid_col), str(level))
+    def vertex(component, grid_row, grid_col, level, x, y, z, sector=0):
+        key = (int(component), int(grid_row), int(grid_col), int(sector), str(level))
         index = vertex_index.get(key)
         if index is None:
             index = len(vertices)
@@ -159,72 +185,75 @@ def _build_indexed_solid(
             vertices.append([float(x), float(y), float(z)])
         return index
 
-    def profile(component, grid_row, grid_col):
+    def profile(component, grid_row, grid_col, owner_row, owner_col):
+        sector = _corner_sector(labels, component, grid_row, grid_col, owner_row, owner_col)
         x, y = base_xy(grid_row, grid_col)
         bottom = float(bottom_corners[component][grid_row, grid_col])
         top = float(top_corners[component][grid_row, grid_col])
         dx, dy = inward_vectors.get((component, grid_row, grid_col), (0.0, 0.0))
         if style == "straight" or (dx == 0.0 and dy == 0.0):
             return [
-                vertex(component, grid_row, grid_col, "bottom", x, y, bottom),
-                vertex(component, grid_row, grid_col, "top", x, y, top),
+                vertex(component, grid_row, grid_col, "bottom", x, y, bottom, sector=sector),
+                vertex(component, grid_row, grid_col, "top", x, y, top, sector=sector),
             ]
 
         available = max(top - bottom, 0.0)
         depth = min(inset, available / (2.0 if profile_both_sides else 1.0))
         if depth <= 1e-12:
             return [
-                vertex(component, grid_row, grid_col, "bottom", x, y, bottom),
-                vertex(component, grid_row, grid_col, "top", x, y, top),
+                vertex(component, grid_row, grid_col, "bottom", x, y, bottom, sector=sector),
+                vertex(component, grid_row, grid_col, "top", x, y, top, sector=sector),
             ]
         shift_x, shift_y = dx * inset, dy * inset
         points = []
         if profile_both_sides:
-            points.append(vertex(component, grid_row, grid_col, "bottom", x + shift_x, y + shift_y, bottom))
+            points.append(vertex(component, grid_row, grid_col, "bottom", x + shift_x, y + shift_y, bottom, sector=sector))
             if style == "rounded":
                 for index in range(1, segments + 1):
                     theta = (np.pi / 2.0) * float(index) / float(segments)
                     fraction = np.cos(theta)
                     z = bottom + depth * np.sin(theta)
-                    points.append(vertex(component, grid_row, grid_col, f"lower_round_{index}", x + shift_x * fraction, y + shift_y * fraction, z))
+                    points.append(vertex(component, grid_row, grid_col, f"lower_round_{index}", x + shift_x * fraction, y + shift_y * fraction, z, sector=sector))
             else:
-                points.append(vertex(component, grid_row, grid_col, "lower_bevel", x, y, bottom + depth))
+                points.append(vertex(component, grid_row, grid_col, "lower_bevel", x, y, bottom + depth, sector=sector))
         else:
-            points.append(vertex(component, grid_row, grid_col, "bottom", x, y, bottom))
+            points.append(vertex(component, grid_row, grid_col, "bottom", x, y, bottom, sector=sector))
 
         top_profile_start = top - depth
         last_point = vertices[points[-1]]
         if not np.allclose(last_point, [x, y, top_profile_start], atol=1e-12, rtol=0.0):
-            points.append(vertex(component, grid_row, grid_col, "upper_start", x, y, top_profile_start))
+            points.append(vertex(component, grid_row, grid_col, "upper_start", x, y, top_profile_start, sector=sector))
         if style == "rounded":
             for index in range(1, segments + 1):
                 theta = (np.pi / 2.0) * float(index) / float(segments)
                 fraction = 1.0 - np.cos(theta)
                 z = top_profile_start + depth * np.sin(theta)
-                points.append(vertex(component, grid_row, grid_col, f"upper_round_{index}", x + shift_x * fraction, y + shift_y * fraction, z))
+                points.append(vertex(component, grid_row, grid_col, f"upper_round_{index}", x + shift_x * fraction, y + shift_y * fraction, z, sector=sector))
         else:
-            points.append(vertex(component, grid_row, grid_col, "top", x + shift_x, y + shift_y, top))
+            points.append(vertex(component, grid_row, grid_col, "top", x + shift_x, y + shift_y, top, sector=sector))
         return points
 
-    def top_vertex(component, row, col):
+    def top_vertex(component, row, col, owner_row, owner_col):
+        sector = _corner_sector(labels, component, row, col, owner_row, owner_col)
         if (component, row, col) in inward_vectors:
-            return profile(component, row, col)[-1]
+            return profile(component, row, col, owner_row, owner_col)[-1]
         x, y = base_xy(row, col)
-        return vertex(component, row, col, "top", x, y, top_corners[component][row, col])
+        return vertex(component, row, col, "top", x, y, top_corners[component][row, col], sector=sector)
 
-    def bottom_vertex(component, row, col):
+    def bottom_vertex(component, row, col, owner_row, owner_col):
+        sector = _corner_sector(labels, component, row, col, owner_row, owner_col)
         if (component, row, col) in inward_vectors:
-            return profile(component, row, col)[0]
+            return profile(component, row, col, owner_row, owner_col)[0]
         x, y = base_xy(row, col)
-        return vertex(component, row, col, "bottom", x, y, bottom_corners[component][row, col])
+        return vertex(component, row, col, "bottom", x, y, bottom_corners[component][row, col], sector=sector)
 
     def quad(a, b, c, d):
         faces.append([a, b, c])
         faces.append([a, c, d])
 
-    def wall(component, first, second):
-        first_profile = profile(component, *first)
-        second_profile = profile(component, *second)
+    def wall(component, first, second, owner_row, owner_col):
+        first_profile = profile(component, *first, owner_row, owner_col)
+        second_profile = profile(component, *second, owner_row, owner_col)
         if len(first_profile) != len(second_profile):
             raise RuntimeError("edge profile vertex count mismatch")
         for index in range(len(first_profile) - 1):
@@ -233,21 +262,25 @@ def _build_indexed_solid(
     rows, cols = mask.shape
     for row, col in zip(*np.nonzero(mask)):
         component = int(labels[row, col])
-        top00, top10 = top_vertex(component, row, col), top_vertex(component, row, col + 1)
-        top11, top01 = top_vertex(component, row + 1, col + 1), top_vertex(component, row + 1, col)
-        bottom00, bottom10 = bottom_vertex(component, row, col), bottom_vertex(component, row, col + 1)
-        bottom11, bottom01 = bottom_vertex(component, row + 1, col + 1), bottom_vertex(component, row + 1, col)
+        top00 = top_vertex(component, row, col, row, col)
+        top10 = top_vertex(component, row, col + 1, row, col)
+        top11 = top_vertex(component, row + 1, col + 1, row, col)
+        top01 = top_vertex(component, row + 1, col, row, col)
+        bottom00 = bottom_vertex(component, row, col, row, col)
+        bottom10 = bottom_vertex(component, row, col + 1, row, col)
+        bottom11 = bottom_vertex(component, row + 1, col + 1, row, col)
+        bottom01 = bottom_vertex(component, row + 1, col, row, col)
         quad(top00, top10, top11, top01)
         quad(bottom00, bottom01, bottom11, bottom10)
 
         if row == 0 or labels[row - 1, col] != component:
-            wall(component, (row, col), (row, col + 1))
+            wall(component, (row, col), (row, col + 1), row, col)
         if col == cols - 1 or labels[row, col + 1] != component:
-            wall(component, (row, col + 1), (row + 1, col + 1))
+            wall(component, (row, col + 1), (row + 1, col + 1), row, col)
         if row == rows - 1 or labels[row + 1, col] != component:
-            wall(component, (row + 1, col + 1), (row + 1, col))
+            wall(component, (row + 1, col + 1), (row + 1, col), row, col)
         if col == 0 or labels[row, col - 1] != component:
-            wall(component, (row + 1, col), (row, col))
+            wall(component, (row + 1, col), (row, col), row, col)
 
     return np.asarray(vertices, dtype=float), np.asarray(faces, dtype=np.int64)
 

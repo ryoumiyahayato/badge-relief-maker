@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
 
-from badge_relief_maker.app.core.height_markers import apply_manual_height_markers
+from badge_relief_maker.app.core.height_markers import apply_manual_height_markers, manual_height_marker_region
 from badge_relief_maker.app.core.project_build import build_front_relief_from_project_file
 from badge_relief_maker.app.core.project_io import create_project, import_image_asset, save_project
 from badge_relief_maker.app.core.project_model import ManualMarker
@@ -276,3 +276,35 @@ def test_project_manual_marker_outer_metadata_overrides_conflicting_data(tmp_pat
     assert result.report["manual_height"]["enabled"] is True
     assert result.report["manual_height"]["applied_marker_count"] == 1
     assert result.report["manual_height"]["ignored_marker_count"] == 0
+
+
+def test_ellipse_and_annulus_marker_regions_are_supported():
+    mask = np.ones((101, 121), dtype=bool)
+    ellipse = manual_height_marker_region(
+        mask,
+        {
+            "shape": "ellipse",
+            "x": 0.5,
+            "y": 0.5,
+            "width_normalized": 0.6,
+            "height_size_normalized": 0.4,
+            "height_normalized": 0.8,
+        },
+    )
+    annulus = manual_height_marker_region(
+        mask,
+        {
+            "shape": "annulus",
+            "x": 0.5,
+            "y": 0.5,
+            "width_normalized": 0.6,
+            "height_size_normalized": 0.4,
+            "inner_ratio": 0.70,
+            "height_normalized": 0.8,
+        },
+    )
+
+    assert ellipse[50, 60]
+    assert not annulus[50, 60]
+    assert annulus[50, 90]
+    assert annulus.sum() < ellipse.sum()

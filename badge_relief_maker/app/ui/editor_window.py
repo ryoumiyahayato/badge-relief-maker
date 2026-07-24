@@ -115,13 +115,14 @@ class MainWindow(_BaseMainWindow):
         super()._build_finished(result)
 
     def _wire_preview_spaces(self):
-        for label in (self.source_preview, self.mask_preview, self.height_preview):
+        for label in (self.source_preview, self.mask_preview, self.region_preview, self.height_preview):
             try:
                 label.clicked.disconnect()
             except (RuntimeError, TypeError):
                 pass
         self.source_preview.clicked.connect(lambda x, y: self._preview_clicked("source", x, y))
         self.mask_preview.clicked.connect(lambda x, y: self._preview_clicked("final", x, y))
+        self.region_preview.clicked.connect(lambda x, y: self._preview_clicked("final", x, y))
         self.height_preview.clicked.connect(lambda x, y: self._preview_clicked("final", x, y))
         try:
             self.edit_tool_combo.currentTextChanged.disconnect(self._mark_dirty)
@@ -183,6 +184,11 @@ class MainWindow(_BaseMainWindow):
             paths = prepared.report["preview_paths"]
             self._set_preview(self.source_preview, self._source_preview_path_for_tool(), "Source image unavailable")
             self._set_preview(self.mask_preview, paths.get("mask_overlay_preview"), "Mask preview unavailable")
+            self._set_preview(
+                self.region_preview,
+                paths.get("lineart_region_preview"),
+                "Region topology is available for line artwork",
+            )
             self._set_preview(self.height_preview, paths.get("relief_preview") or paths.get("heightmap_preview"), "Relief preview unavailable")
             self.report_box.setPlainText(self._preview_summary(prepared.report))
             self.details_box.setPlainText(json.dumps(prepared.report, indent=2, ensure_ascii=False, default=str))

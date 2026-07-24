@@ -74,3 +74,33 @@ def test_region_raise_and_recess_are_ordered_around_the_carrier_surface():
 
     assert float(raised_height[28, 50]) > float(surface_height[28, 50])
     assert float(surface_height[28, 50]) > float(recessed_height[28, 50])
+
+
+def test_display_id_can_select_region_and_component_can_include_ink_boundary():
+    rgba, mask = _fixture()
+    height = emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72)
+    _, report = analyze_lineart_regions(rgba, mask)
+    target = report["regions"][0]
+    display_id = target["display_id"]
+    region_id = target["region_id"]
+
+    new_mask, new_height, applied = apply_lineart_region_overrides(
+        rgba,
+        mask,
+        height,
+        [
+            {
+                "display_id": display_id,
+                "role": "component",
+                "peak_height": 0.85,
+                "grow_into_ink_px": 3,
+            }
+        ],
+    )
+
+    assert new_mask.any()
+    assert applied["applied_override_count"] == 1
+    assert applied["applied"][0]["region_id"] == region_id
+    assert applied["applied"][0]["display_id"] == display_id
+    assert applied["applied"][0]["effective_pixel_count"] > applied["applied"][0]["pixel_count"]
+    assert float(new_height.max()) >= 0.80

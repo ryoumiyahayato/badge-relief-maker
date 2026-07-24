@@ -307,15 +307,17 @@ class MainWindow(QMainWindow):
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        preview_layout = QHBoxLayout()
+        preview_layout = QGridLayout()
         self.source_preview = _PreviewLabel("Source image")
         self.mask_preview = _PreviewLabel("Exact final mask overlay")
+        self.region_preview = _PreviewLabel("Line-art topology / region roles")
         self.height_preview = _PreviewLabel("Shaded relief preview")
-        for preview in (self.source_preview, self.mask_preview, self.height_preview):
-            preview_layout.addWidget(preview)
-        self.source_preview.clicked.connect(self._preview_clicked)
-        self.mask_preview.clicked.connect(self._preview_clicked)
-        self.height_preview.clicked.connect(self._preview_clicked)
+        preview_layout.addWidget(self.source_preview, 0, 0)
+        preview_layout.addWidget(self.mask_preview, 0, 1)
+        preview_layout.addWidget(self.region_preview, 1, 0)
+        preview_layout.addWidget(self.height_preview, 1, 1)
+        for preview in (self.source_preview, self.mask_preview, self.region_preview, self.height_preview):
+            preview.clicked.connect(self._preview_clicked)
         right_layout.addLayout(preview_layout)
 
         action_grid = QGridLayout()
@@ -584,6 +586,8 @@ class MainWindow(QMainWindow):
         self.source_preview.setText("Source image")
         self.mask_preview.clear()
         self.mask_preview.setText("Exact final mask overlay")
+        self.region_preview.clear()
+        self.region_preview.setText("Line-art topology / region roles")
         self.height_preview.clear()
         self.height_preview.setText("Shaded relief preview")
         if hasattr(self, "details_box"):
@@ -603,6 +607,11 @@ class MainWindow(QMainWindow):
             paths = prepared.report["preview_paths"]
             self._set_preview(self.source_preview, source_path, "Source image unavailable")
             self._set_preview(self.mask_preview, paths.get("mask_overlay_preview"), "Mask preview unavailable")
+            self._set_preview(
+                self.region_preview,
+                paths.get("lineart_region_preview"),
+                "Region topology is available for line artwork",
+            )
             self._set_preview(self.height_preview, paths.get("relief_preview") or paths.get("heightmap_preview"), "Relief preview unavailable")
             self.report_box.setPlainText(self._preview_summary(prepared.report))
             self.details_box.setPlainText(json.dumps(prepared.report, indent=2, ensure_ascii=False, default=str))
@@ -626,17 +635,19 @@ class MainWindow(QMainWindow):
             region_note = (
                 f"\nUnresolved line-art regions: {unresolved}. "
                 "Closed white regions are kept neutral and are not automatically raised. "
-                "Use region background/surface/raise/recess on the final preview to confirm their roles.\n"
+                "Use region background/surface/raise/recess on the numbered topology pane to confirm their roles. "
+                "Blue=void, green=carrier surface, red=raised component, purple=recessed, yellow=unresolved.\n"
             )
         return (
-            "Preview ready. Inspect all three panes before exporting.\n\n"
+            "Preview ready. Inspect all four panes before exporting.\n\n"
             f"Silhouette method: {mode}\n"
             f"Relief method: {height_mode}\n"
             f"Geometry grid: {cols} x {rows} ({int(rows) * int(cols):,} cells)\n"
             f"Foreground coverage: {coverage:.1f}%\n"
             f"Downsampled: {downsampled}\n"
             f"{region_note}\n"
-            "The red overlay must match the physical solid. The shaded pane is generated from the same height field as the mesh."
+            "The mask overlay must match the physical solid. The numbered topology pane is a region editor, not a depth map. "
+            "The shaded pane is generated from the same height field as the mesh."
         )
 
     @staticmethod

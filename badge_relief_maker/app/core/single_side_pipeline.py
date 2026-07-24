@@ -243,23 +243,36 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
     lineart_override_report = {"requested_override_count": 0, "applied_override_count": 0, "applied": [], "skipped": []}
     lineart_region_labels = None
     lineart_region_footprint = None
+    late_lineart_overrides = ()
     if artwork_interpretation == "lineart":
         lineart_region_footprint = mask.copy()
         lineart_region_labels, lineart_region_report = analyze_lineart_regions(rgba, lineart_region_footprint)
         lineart_region_report["enabled"] = True
-        mask, heightmap, lineart_override_report = apply_lineart_region_overrides(
+        topology_roles = {"background", "hole", "void"}
+        early_lineart_overrides = tuple(
+            item for item in params.lineart_region_overrides
+            if isinstance(item, dict) and str(item.get("role", item.get("operation", "surface"))).strip().lower() in topology_roles
+        )
+        late_lineart_overrides = tuple(
+            item for item in params.lineart_region_overrides
+            if not (isinstance(item, dict) and str(item.get("role", item.get("operation", "surface"))).strip().lower() in topology_roles)
+        )
+        mask, heightmap, early_report = apply_lineart_region_overrides(
             rgba,
             mask,
             heightmap,
-            params.lineart_region_overrides,
+            early_lineart_overrides,
+            region_labels=lineart_region_labels,
+            region_report=lineart_region_report,
         )
-        resolved_ids = {item["region_id"] for item in lineart_override_report.get("applied", [])}
-        lineart_region_report["resolved_region_count"] = len(resolved_ids)
-        lineart_region_report["unresolved_region_count"] = max(
-            int(lineart_region_report.get("reported_region_count", 0)) - len(resolved_ids),
-            0,
-        )
-        lineart_region_report["requires_region_confirmation"] = bool(lineart_region_report["unresolved_region_count"])
+        lineart_override_report = {
+            "requested_override_count": len(tuple(params.lineart_region_overrides or ())),
+            "applied_override_count": int(early_report.get("applied_override_count", 0)),
+            "applied": list(early_report.get("applied", [])),
+            "skipped": list(early_report.get("skipped", [])),
+            "early_topology_count": int(early_report.get("applied_override_count", 0)),
+            "late_surface_count": 0,
+        }
 
     heightmap, refinement_report = refine_heightmap(
         heightmap,
@@ -272,6 +285,29 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
     transformed_markers = transform_manual_height_markers(params.manual_height_markers, image_transform=image_transform)
     heightmap, manual_height_report = apply_manual_height_markers(heightmap, mask & ~locked_pixels, transformed_markers)
     manual_height_report["coordinate_transform"] = "ImageTransform.original_image_to_final_geometry_grid"
+
+    if artwork_interpretation == "lineart" and late_lineart_overrides:
+        mask, heightmap, late_report = apply_lineart_region_overrides(
+            rgba,
+            mask,
+            heightmap,
+            late_lineart_overrides,
+            region_labels=lineart_region_labels,
+            region_report=lineart_region_report,
+        )
+        lineart_override_report["applied"].extend(late_report.get("applied", []))
+        lineart_override_report["skipped"].extend(late_report.get("skipped", []))
+        lineart_override_report["applied_override_count"] += int(late_report.get("applied_override_count", 0))
+        lineart_override_report["late_surface_count"] = int(late_report.get("applied_override_count", 0))
+
+    if artwork_interpretation == "lineart":
+        resolved_ids = {item["region_id"] for item in lineart_override_report.get("applied", [])}
+        lineart_region_report["resolved_region_count"] = len(resolved_ids)
+        lineart_region_report["unresolved_region_count"] = max(
+            int(lineart_region_report.get("reported_region_count", 0)) - len(resolved_ids),
+            0,
+        )
+        lineart_region_report["requires_region_confirmation"] = bool(lineart_region_report["unresolved_region_count"])
 
     effective_rim_width_px = _effective_rim_width_px(params, mask)
     heightmap, rim_report = apply_outer_rim_to_heightmap(
@@ -296,7 +332,14 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
         preview_paths["mask_preview"] = save_mask_preview(mask, preview_base / "mask_preview.png")
         preview_paths["mask_overlay_preview"] = save_mask_overlay_preview(rgba, mask, preview_base / "mask_overlay_preview.png")
         preview_paths["heightmap_preview"] = save_heightmap_preview(heightmap, preview_base / "heightmap_preview.png")
-        preview_paths["relief_preview"] = save_relief_preview(heightmap, mask, preview_base / "relief_preview.png")
+        preview_paths["relief_preview"] = save_relief_preview(
+            heightmap,
+            mask,
+            preview_base / "relief_preview.png",
+            width_mm=params.width_mm,
+            height_mm=params.height_mm,
+            relief_height_mm=params.relief_height_mm,
+        )
         if lineart_region_labels is not None:
             preview_paths["lineart_region_preview"] = save_lineart_region_preview(
                 rgba,

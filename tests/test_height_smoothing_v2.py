@@ -74,3 +74,28 @@ def test_smooth_brush_preserves_foreground_boundary_plateau():
 
     assert np.allclose(result[mask], 0.75)
     assert np.all(result[~mask] == 0.0)
+
+
+def test_rounded_region_layer_keeps_boundary_near_carrier_and_raises_interior():
+    from badge_relief_maker.app.core.height_processing import apply_region_layers
+
+    mask = np.ones((81, 81), dtype=bool)
+    height = np.full((81, 81), 0.25, dtype=np.float32)
+    layers = [
+        {
+            "shape": "ellipse",
+            "x": 0.5,
+            "y": 0.5,
+            "width_normalized": 0.7,
+            "height_size_normalized": 0.5,
+            "height_normalized": 0.85,
+            "profile": "rounded",
+            "detail_mix": 0.0,
+        }
+    ]
+
+    result, _, report = apply_region_layers(height, mask, layers)
+
+    assert report["rounded_layer_count"] == 1
+    assert result[40, 40] > 0.80
+    assert result[40, 12] < 0.35

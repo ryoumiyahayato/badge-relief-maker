@@ -92,7 +92,9 @@ def test_pipeline_writes_shaded_relief_preview(tmp_path):
     relief_preview = Path(prepared.report["preview_paths"]["relief_preview"])
     assert relief_preview.is_file()
     preview = np.asarray(Image.open(relief_preview).convert("RGB"))
-    assert preview.shape[:2] == prepared.heightmap.shape
+    assert preview.shape[0] >= prepared.heightmap.shape[0]
+    assert preview.shape[1] >= prepared.heightmap.shape[1]
+    assert preview.shape[0] / prepared.heightmap.shape[0] == preview.shape[1] / prepared.heightmap.shape[1]
     assert float(np.ptp(preview)) > 40.0
     assert float(preview[:, :, 0].mean()) > float(preview[:, :, 2].mean())
 
