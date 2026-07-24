@@ -29,30 +29,34 @@ jobs:
           if old_import in text:
               text = text.replace(old_import, new_import, 1)
 
-          old_block = '''        written = str(Path(output_path))
-        export_mesh(written, vertices, faces)
-        report["export_path"] = written
-        report["export_format"] = Path(written).suffix.lower().lstrip(".")
-        report["unit_convention"] = "millimeters (STL stores no explicit unit metadata)"
-'''
-          new_block = '''        written = str(Path(output_path))
-        export_format = Path(written).suffix.lower().lstrip(".")
-        if export_format == "obj":
-            surface_groups = single_side_surface_face_groups(vertices, faces)
-            export_obj_face_groups(written, vertices, faces, surface_groups, object_name="complete_medal")
-            report["editable_surface_groups"] = {
-                name: int(len(indices)) for name, indices in surface_groups.items()
-            }
-            report["editable_master"] = True
-        else:
-            export_mesh(written, vertices, faces)
-            report["editable_master"] = False
-        report["back_surface_mode"] = "flat_plane"
-        report["assembly_mode"] = "single_relief_closed_solid_with_flat_back"
-        report["export_path"] = written
-        report["export_format"] = export_format
-        report["unit_convention"] = "millimeters (STL stores no explicit unit metadata)"
-'''
+          old_block = "\n".join([
+              "        written = str(Path(output_path))",
+              "        export_mesh(written, vertices, faces)",
+              "        report[\"export_path\"] = written",
+              "        report[\"export_format\"] = Path(written).suffix.lower().lstrip(\".\")",
+              "        report[\"unit_convention\"] = \"millimeters (STL stores no explicit unit metadata)\"",
+              "",
+          ])
+          new_block = "\n".join([
+              "        written = str(Path(output_path))",
+              "        export_format = Path(written).suffix.lower().lstrip(\".\")",
+              "        if export_format == \"obj\":",
+              "            surface_groups = single_side_surface_face_groups(vertices, faces)",
+              "            export_obj_face_groups(written, vertices, faces, surface_groups, object_name=\"complete_medal\")",
+              "            report[\"editable_surface_groups\"] = {",
+              "                name: int(len(indices)) for name, indices in surface_groups.items()",
+              "            }",
+              "            report[\"editable_master\"] = True",
+              "        else:",
+              "            export_mesh(written, vertices, faces)",
+              "            report[\"editable_master\"] = False",
+              "        report[\"back_surface_mode\"] = \"flat_plane\"",
+              "        report[\"assembly_mode\"] = \"single_relief_closed_solid_with_flat_back\"",
+              "        report[\"export_path\"] = written",
+              "        report[\"export_format\"] = export_format",
+              "        report[\"unit_convention\"] = \"millimeters (STL stores no explicit unit metadata)\"",
+              "",
+          ])
           if old_block in text:
               text = text.replace(old_block, new_block, 1)
           elif 'report["editable_master"]' not in text:
@@ -69,14 +73,9 @@ jobs:
           readme_text = readme.read_text(encoding="utf-8")
           marker = "## Editable master model\n"
           if marker not in readme_text:
-              readme_text += '''
-
-## Editable master model
-
-A single-side OBJ export is a real closed 3D solid, not a rendered effect image. Its front follows the generated relief, its back is an automatically generated flat plane, and the boundary is closed by side walls. The OBJ keeps one shared vertex pool and names three face groups: `front_relief`, `side_wall`, and `flat_back`.
-
-This makes the same complete model easier to continue editing in Blender, 3ds Max, Maya, ZBrush and other OBJ-compatible tools. STL remains the manufacturing/printing mesh, while GLB remains the compact interchange and viewing format.
-'''
+              readme_text += "\n\n## Editable master model\n\n"
+              readme_text += "A single-side OBJ export is a real closed 3D solid, not a rendered effect image. Its front follows the generated relief, its back is an automatically generated flat plane, and the boundary is closed by side walls. The OBJ keeps one shared vertex pool and names three face groups: `front_relief`, `side_wall`, and `flat_back`.\n\n"
+              readme_text += "This makes the same complete model easier to continue editing in Blender, 3ds Max, Maya, ZBrush and other OBJ-compatible tools. STL remains the manufacturing/printing mesh, while GLB remains the compact interchange and viewing format.\n"
               readme.write_text(readme_text, encoding="utf-8")
       - name: Commit integration
         run: |
