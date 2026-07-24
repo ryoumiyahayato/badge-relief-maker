@@ -57,6 +57,65 @@ def export_obj(path, vertices, faces):
             fh.write(f"f {a + 1} {b + 1} {c + 1}\n")
 
 
+def export_obj_face_groups(path, vertices, faces, face_groups, object_name="complete_medal"):
+    """Export one complete OBJ mesh with named, shared-vertex face groups.
+
+    The file remains one geometric solid: every group references the same vertex
+    pool and every triangle is written exactly once. DCC/CAD applications can
+    therefore select the front relief, side wall and flat back independently
+    without receiving overlapping duplicate meshes.
+    """
+    vertices, faces = _mesh_arrays(vertices, faces)
+    groups = []
+    assigned = np.zeros(len(faces), dtype=bool)
+    for raw_name, raw_indices in face_groups.items():
+        name = _safe_obj_name(raw_name)
+        indices = np.asarray(raw_indices, dtype=np.int64).reshape(-1)
+        if indices.size:
+            if indices.min() < 0 or indices.max() >= len(faces):
+                raise ValueError(f"OBJ face group {name} references a face outside the mesh")
+            if len(np.unique(indices)) != len(indices):
+                raise ValueError(f"OBJ face group {name} contains duplicate face indices")
+            if assigned[indices].any():
+                raise ValueError(f"OBJ face group {name} overlaps another face group")
+            assigned[indices] = True
+        groups.append((name, indices))
+    if len(faces) and not assigned.all():
+        raise ValueError("OBJ face groups must cover every mesh face exactly once")
+
+    with _atomic_writer(path, "w", encoding="utf-8") as fh:
+        fh.write(f"o {_safe_obj_name(object_name)}\n")
+        for x, y, z in vertices:
+            fh.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
+        for name, indices in groups:
+            fh.write(f"g {name}\n")
+            for face_index in indices:
+                a, b, c = faces[int(face_index)]
+                fh.write(f"f {a + 1} {b + 1} {c + 1}\n")
+
+
+def single_side_surface_face_groups(vertices, faces):
+    """Classify a closed single-side relief into editable surface roles."""
+    vertices, faces = _mesh_arrays(vertices, faces)
+    if len(faces) == 0:
+        empty = np.zeros(0, dtype=np.int64)
+        return {"front_relief": empty, "side_wall": empty, "flat_back": empty}
+
+    triangles = vertices[faces]
+    minimum_z = float(vertices[:, 2].min()) if len(vertices) else 0.0
+    span = float(np.ptp(vertices[:, 2])) if len(vertices) else 0.0
+    tolerance = max(1e-7, span * 1e-7)
+    flat_back = np.all(np.abs(triangles[:, :, 2] - minimum_z) <= tolerance, axis=1)
+    normals = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+    front_relief = (~flat_back) & (normals[:, 2] > tolerance)
+    side_wall = ~(flat_back | front_relief)
+    return {
+        "front_relief": np.flatnonzero(front_relief),
+        "side_wall": np.flatnonzero(side_wall),
+        "flat_back": np.flatnonzero(flat_back),
+    }
+
+
 def export_obj_objects(path, objects):
     """Export multiple named mesh objects to one atomic OBJ file."""
     vertex_offset = 0
@@ -319,35 +378,31 @@ def export_glb_objects(path, objects):
     _write_glb(path, document, binary_blob if meshes else b"")
 
 
-def _aligned_length(length):
-    return (int(length) + 3) & ~3
+def _aligned_length(length, alignment=4):
+    return (int(length) + alignment - 1) // alignment * alignment
 
 
-def _pad_bytes(data, pad_byte):
-    padding = _aligned_length(len(data)) - len(data)
-    if padding:
-        data += pad_byte * padding
-    return data
+def _pad_bytes(data, pad_byte=b"\x00", alignment=4):
+    return data + pad_byte * (_aligned_length(len(data), alignment) - len(data))
 
 
-def _write_glb(path, document, binary_blob=b""):
-    json_chunk = json.dumps(document, separators=(",", ":")).encode("utf-8")
-    json_chunk = _pad_bytes(json_chunk, b" ")
-    chunks = [(0x4E4F534A, json_chunk)]
+def _write_glb(path, document, binary_blob):
+    json_bytes = json.dumps(document, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    json_bytes = _pad_bytes(json_bytes, b" ")
+    binary_blob = _pad_bytes(binary_blob, b"\x00")
+    chunks = [struct.pack("<I4s", len(json_bytes), b"JSON") + json_bytes]
     if binary_blob:
-        chunks.append((0x004E4942, binary_blob))
-    total_length = 12 + sum(8 + len(data) for _, data in chunks)
+        chunks.append(struct.pack("<I4s", len(binary_blob), b"BIN\x00") + binary_blob)
+    total_length = 12 + sum(len(chunk) for chunk in chunks)
     with _atomic_writer(path, "wb") as fh:
-        fh.write(struct.pack("<III", 0x46546C67, 2, total_length))
-        for chunk_type, data in chunks:
-            fh.write(struct.pack("<II", len(data), chunk_type))
-            fh.write(data)
+        fh.write(struct.pack("<4sII", b"glTF", 2, total_length))
+        for chunk in chunks:
+            fh.write(chunk)
 
 
 def export_mesh(path, vertices, faces):
-    """Export mesh by file extension."""
-    path = Path(path)
-    suffix = path.suffix.lower()
+    """Export based on the target suffix."""
+    suffix = Path(path).suffix.lower()
     if suffix == ".obj":
         export_obj(path, vertices, faces)
     elif suffix == ".stl":
@@ -355,12 +410,4 @@ def export_mesh(path, vertices, faces):
     elif suffix == ".glb":
         export_glb(path, vertices, faces)
     else:
-        raise ValueError(f"unsupported export format: {suffix}")
-
-
-def supported_formats():
-    return {"stl", "obj", "glb"}
-
-
-def implemented_formats():
-    return {"obj", "stl", "glb"}
+        raise ValueError(f"unsupported mesh export format: {suffix or '<none>'}")
