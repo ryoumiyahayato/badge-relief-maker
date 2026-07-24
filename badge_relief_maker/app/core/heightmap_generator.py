@@ -30,8 +30,9 @@ def classify_artwork(rgba, mask):
 
     Line drawings need a different interpretation from photographs. Treating white
     paper as maximum physical height creates an engraved flat plate rather than a
-    sculptural medal. The classifier is intentionally conservative: it requires a
-    mostly achromatic, near-binary foreground with both dark ink and light paper.
+    sculptural medal. JPEG antialiasing and dense hatching create many intermediate
+    gray pixels, so the threshold accepts a strongly near-binary achromatic image
+    without requiring every stroke to remain pure black or white.
     """
     rgb, gray = _grayscale(rgba)
     foreground = np.asarray(mask, dtype=bool)
@@ -44,7 +45,7 @@ def classify_artwork(rgba, mask):
     ink_fraction = float(np.mean(sample < 0.50))
     chroma = np.max(rgb, axis=2) - np.min(rgb, axis=2)
     mean_chroma = float(np.mean(chroma[foreground]))
-    if near_binary >= 0.78 and 0.015 <= ink_fraction <= 0.72 and mean_chroma <= 0.08:
+    if near_binary >= 0.64 and 0.015 <= ink_fraction <= 0.72 and mean_chroma <= 0.08:
         return "lineart"
     return "continuous_tone"
 
