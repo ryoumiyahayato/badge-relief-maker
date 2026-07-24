@@ -55,14 +55,21 @@ def grayscale_heightmap(rgba, mask=None, invert=False, uniform_value=1.0):
     return result.astype(np.float32)
 
 
-def emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72, invert=False):
-    """Create a restrained automatic relief from edges and local detail.
+def _blur_channel(values, radius):
+    """Blur one normalized channel without introducing an extra dependency."""
+    image = Image.fromarray(np.clip(np.asarray(values) * 255.0, 0, 255).astype(np.uint8), mode="L")
+    return np.asarray(image.filter(ImageFilter.GaussianBlur(radius=float(radius))), dtype=np.float32) / 255.0
 
-    Badge artwork colours are not reliable depth labels. Mapping raw brightness
-    directly to Z makes white paint protrude and black print collapse. This mode
-    instead creates a stable base plateau and raises local colour/texture edges,
-    which preserves lettering, borders and ornament without pretending that colour
-    alone defines physical depth.
+
+def emboss_heightmap(rgba, mask, base_level=0.05, detail_strength=0.95, invert=False):
+    """Create a general high-fidelity medal/badge relief height field.
+
+    The low-frequency surface follows robust foreground grayscale because that is
+    the most reproducible depth cue available in scans and photographs of medals,
+    badges and plaques. Fine lettering, engraving, guilloche, wreath texture and
+    colour boundaries are restored separately with a signed multi-scale detail
+    pyramid. This preserves the overall grayscale relationship instead of replacing
+    it with a flat plateau, while avoiding object-specific rules for any one badge.
     """
     rgba = np.asarray(rgba)
     foreground = np.asarray(mask, dtype=bool)
@@ -74,35 +81,47 @@ def emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72, invert=F
         return np.zeros(foreground.shape, dtype=np.float32)
 
     rgb = rgba[:, :, :3].astype(np.float32) / 255.0
-    smooth_image = Image.fromarray(np.clip(rgb * 255.0, 0, 255).astype(np.uint8), mode="RGB")
-    smooth = np.asarray(smooth_image.filter(ImageFilter.GaussianBlur(radius=0.8)), dtype=np.float32) / 255.0
+    gray = 0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]
+    sample = gray[foreground]
+    low = float(np.percentile(sample, 1.0))
+    high = float(np.percentile(sample, 99.0))
+    if high > low + 1e-6:
+        macro = np.clip((gray - low) / (high - low), 0.0, 1.0)
+        macro = np.power(macro, 0.92).astype(np.float32)
+    else:
+        macro = np.ones_like(gray, dtype=np.float32)
 
-    gradient_y = np.gradient(smooth, axis=0)
-    gradient_x = np.gradient(smooth, axis=1)
+    # Signed detail keeps dark incisions dark and bright ridges bright. Several
+    # radii cover thin text, medium ornament and broader embossed transitions.
+    fine = gray - _blur_channel(gray, 0.55)
+    medium = gray - _blur_channel(gray, 1.25)
+    broad = gray - _blur_channel(gray, 2.75)
+    signed_detail = 0.55 * fine + 0.30 * medium + 0.15 * broad
+    absolute_sample = np.abs(signed_detail[foreground])
+    detail_scale = float(np.percentile(absolute_sample, 99.0)) if absolute_sample.size else 0.0
+    signed_detail = np.clip(signed_detail / max(detail_scale, 1e-6), -1.0, 1.0)
+
+    # Two colours can have nearly identical luminance. A small chroma-boundary
+    # ridge keeps enamel dividers and printed outlines visible without changing the
+    # large-scale grayscale depth ordering.
+    smooth_rgb = np.stack([_blur_channel(rgb[:, :, channel], 0.65) for channel in range(3)], axis=2)
+    gradient_y = np.gradient(smooth_rgb, axis=0)
+    gradient_x = np.gradient(smooth_rgb, axis=1)
     colour_edge = np.sqrt(np.sum(gradient_x * gradient_x + gradient_y * gradient_y, axis=2))
+    edge_sample = colour_edge[foreground]
+    edge_scale = float(np.percentile(edge_sample, 99.0)) if edge_sample.size else 0.0
+    colour_edge = np.clip(colour_edge / max(edge_scale, 1e-6), 0.0, 1.0)
 
-    gray = 0.2126 * smooth[:, :, 0] + 0.7152 * smooth[:, :, 1] + 0.0722 * smooth[:, :, 2]
-    local_blur = np.asarray(
-        Image.fromarray(np.clip(gray * 255.0, 0, 255).astype(np.uint8), mode="L").filter(ImageFilter.GaussianBlur(radius=2.0)),
-        dtype=np.float32,
-    ) / 255.0
-    local_detail = np.abs(gray - local_blur)
-    detail = colour_edge * 1.2 + local_detail * 1.8
-
-    sample = detail[foreground]
-    robust_high = float(np.percentile(sample, 98)) if sample.size else 0.0
-    detail = np.clip(detail / max(robust_high, 1e-6), 0.0, 1.0)
-    detail_image = Image.fromarray(np.clip(detail * 255.0, 0, 255).astype(np.uint8), mode="L")
-    detail = np.asarray(
-        detail_image.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(radius=0.6)), dtype=np.float32
-    ) / 255.0
-
-    base = np.clip(float(base_level), 0.0, 1.0)
+    floor_control = np.clip(float(base_level), 0.0, 1.0)
+    floor = 0.02 + 0.10 * floor_control
     strength = np.clip(float(detail_strength), 0.0, 1.0)
-    result = base + strength * detail
+    macro = floor + (1.0 - floor) * macro
+    signed_gain = 0.035 + 0.065 * strength
+    edge_gain = 0.025 + 0.055 * strength
+    result = np.clip(macro + signed_gain * signed_detail + edge_gain * colour_edge, 0.0, 1.0)
     if invert:
         result = 1.0 - result
-    return np.where(foreground, np.clip(result, 0.0, 1.0), 0.0).astype(np.float32)
+    return np.where(foreground, result, 0.0).astype(np.float32)
 
 
 def layered_heightmap(regions, heights, shape):
