@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from badge_relief_maker.app.core.heightmap_generator import emboss_heightmap
+from badge_relief_maker.app.core.heightmap_generator import classify_artwork, emboss_heightmap
 from badge_relief_maker.app.core.mask_generator import foreground_mask
 from badge_relief_maker.app.core.project_io import create_project
 from badge_relief_maker.app.core.quality_modes import quality_preset
@@ -37,9 +37,31 @@ def test_emboss_heightmap_preserves_grayscale_order_and_refines_detail():
 
     height = emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72)
 
+    assert classify_artwork(rgba, mask) == "continuous_tone"
     assert height[0, 0] == 0.0
     assert float(height[28, 72]) > float(height[28, 48]) > float(height[28, 24])
     assert float(height[50, 48]) < float(height[44, 48]) - 0.10
+
+
+def test_lineart_uses_sculptural_domming_instead_of_a_flat_white_plate():
+    rgba = np.full((96, 96, 4), 255, dtype=np.uint8)
+    mask = np.zeros((96, 96), dtype=bool)
+    mask[8:88, 8:88] = True
+    rgba[8:88, 8:88, 3] = 255
+    rgba[20:23, 20:76, :3] = 0
+    rgba[73:76, 20:76, :3] = 0
+    rgba[20:76, 20:23, :3] = 0
+    rgba[20:76, 73:76, :3] = 0
+    rgba[35:61, 46:50, :3] = 0
+    rgba[46:50, 35:61, :3] = 0
+
+    height = emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72)
+
+    assert classify_artwork(rgba, mask) == "lineart"
+    assert height[0, 0] == 0.0
+    assert float(np.ptp(height[mask])) > 0.25
+    assert float(height[48, 48]) > float(height[21, 48]) + 0.08
+    assert float(height[48, 44]) > float(height[48, 48])
 
 
 def test_new_projects_keep_general_emboss_defaults():
@@ -65,7 +87,10 @@ def test_pipeline_writes_shaded_relief_preview(tmp_path):
 
     relief_preview = Path(prepared.report["preview_paths"]["relief_preview"])
     assert relief_preview.is_file()
-    assert Image.open(relief_preview).mode == "RGB"
+    preview = np.asarray(Image.open(relief_preview).convert("RGB"))
+    assert preview.shape[:2] == prepared.heightmap.shape
+    assert float(np.ptp(preview)) > 40.0
+    assert float(preview[:, :, 0].mean()) > float(preview[:, :, 2].mean())
 
 
 def test_quality_presets_prioritize_source_detail_over_low_end_hardware():
