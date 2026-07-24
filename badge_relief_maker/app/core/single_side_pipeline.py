@@ -16,7 +16,7 @@ from .marker_transform import transform_manual_height_markers
 from .mask_generator import foreground_mask
 from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_layered_relief_solid, build_masked_relief_solid
-from .mesh_exporter import export_mesh, export_obj_face_groups, single_side_surface_face_groups
+from .mesh_exporter import export_mesh, export_obj_face_groups, single_side_surface_face_groups, export_obj_face_groups, single_side_surface_face_groups
 from .mesh_repair import repair_mesh_basic
 from .outline_extractor import outline_report
 from .preview_exporter import save_heightmap_preview, save_mask_overlay_preview, save_mask_preview, save_relief_preview, save_source_preview
