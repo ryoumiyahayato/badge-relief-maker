@@ -16,7 +16,7 @@ from .marker_transform import transform_manual_height_markers
 from .mask_generator import foreground_mask
 from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_layered_relief_solid, build_masked_relief_solid
-from .mesh_exporter import export_mesh
+from .mesh_exporter import export_mesh, export_obj_face_groups, single_side_surface_face_groups
 from .mesh_repair import repair_mesh_basic
 from .outline_extractor import outline_report
 from .preview_exporter import save_heightmap_preview, save_mask_overlay_preview, save_mask_preview, save_relief_preview, save_source_preview
@@ -447,9 +447,21 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         if blocking_errors:
             raise ValueError("mesh export blocked by topology errors: " + ", ".join(blocking_errors))
         written = str(Path(output_path))
-        export_mesh(written, vertices, faces)
+        export_format = Path(written).suffix.lower().lstrip(".")
+        if export_format == "obj":
+            surface_groups = single_side_surface_face_groups(vertices, faces)
+            export_obj_face_groups(written, vertices, faces, surface_groups, object_name="complete_medal")
+            report["editable_surface_groups"] = {
+                name: int(len(indices)) for name, indices in surface_groups.items()
+            }
+            report["editable_master"] = True
+        else:
+            export_mesh(written, vertices, faces)
+            report["editable_master"] = False
+        report["back_surface_mode"] = "flat_plane"
+        report["assembly_mode"] = "single_relief_closed_solid_with_flat_back"
         report["export_path"] = written
-        report["export_format"] = Path(written).suffix.lower().lstrip(".")
+        report["export_format"] = export_format
         report["unit_convention"] = "millimeters (STL stores no explicit unit metadata)"
 
     return ReliefBuildResult(vertices=vertices, faces=faces, report=report, output_path=written)

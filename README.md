@@ -157,3 +157,10 @@ Current external acceptance still pending:
 5. Physical print/CNC measurements and process-specific tolerances.
 
 Brightness is only a visual proxy for depth. Fine text, lines and decorative details may disappear during sampling or fail in the selected manufacturing process, so manual refinement remains part of the intended workflow.
+
+
+## Editable master model
+
+A single-side OBJ export is a real closed 3D solid, not a rendered effect image. Its front follows the generated relief, its back is an automatically generated flat plane, and the boundary is closed by side walls. The OBJ keeps one shared vertex pool and names three face groups: `front_relief`, `side_wall`, and `flat_back`.
+
+This makes the same complete model easier to continue editing in Blender, 3ds Max, Maya, ZBrush and other OBJ-compatible tools. STL remains the manufacturing/printing mesh, while GLB remains the compact interchange and viewing format.
