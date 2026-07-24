@@ -2,37 +2,57 @@
 
 This file records acceptance evidence that cannot be inferred from the presence of code. Do not mark a current status as passed without the tested commit, environment, fixture and observed result.
 
-## PR #5 sculptural-relief correction
+## PR #5 boundary-aware line-art correction
 
-The earlier black-and-white `relief_preview.png` was rejected as acceptance evidence. It mainly exposed line edges and did not demonstrate the broad sculptural high/low form expected from a medal-like bas-relief.
+The earlier black-and-white `relief_preview.png` and the subsequent enclosed-region dome preview were rejected as acceptance evidence. They did not establish valid foreground/background boundaries or component depth ordering. The enclosed-region rule incorrectly turned letter interiors, shadows, holes and background gaps into raised solids and has been removed.
 
-The current branch now separates continuous-tone artwork from achromatic line artwork. Line drawings are no longer interpreted as one flat white maximum surface with black grooves. The line-art path combines:
+The current line-art workflow is conservative:
 
-- global silhouette doming;
-- local doming of enclosed light regions;
-- medium-scale mass inferred from broad ink density;
-- shallow engraved line detail;
-- a studio preview whose normals, cavity shading and highlights are calculated from the same final height field used for mesh export.
+- the automatic field provides broad silhouette form and shallow engraved ink detail;
+- a closed white region remains neutral and is never raised merely because it is enclosed;
+- major regions separated by ink are reported as unresolved;
+- the GUI can assign the selected region as `background`, `surface`, `raise` or `recess`;
+- `background` removes the whole region from the physical footprint;
+- region roles persist in the project;
+- height smoothing excludes background and true-void pixels;
+- feathered generic region layers establish broader carrier ordering without hard-coded object names.
 
-Using the supplied French emblem line drawing, the current local verification produced:
+Using the supplied French emblem line drawing, a boundary-confirmed demonstration generated:
 
-- artwork interpretation: `lineart`;
 - requested size: 100 × 150 mm;
-- flat-back thickness: 2.5 mm;
-- outward relief range: 4.0 mm;
-- connected mesh components: 1 after disconnected scan-dust cleanup;
+- automatic flat back: 2.5 mm;
+- configured outward relief budget: 4.0 mm;
+- vertices: 216,160;
+- triangles: 430,788;
+- one shared editable OBJ with `front_relief`, `side_wall` and `flat_back` groups;
 - boundary edges: 0;
 - non-manifold edges: 0;
 - inconsistent-winding edges: 0;
-- OBJ groups: `front_relief`, `side_wall`, `flat_back`.
+- closed oriented manifold: yes.
 
-This establishes that the implementation is now moving toward a sculptural 2.5D relief rather than an engraved plate. It does not establish semantic professional modelling. The algorithm does not yet understand that a contour represents a particular leaf, animal, flag or separate foreground layer, and it cannot infer hidden surfaces or undercuts from one image.
+The review board is generated from the same final floating-point height field used by the editable OBJ. It includes a shaded front view, an oblique view of the actual mesh, a real-millimetre centre cross-section and a region-role map. The oblique display expands the visible Z scale for inspection but does not alter the exported OBJ coordinates.
+
+Observed role corrections in this demonstration:
+
+- RF/interior white regions remain near the central carrier surface rather than becoming the highest layer;
+- the wreath is in front of the central panel;
+- the flags and lower branches are behind the central assembly;
+- the large white gap under the wreath is removed from the solid as a true void;
+- the small region below the upper axe/fasces is recessed as shadow rather than raised.
+
+These settings use generic region and polygon tools; the core algorithm contains no France, RF, wreath, flag, axe, animal or leaf-specific rules. The required confirmations are example-specific because one line drawing cannot unambiguously encode all occlusion and depth roles.
 
 ## Automated Windows quality gate
 
-Current working-tree status: **final GitHub Actions run pending**.
+Commit `487c0e41b5824a2111fe838abd93d81b676c7235` passed the complete GitHub Actions quality gate:
 
-The workflow is configured for Windows Python 3.10 and 3.12 and runs installation, CLI entry points, corrected GUI import, Ruff and full pytest. A dependent Windows 3.12 job builds, smoke-tests and uploads `BadgeReliefMaker.exe`.
+- Windows Python 3.10 installation, entry points, GUI import, Ruff and full pytest: passed;
+- Windows Python 3.12 installation, entry points, GUI import, Ruff and full pytest: passed;
+- Windows PyInstaller executable build: passed;
+- packaged executable `--help` smoke test: passed;
+- executable artifact upload: passed.
+
+A later documentation-only commit may produce a separate run; code acceptance evidence above identifies the exact tested commit.
 
 ## Programmatic validation assets
 
@@ -47,18 +67,19 @@ Required flow:
 1. Create and save a project.
 2. Import a transparent PNG and an opaque controlled-background image.
 3. Confirm the source, exact final mask and studio relief previews.
-4. Confirm a line drawing shows broad high/low form rather than only shallow black-line grooves.
-5. Select a perspective quadrilateral and confirm dependent edits are reset rather than drifting.
-6. Draw a crop on the post-perspective source.
-7. Add/remove mask regions from source and final-mask previews.
-8. Apply final-grid height and locked-layer brushes.
-9. Change preview/standard/high and confirm the edit remains on the same physical region within one final cell.
-10. Start a build and confirm mutable controls remain disabled until completion.
-11. Save, close, reopen and confirm all v2 settings and edits persist.
+4. For a line drawing, inspect the numbered region map and unresolved count.
+5. Apply `region background`, `region surface`, `region raise` and `region recess` on final previews.
+6. Confirm that background regions become true voids and that smoothing does not bridge them.
+7. Confirm explicit region roles persist after save/reopen.
+8. Select a perspective quadrilateral and confirm dependent edits are reset rather than drifting.
+9. Draw a crop on the post-perspective source.
+10. Apply final-grid height and locked-layer brushes.
+11. Change preview/standard/high and confirm the edit remains on the same physical region within one final cell.
+12. Start a build and confirm mutable controls remain disabled until completion.
 
 Record the commit, Windows scaling, display resolution, source fixture, exact clicks and screenshots.
 
-## Blender import validation
+## External application validation
 
 Status: not yet recorded.
 
@@ -66,29 +87,8 @@ Use the same accepted single-side fixture for OBJ, STL and GLB. For OBJ, verify 
 
 STL must be interpreted as millimeters because STL does not contain a unit declaration.
 
-## Slicer validation
+## Manufacturing validation
 
 Status: not yet recorded.
 
-Record slicer name/version, import scale, shell count, automatic repair warnings, estimated dimensions, unsupported regions and whether small text/lines survive slicing.
-
-## CAM validation
-
-Status: not yet recorded.
-
-Record CAM application/version, imported dimensions, open-surface detection, cutter/tool-access concerns, inaccessible relief valleys and any geometry conversion required before toolpath generation.
-
-## Physical sample validation
-
-Status: not yet recorded.
-
-Record process, material, machine, nominal and measured dimensions, minimum surviving line width, minimum surviving relief depth, edge quality, warping/shrinkage and observed failure modes.
-
-## Release interpretation
-
-- Automated topology success is necessary but does not replace this record.
-- A blank or pending field means the acceptance step has not happened.
-- Programmatic trimesh reload is not a substitute for Blender, slicer or CAM import.
-- The non-fused placeholder is excluded from production acceptance.
-- The fused double-side path is still a candidate until alignment and external import evidence are recorded.
-- No report produced by the application is a manufacturing certification.
+Required evidence includes representative slicer import, CNC/CAM reachability, mould draft review where applicable, a physical sample and measured dimensions/tolerances. Automated topology checks are not a substitute for these records.
