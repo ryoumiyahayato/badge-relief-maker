@@ -134,56 +134,31 @@ def _continuous_tone_emboss(rgb, gray, foreground, base_level, detail_strength):
 
 
 def _lineart_sculptural_emboss(gray, foreground, base_level, detail_strength):
-    """Infer a smooth bas-relief field from achromatic line artwork.
+    """Create a conservative line-art bas-relief without inventing layer order.
 
-    This remains a 2.5D inference rather than semantic object reconstruction. It
-    deliberately separates broad physical form from ink: the silhouette receives a
-    global dome, enclosed light regions receive local domes, broad line density
-    contributes medium-scale mass, and the original ink returns only as shallow
-    engraving and edge detail. The result is materially different from raising the
-    white page to one flat maximum height.
+    A line drawing does not say that every enclosed white region is a foreground
+    object. The previous implementation raised all such regions and therefore
+    turned shadows, holes and background pockets into false solids. This version
+    only creates a broad silhouette form and treats dark ink as shallow engraving.
+    Region-level foreground/background decisions are applied separately through the
+    boundary-aware region override system.
     """
     minimum_dimension = float(max(min(gray.shape), 1))
     ink = np.clip((0.92 - gray) / 0.92, 0.0, 1.0) * foreground
 
-    global_distance = ndi.distance_transform_edt(foreground)
-    global_dome = np.power(_robust_normalize(global_distance, foreground, 99.0), 0.55)
+    distance = ndi.distance_transform_edt(foreground)
+    global_dome = np.power(_robust_normalize(distance, foreground, 99.0), 0.62)
+    global_dome = ndi.gaussian_filter(global_dome, sigma=max(0.8, minimum_dimension / 500.0))
 
-    closing_size = int(np.clip(round(minimum_dimension / 120.0), 3, 11))
-    if closing_size % 2 == 0:
-        closing_size += 1
-    structural_gray = ndi.grey_closing(gray, size=(closing_size, closing_size))
-    structural_light = (structural_gray > 0.72) & foreground
-    regional_distance = ndi.distance_transform_edt(structural_light)
-    regional_dome = np.power(_robust_normalize(regional_distance, foreground, 97.0), 0.55)
-
-    base_sigma = max(1.0, minimum_dimension / 165.0)
-    medium_density = ndi.gaussian_filter(ink, sigma=base_sigma)
-    broad_density = ndi.gaussian_filter(ink, sigma=base_sigma * 3.2)
-    density = 0.55 * _robust_normalize(medium_density, foreground, 99.0)
-    density += 0.45 * _robust_normalize(broad_density, foreground, 99.0)
-
-    macro = 0.10 + 0.34 * global_dome + 0.42 * regional_dome + 0.16 * density
-    macro = ndi.gaussian_filter(macro, sigma=max(0.85, minimum_dimension / 400.0))
-
-    fine = gray - ndi.gaussian_filter(gray, sigma=0.8)
-    medium = gray - ndi.gaussian_filter(gray, sigma=1.8)
-    signed_detail = 0.65 * fine + 0.35 * medium
-    signed_sample = np.abs(signed_detail[foreground])
-    signed_scale = float(np.percentile(signed_sample, 99.0)) if signed_sample.size else 0.0
-    signed_detail = np.clip(signed_detail / max(signed_scale, 1e-6), -1.0, 1.0)
-
-    shoulder = np.clip(
-        ndi.gaussian_filter(ink, sigma=1.2) - ndi.gaussian_filter(ink, sigma=2.8),
-        0.0,
-        None,
-    )
-    shoulder = _robust_normalize(shoulder, foreground, 99.0)
+    base = 0.14 + 0.40 * global_dome
+    fine_ink = ndi.gaussian_filter(ink, sigma=0.55)
+    broad_ink = ndi.gaussian_filter(ink, sigma=max(1.2, minimum_dimension / 240.0))
+    groove = 0.68 * _robust_normalize(fine_ink, foreground, 99.5)
+    groove += 0.32 * _robust_normalize(broad_ink, foreground, 99.5)
 
     strength = np.clip(float(detail_strength), 0.0, 1.0)
-    detail_gain = 0.035 + 0.050 * strength
-    shoulder_gain = 0.020 + 0.025 * strength
-    result = macro + detail_gain * signed_detail + shoulder_gain * shoulder
+    groove_depth = 0.055 + 0.095 * strength
+    result = base - groove_depth * groove
 
     floor = 0.035 + 0.12 * np.clip(float(base_level), 0.0, 1.0)
     result = floor + (1.0 - floor) * np.clip(result, 0.0, 1.0)
@@ -194,8 +169,8 @@ def emboss_heightmap(rgba, mask, base_level=0.05, detail_strength=0.95, invert=F
     """Create a general medal/badge bas-relief height field.
 
     Continuous-tone artwork follows robust grayscale and colour boundaries. Nearly
-    binary line artwork uses a separate sculptural inference path so that the white
-    paper is not mistaken for one uniformly raised physical surface.
+    binary line artwork uses a conservative path: ink becomes engraving, while
+    enclosed white regions remain neutral until boundary roles are confirmed.
     """
     rgb, gray = _grayscale(rgba)
     foreground = np.asarray(mask, dtype=bool)
