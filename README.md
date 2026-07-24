@@ -42,20 +42,21 @@ The current single-side path performs:
 4. Source-space manual mask additions/removals.
 5. Optional manual crop, component cleanup, hole filling and mask smoothing.
 6. `emboss`, `flat`, `grayscale`, `layers` or `hybrid` height generation.
-7. `emboss` automatically separates two interpretations:
+7. `emboss` separates two conservative interpretations:
    - continuous-tone photographs and shaded artwork use robust luminance plus multiscale detail;
-   - achromatic line drawings use a sculptural bas-relief inference made from silhouette doming, enclosed-region doming, broad ink density and shallow engraved line detail.
-8. Processing crop and quality-dependent grid resize.
-9. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
-10. Region layers, local locks and circle/rectangle/polygon height edits.
-11. Set, add, subtract and mask-aware smooth brush operations.
-12. Optional global smoothing and detail sharpening.
-13. Millimeter-aware rim height processing.
-14. Shared-index closed single-side or fused double-side mesh construction.
-15. Straight, sloped, bevelled or rounded boundary profiles.
-16. Conservative face cleanup and component orientation repair.
-17. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
-18. Atomic OBJ, STL or GLB export.
+   - achromatic line drawings receive a broad silhouette relief and shallow engraved line detail. Enclosed white regions remain neutral and are never raised merely because they are closed.
+8. Line-art regions separated by ink are reported as unresolved until their roles are confirmed. The editor can assign an entire selected region as `background`, `surface`, `raise` or `recess`.
+9. Processing crop and quality-dependent grid resize.
+10. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
+11. Feathered region layers, local locks and circle/rectangle/polygon height edits.
+12. Set, add, subtract and mask-aware smooth brush operations. Smoothing excludes background and true-void pixels instead of bleeding across physical boundaries.
+13. Optional global smoothing and detail sharpening.
+14. Millimeter-aware rim height processing.
+15. Shared-index closed single-side or fused double-side mesh construction.
+16. Straight, sloped, bevelled or rounded boundary profiles.
+17. Conservative face cleanup and component orientation repair.
+18. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
+19. Atomic OBJ, STL or GLB export.
 
 Processing padding and grid density do not define the finished physical size. The final foreground bounding box is scaled to the requested X/Y dimensions.
 
@@ -70,6 +71,8 @@ The desktop editor shows three distinct views before export:
 The relief render is not an invented image effect. Its normals, lighting, cavity darkening and cast shadow are calculated from the generated heightmap. It is intended to expose whether broad high/low form exists before the user exports a model.
 
 For opaque badge artwork on a plain background, leave mask mode on `auto`. The editor will use border-connected background removal when that recovers enclosed white or pale regions that a simple luminance threshold would otherwise punch out as holes.
+
+For line drawings, the summary reports unresolved regions and the preview directory includes a numbered, colour-coded region map. Use `region background`, `region surface`, `region raise` or `region recess` on the final mask or relief preview. `background` removes the whole selected region from the physical footprint; the other three roles place it relative to its carrier surface. These confirmations are persisted in the project.
 
 `emboss` is the recommended automatic starting point. `flat` creates a uniform plaque for manual layer editing, while `grayscale` retains literal brightness-to-depth behaviour for images whose brightness genuinely represents height.
 
@@ -115,7 +118,7 @@ Project format version 2 persists:
 - front/back/reference assets;
 - physical dimensions and separate single-side base/fused-body thickness semantics;
 - mask, crop, perspective and quality settings;
-- mask edits, region layers and height markers;
+- mask edits, region layers, explicit line-art region roles and height markers;
 - rim and boundary-profile parameters;
 - front/back alignment parameters;
 - manufacturing-process profile;
@@ -130,7 +133,7 @@ The GUI distinguishes two editing surfaces:
 - **Source preview:** perspective selection uses the EXIF-oriented source; crop and source-space edits use the post-perspective source.
 - **Final mask/height previews:** clicks use `final_normalized` coordinates tied to the exact tight geometry grid.
 
-Final-grid mask clicks are transformed back to source pixels before persistence because mask edits are applied before crop and resize. Height and layer brushes remain in final-grid normalized coordinates. Changing perspective requires clearing coordinate-dependent crop, mask, layer and height edits rather than silently drifting them.
+Final-grid mask clicks are transformed back to source pixels before persistence because mask edits are applied before crop and resize. Height, layer and line-art region selections remain in final-grid normalized coordinates. Changing perspective requires clearing coordinate-dependent crop, mask, region, layer and height edits rather than silently drifting them.
 
 The editor can copy a completed project-owned export into a user-selected output folder. Existing filenames receive stable `_2`, `_3`, and later suffixes; history is changed only after the external copy succeeds, and the project-owned source export remains recorded in the report as a recovery path.
 
@@ -153,9 +156,9 @@ The report includes dimensions, topology, winding, zero-area faces, component or
 
 A result is either `blocked` or `review_required`; it is never certified safe for unattended manufacturing. Automated checks do not replace Blender, slicer, CAM, mould-draft or physical tolerance validation.
 
-Brightness alone is not physical depth. In particular, black-and-white line art must not be interpreted as one flat white maximum surface with black grooves. The sculptural line-art path now creates broad domed form before restoring shallow line detail, but it still does not semantically know that a particular contour is a lion, leaf, flag or separate foreground layer.
+Brightness alone is not physical depth. Black-and-white line art also does not unambiguously state whether a closed region is a surface, foreground component, shadow or hole. The automatic line-art path therefore avoids inventing local domes and requires explicit region confirmation for ambiguous structure.
 
-The current system therefore remains a general 2.5D bas-relief base-model generator, not an automatic professional sculptor. Exact object ordering, undercuts, hidden surfaces and fully semantic multi-part modelling still require manual refinement or a future learned depth/normal inference stage.
+The current system remains a general 2.5D bas-relief base-model generator, not an automatic professional sculptor. Exact object ordering, undercuts, hidden surfaces and fully semantic multi-part modelling still require region confirmation, manual refinement or a future learned depth/normal inference stage.
 
 ## Editable master model
 
