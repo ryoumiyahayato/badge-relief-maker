@@ -22,7 +22,7 @@ def test_auto_mask_keeps_enclosed_light_artwork_inside_badge_silhouette():
     assert mode == "background"
     assert not mask[0, 0]
     assert mask[12, 12]
-    assert mask[25, 25]  # enclosed white artwork remains part of the solid
+    assert mask[25, 25]
     assert mask[40, 40]
 
 
@@ -43,7 +43,7 @@ def test_emboss_heightmap_preserves_grayscale_order_and_refines_detail():
     assert float(height[50, 48]) < float(height[44, 48]) - 0.10
 
 
-def test_lineart_uses_sculptural_domming_instead_of_a_flat_white_plate():
+def test_lineart_does_not_auto_raise_enclosed_white_regions():
     rgba = np.full((96, 96, 4), 255, dtype=np.uint8)
     mask = np.zeros((96, 96), dtype=bool)
     mask[8:88, 8:88] = True
@@ -59,9 +59,9 @@ def test_lineart_uses_sculptural_domming_instead_of_a_flat_white_plate():
 
     assert classify_artwork(rgba, mask) == "lineart"
     assert height[0, 0] == 0.0
-    assert float(np.ptp(height[mask])) > 0.25
-    assert float(height[48, 48]) > float(height[21, 48]) + 0.08
-    assert float(height[44, 44]) > float(height[48, 48]) + 0.05
+    assert float(np.ptp(height[mask])) > 0.12
+    assert abs(float(height[44, 44]) - float(height[44, 40])) < 0.08
+    assert float(height[48, 48]) < float(height[44, 44])
 
 
 def test_new_projects_keep_general_emboss_defaults():
