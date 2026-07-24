@@ -4,11 +4,13 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage as ndi
 
 
 def save_mask_preview(mask, path):
     """Save a black and white mask preview image."""
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     data = np.where(mask, 255, 0).astype(np.uint8)
     Image.fromarray(data, mode="L").save(path)
     return str(path)
@@ -17,6 +19,7 @@ def save_mask_preview(mask, path):
 def save_heightmap_preview(heightmap, path):
     """Save a grayscale heightmap preview image."""
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     values = heightmap.astype(float)
     if values.size and values.max() > values.min():
         values = (values - values.min()) / (values.max() - values.min())
@@ -25,20 +28,29 @@ def save_heightmap_preview(heightmap, path):
     return str(path)
 
 
-def save_relief_preview(heightmap, mask, path, vertical_scale=8.0):
-    """Save a neutral shaded preview of the relief surface.
+def save_relief_preview(heightmap, mask, path, vertical_scale=16.0):
+    """Save a studio-style render computed from the real final height field.
 
-    This is not a manufacturing render; it is a fast diagnostic view that makes
-    raised detail legible before the user exports a mesh.
+    The image is not an invented effect layer. Surface normals, key/fill lighting,
+    cavity darkening, specular response and the cast silhouette shadow are all
+    derived from the same heightmap and footprint used to build the exported mesh.
+    This makes broad high/low form visible before export instead of showing what is
+    effectively only an edge map.
     """
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     height = np.asarray(heightmap, dtype=np.float32)
     foreground = np.asarray(mask, dtype=bool)
     if foreground.shape != height.shape:
         raise ValueError("mask and heightmap must have the same shape")
 
-    gradient_y = np.gradient(height, axis=0) if height.shape[0] > 1 else np.zeros_like(height)
-    gradient_x = np.gradient(height, axis=1) if height.shape[1] > 1 else np.zeros_like(height)
+    if height.size == 0:
+        Image.new("RGB", (1, 1), (236, 236, 234)).save(path)
+        return str(path)
+
+    smooth = ndi.gaussian_filter(height, sigma=0.65)
+    gradient_y = np.gradient(smooth, axis=0) if smooth.shape[0] > 1 else np.zeros_like(smooth)
+    gradient_x = np.gradient(smooth, axis=1) if smooth.shape[1] > 1 else np.zeros_like(smooth)
     normal_x = -gradient_x * float(vertical_scale)
     normal_y = -gradient_y * float(vertical_scale)
     normal_z = np.ones_like(height)
@@ -47,14 +59,46 @@ def save_relief_preview(heightmap, mask, path, vertical_scale=8.0):
     normal_y /= np.maximum(norm, 1e-8)
     normal_z /= np.maximum(norm, 1e-8)
 
-    light = np.asarray([-0.45, -0.50, 0.74], dtype=np.float32)
-    light /= np.linalg.norm(light)
-    diffuse = np.clip(normal_x * light[0] + normal_y * light[1] + normal_z * light[2], 0.0, 1.0)
-    shade = 0.22 + 0.78 * diffuse
-    surface = np.stack(
-        [shade * 0.82 + 0.10 * height, shade * 0.85 + 0.11 * height, shade * 0.90 + 0.12 * height], axis=2
-    )
-    background = np.full_like(surface, 0.12)
+    key = np.asarray([-0.45, -0.55, 0.70], dtype=np.float32)
+    key /= np.linalg.norm(key)
+    fill = np.asarray([0.60, 0.15, 0.78], dtype=np.float32)
+    fill /= np.linalg.norm(fill)
+    view = np.asarray([0.0, 0.0, 1.0], dtype=np.float32)
+    half_vector = key + view
+    half_vector /= np.linalg.norm(half_vector)
+
+    diffuse = np.clip(normal_x * key[0] + normal_y * key[1] + normal_z * key[2], 0.0, 1.0)
+    fill_light = np.clip(normal_x * fill[0] + normal_y * fill[1] + normal_z * fill[2], 0.0, 1.0)
+    specular = np.clip(
+        normal_x * half_vector[0] + normal_y * half_vector[1] + normal_z * half_vector[2],
+        0.0,
+        1.0,
+    ) ** 26
+
+    local_mean = ndi.gaussian_filter(smooth, sigma=4.0)
+    cavity = np.clip((local_mean - smooth) * 3.0, 0.0, 0.35)
+    shade = np.clip(0.18 + 0.72 * diffuse + 0.18 * fill_light - cavity, 0.0, 1.4)
+
+    bronze = np.asarray([0.52, 0.24, 0.075], dtype=np.float32)
+    highlight = np.asarray([0.55, 0.40, 0.25], dtype=np.float32)
+    surface = bronze[None, None, :] * shade[:, :, None]
+    surface += specular[:, :, None] * highlight[None, None, :]
+    surface += smooth[:, :, None] * 0.05
+
+    rows, cols = height.shape
+    vertical_gradient = np.linspace(0.0, 1.0, rows, dtype=np.float32)[:, None]
+    background_value = 0.88 + 0.07 * (1.0 - vertical_gradient)
+    background = np.repeat(background_value[:, :, None], cols, axis=1)
+    background = np.repeat(background, 3, axis=2)
+
+    shadow = np.zeros_like(height, dtype=np.float32)
+    offset_y = max(3, rows // 60)
+    offset_x = max(3, cols // 60)
+    if rows > offset_y and cols > offset_x:
+        shadow[offset_y:, offset_x:] = foreground[:-offset_y, :-offset_x]
+    shadow = ndi.gaussian_filter(shadow, sigma=max(2.0, min(rows, cols) / 100.0))
+    background *= 1.0 - 0.22 * shadow[:, :, None]
+
     result = np.where(foreground[:, :, None], surface, background)
     Image.fromarray(np.clip(result * 255.0, 0, 255).astype(np.uint8), mode="RGB").save(path)
     return str(path)
