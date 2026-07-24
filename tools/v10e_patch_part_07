@@ -1,0 +1,133 @@
+", "decrease"}
+ _SMOOTH_OPERATIONS = {"smooth", "soften", "blur"}
+ _POLYGON_SHAPES = {"polygon", "poly", "freeform", "free_form"}
+ _RECTANGLE_SHAPES = {"rectangle", "rect", "box"}
++_ELLIPSE_SHAPES = {"ellipse", "oval"}
++_ANNULUS_SHAPES = {"annulus", "ring", "elliptical_ring"}
+ 
+ 
+ def apply_manual_height_markers(heightmap, mask, markers=()):
+@@ -147,12 +149,17 @@ def _normalize_marker(marker, default_shape):
+         cx = x * max(cols - 1, 1)
+         cy = y * max(rows - 1, 1)
+ 
+-    if marker_shape in _RECTANGLE_SHAPES:
++    if marker_shape in _RECTANGLE_SHAPES | _ELLIPSE_SHAPES | _ANNULUS_SHAPES:
+         width_px, height_px = _rectangle_size_px(marker, default_shape)
+-        if width_px is None or height_px is None or width_px < 0.0 or height_px < 0.0:
++        if width_px is None or height_px is None or width_px <= 0.0 or height_px <= 0.0:
+             return None
+-        return {
+-            "shape": "rectangle",
++        normalized_shape = "rectangle"
++        if marker_shape in _ELLIPSE_SHAPES:
++            normalized_shape = "ellipse"
++        elif marker_shape in _ANNULUS_SHAPES:
++            normalized_shape = "annulus"
++        result = {
++            "shape": normalized_shape,
+             "cx": float(cx),
+             "cy": float(cy),
+             "width_px": float(width_px),
+@@ -160,6 +167,19 @@ def _normalize_marker(marker, default_shape):
+             "operation": operation,
+             "value": float(value),
+         }
++        if normalized_shape == "annulus":
++            inner_ratio = _float_or_none(marker.get("inner_ratio", marker.get("inner_scale", 0.72)))
++            thickness_px = _float_or_none(marker.get("thickness_px", marker.get("ring_width_px")))
++            thickness_normalized = _float_or_none(marker.get("thickness_normalized", marker.get("ring_width_normalized")))
++            if thickness_px is None and thickness_normalized is not None:
++                thickness_px = thickness_normalized * min(float(width_px), float(height_px))
++            if thickness_px is not None:
++                outer_radius = max(min(float(width_px), float(height_px)) * 0.5, 1e-6)
++                inner_ratio = 1.0 - max(float(thickness_px), 0.0) / outer_radius
++            if inner_ratio is None:
++                inner_ratio = 0.72
++            result["inner_ratio"] = float(np.clip(inner_ratio, 0.0, 0.98))
++        return result
+ 
+     radius_px = _radius_px(marker, default_shape)
+     if radius_px is None or radius_px < 0.0:
+@@ -211,6 +231,14 @@ def _marker_region(mask, marker):
+         half_w = marker["width_px"] / 2.0
+         half_h = marker["height_px"] / 2.0
+         region = (np.abs(xx - marker["cx"]) <= half_w) & (np.abs(yy - marker["cy"]) <= half_h)
++    elif marker["shape"] in {"ellipse", "annulus"}:
++        half_w = max(marker["width_px"] / 2.0, 1e-6)
++        half_h = max(marker["height_px"] / 2.0, 1e-6)
++        radius = ((xx - marker["cx"]) / half_w) ** 2 + ((yy - marker["cy"]) / half_h) ** 2
++        region = radius <= 1.0
++        if marker["shape"] == "annulus":
++            inner = float(marker.get("inner_ratio", 0.72))
++            region &= radius >= inner * inner
+     elif marker["shape"] == "polygon":
+         region = _polygon_region(rows, cols, marker["points"])
+     else:
+diff --git a/badge_relief_maker/app/core/heightmap_generator.py b/badge_relief_maker/app/core/heightmap_generator.py
+index 277c3e6..1e851d3 100644
+--- a/badge_relief_maker/app/core/heightmap_generator.py
++++ b/badge_relief_maker/app/core/heightmap_generator.py
+@@ -134,34 +134,46 @@ def _continuous_tone_emboss(rgb, gray, foreground, base_level, detail_strength):
+ 
+ 
+ def _lineart_sculptural_emboss(gray, foreground, base_level, detail_strength):
+-    """Create a conservative line-art bas-relief without inventing layer order.
+-
+-    A line drawing does not say that every enclosed white region is a foreground
+-    object. The previous implementation raised all such regions and therefore
+-    turned shadows, holes and background pockets into false solids. This version
+-    only creates a broad silhouette form and treats dark ink as shallow engraving.
+-    Region-level foreground/background decisions are applied separately through the
+-    boundary-aware region override system.
++    """Create a conservative, smooth line-art bas-relief base.
++
++    The broad silhouette supplies only a shallow carrier form. Dark marks are
++    separated by estimated stroke width: thick contours become structural grooves,
++    while fine hatching and engraving remain much shallower. Enclosed white regions
++    stay neutral until the boundary-aware region tools assign an explicit role.
+     """
+     minimum_dimension = float(max(min(gray.shape), 1))
+-    ink = np.clip((0.92 - gray) / 0.92, 0.0, 1.0) * foreground
++    ink = np.clip((0.90 - gray) / 0.90, 0.0, 1.0) * foreground
+ 
+     distance = ndi.distance_transform_edt(foreground)
+-    global_dome = np.power(_robust_normalize(distance, foreground, 99.0), 0.62)
+-    global_dome = ndi.gaussian_filter(global_dome, sigma=max(0.8, minimum_dimension / 500.0))
+-
+-    base = 0.14 + 0.40 * global_dome
+-    fine_ink = ndi.gaussian_filter(ink, sigma=0.55)
+-    broad_ink = ndi.gaussian_filter(ink, sigma=max(1.2, minimum_dimension / 240.0))
+-    groove = 0.68 * _robust_normalize(fine_ink, foreground, 99.5)
+-    groove += 0.32 * _robust_normalize(broad_ink, foreground, 99.5)
+-
++    global_dome = np.power(_robust_normalize(distance, foreground, 99.0), 0.68)
++    global_dome = ndi.gaussian_filter(global_dome, sigma=max(1.0, minimum_dimension / 420.0))
++
++    # Estimate local stroke width from a conservative binary ink core. Thick
++    # outlines carry structure; one-pixel hatching should not turn a medal into a
++    # rough woodcut surface.
++    ink_core = (ink >= 0.48) & foreground
++    half_width = ndi.distance_transform_edt(ink_core)
++    structural_weight = np.clip((half_width - 0.65) / 1.9, 0.0, 1.0)
++    structural_ink = ndi.gaussian_filter(ink * structural_weight, sigma=0.65)
++    fine_ink = ndi.gaussian_filter(ink * (1.0 - structural_weight), sigma=0.40)
++    structural_ink = _robust_normalize(structural_ink, foreground, 99.5)
++    fine_ink = _robust_normalize(fine_ink, foreground, 99.7)
++
++    floor = 0.055 + 0.10 * np.clip(float(base_level), 0.0, 1.0)
++    base = floor + 0.20 + 0.18 * global_dome
+     strength = np.clip(float(detail_strength), 0.0, 1.0)
+-    groove_depth = 0.055 + 0.095 * strength
+-    result = base - groove_depth * groove
+-
+-    floor = 0.035 + 0.12 * np.clip(float(base_level), 0.0, 1.0)
+-    result = floor + (1.0 - floor) * np.clip(result, 0.0, 1.0)
++    structural_depth = 0.045 + 0.045 * strength
++    fine_depth = 0.0025 + 0.0065 * strength
++    result = base - structural_depth * structural_ink - fine_depth * fine_ink
++
++    # Very light mask-aware smoothing removes JPEG stair-stepping without erasing
++    # the structural grooves or crossing true holes.
++    weights = foreground.astype(np.float32)
++    sigma = max(0.45, 
