@@ -26,24 +26,27 @@ def test_auto_mask_keeps_enclosed_light_artwork_inside_badge_silhouette():
     assert mask[40, 40]
 
 
-def test_emboss_heightmap_uses_stable_plateau_and_raises_local_detail():
-    rgba = np.full((64, 64, 4), 255, dtype=np.uint8)
-    rgba[8:56, 8:56, :3] = (120, 120, 120)
-    rgba[30:34, 14:50, :3] = 0
-    mask = np.zeros((64, 64), dtype=bool)
-    mask[8:56, 8:56] = True
+def test_emboss_heightmap_preserves_grayscale_order_and_refines_detail():
+    rgba = np.full((72, 96, 4), 255, dtype=np.uint8)
+    rgba[8:64, 8:88, :3] = (128, 128, 128)
+    rgba[18:42, 14:34, :3] = (45, 45, 45)
+    rgba[18:42, 62:82, :3] = (220, 220, 220)
+    rgba[49:52, 14:82, :3] = (20, 20, 20)
+    mask = np.zeros((72, 96), dtype=bool)
+    mask[8:64, 8:88] = True
 
     height = emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72)
 
     assert height[0, 0] == 0.0
-    assert 0.25 <= float(height[20, 20]) <= 0.40
-    assert float(height[30, 30]) > float(height[20, 20]) + 0.20
+    assert float(height[28, 72]) > float(height[28, 48]) > float(height[28, 24])
+    assert float(height[50, 48]) < float(height[44, 48]) - 0.10
 
 
-def test_new_projects_default_to_emboss_instead_of_raw_brightness_depth():
+def test_new_projects_keep_general_emboss_defaults():
     project = create_project("visual quality")
 
     assert project.front_relief.height_mode == "emboss"
+    assert project.front_relief.quality_mode == "standard"
     assert project.front_relief.uniform_height_normalized == 0.28
 
 
@@ -65,7 +68,7 @@ def test_pipeline_writes_shaded_relief_preview(tmp_path):
     assert Image.open(relief_preview).mode == "RGB"
 
 
-def test_quality_presets_no_longer_hide_badge_detail_at_tiny_grids():
-    assert quality_preset("preview")["max_grid_cells"] >= 20_000
-    assert quality_preset("standard")["max_grid_cells"] >= 80_000
-    assert quality_preset("high")["max_grid_cells"] >= 250_000
+def test_quality_presets_prioritize_source_detail_over_low_end_hardware():
+    assert quality_preset("preview")["max_grid_cells"] >= 150_000
+    assert quality_preset("standard")["max_grid_cells"] >= 1_000_000
+    assert quality_preset("high")["max_grid_cells"] >= 4_000_000
