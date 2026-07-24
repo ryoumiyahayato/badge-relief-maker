@@ -223,6 +223,7 @@ class MainWindow(_BaseMainWindow):
             side.manual_crop_box
             or side.mask_edits
             or side.region_layers
+            or side.lineart_region_overrides
             or any(str(marker.target).lower() in {self.active_side, "both"} for marker in self.project.manual_markers)
         )
         if not has_dependent_edits or QMessageBox is None:
@@ -239,6 +240,7 @@ class MainWindow(_BaseMainWindow):
         side.manual_crop_box = None
         side.mask_edits = []
         side.region_layers = []
+        side.lineart_region_overrides = []
         if not keep_perspective:
             side.perspective_quad = None
         other_side = "back" if self.active_side == "front" else "front"
@@ -303,6 +305,19 @@ class MainWindow(_BaseMainWindow):
                             "value": self.brush_height_spin.value(),
                         },
                     )
+                )
+            elif tool in {"region background", "region surface", "region raise", "region recess"}:
+                if preview_space != "final":
+                    self._log("Line-art region edits must be applied on the final mask or relief preview.")
+                    return
+                side.lineart_region_overrides.append(
+                    {
+                        "x": x_normalized,
+                        "y": y_normalized,
+                        "coordinate_space": "final_normalized",
+                        "role": tool.removeprefix("region "),
+                        "amount": self.brush_height_spin.value(),
+                    }
                 )
             elif tool in {"layer set", "layer locked"}:
                 if preview_space != "final":

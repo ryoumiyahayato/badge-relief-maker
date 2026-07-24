@@ -7,7 +7,7 @@ from PIL import Image
 
 from .height_markers import apply_manual_height_markers
 from .height_processing import apply_region_layers, refine_heightmap
-from .heightmap_generator import emboss_heightmap, flat_heightmap, grayscale_heightmap
+from .heightmap_generator import classify_artwork, emboss_heightmap, flat_heightmap, grayscale_heightmap
 from .image_editing import apply_mask_edits, crop_rgba, rectify_perspective
 from .image_preprocess import load_image, normalize_alpha_background
 from .image_transform import ImageTransform
@@ -15,8 +15,13 @@ from .manufacturability_check import basic_report
 from .marker_transform import transform_manual_height_markers
 from .mask_generator import foreground_mask
 from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
+from .lineart_region_graph import (
+    analyze_lineart_regions,
+    apply_lineart_region_overrides,
+    save_lineart_region_preview,
+)
 from .masked_solid_builder import build_layered_relief_solid, build_masked_relief_solid
-from .mesh_exporter import export_mesh, export_obj_face_groups, single_side_surface_face_groups, export_obj_face_groups, single_side_surface_face_groups
+from .mesh_exporter import export_mesh, export_obj_face_groups, single_side_surface_face_groups
 from .mesh_repair import repair_mesh_basic
 from .outline_extractor import outline_report
 from .preview_exporter import save_heightmap_preview, save_mask_overlay_preview, save_mask_preview, save_relief_preview, save_source_preview
@@ -229,6 +234,33 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
     shape_for_geometry = tuple(mask.shape)
     image_transform = image_transform.with_geometry_crop(geometry_crop_box, shape_for_geometry)
 
+    artwork_interpretation = classify_artwork(rgba, mask) if height_mode == "emboss" else "not_applicable"
+    lineart_region_report = {
+        "enabled": False,
+        "requires_region_confirmation": False,
+        "unresolved_region_count": 0,
+    }
+    lineart_override_report = {"requested_override_count": 0, "applied_override_count": 0, "applied": [], "skipped": []}
+    lineart_region_labels = None
+    lineart_region_footprint = None
+    if artwork_interpretation == "lineart":
+        lineart_region_footprint = mask.copy()
+        lineart_region_labels, lineart_region_report = analyze_lineart_regions(rgba, lineart_region_footprint)
+        lineart_region_report["enabled"] = True
+        mask, heightmap, lineart_override_report = apply_lineart_region_overrides(
+            rgba,
+            mask,
+            heightmap,
+            params.lineart_region_overrides,
+        )
+        resolved_ids = {item["region_id"] for item in lineart_override_report.get("applied", [])}
+        lineart_region_report["resolved_region_count"] = len(resolved_ids)
+        lineart_region_report["unresolved_region_count"] = max(
+            int(lineart_region_report.get("reported_region_count", 0)) - len(resolved_ids),
+            0,
+        )
+        lineart_region_report["requires_region_confirmation"] = bool(lineart_region_report["unresolved_region_count"])
+
     heightmap, refinement_report = refine_heightmap(
         heightmap,
         mask,
@@ -265,6 +297,14 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
         preview_paths["mask_overlay_preview"] = save_mask_overlay_preview(rgba, mask, preview_base / "mask_overlay_preview.png")
         preview_paths["heightmap_preview"] = save_heightmap_preview(heightmap, preview_base / "heightmap_preview.png")
         preview_paths["relief_preview"] = save_relief_preview(heightmap, mask, preview_base / "relief_preview.png")
+        if lineart_region_labels is not None:
+            preview_paths["lineart_region_preview"] = save_lineart_region_preview(
+                rgba,
+                lineart_region_labels,
+                lineart_region_report,
+                lineart_override_report,
+                preview_base / "lineart_region_preview.png",
+            )
 
     source_report = loaded_image.report()
     source_report["processing_shape_after_perspective"] = list(processing_shape)
@@ -273,6 +313,9 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
         "outline": outline,
         "manual_height": manual_height_report,
         "region_layers": layer_report,
+        "lineart_region_graph": lineart_region_report,
+        "lineart_region_overrides": lineart_override_report,
+        "artwork_interpretation": artwork_interpretation,
         "height_refinement": refinement_report,
         "rim": rim_report,
         "mask_mode_requested": str(params.mask_mode),

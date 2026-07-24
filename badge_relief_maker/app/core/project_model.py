@@ -212,6 +212,7 @@ class ReliefSideParameters:
     perspective_quad: list | None = None
     mask_edits: list = field(default_factory=list)
     region_layers: list = field(default_factory=list)
+    lineart_region_overrides: list = field(default_factory=list)
 
 
 @dataclass
@@ -324,6 +325,7 @@ class MedalProject:
             relief.perspective_quad = _perspective_record(relief.perspective_quad)
             relief.mask_edits = _dict_list(relief.mask_edits)
             relief.region_layers = _dict_list(relief.region_layers)
+            relief.lineart_region_overrides = _dict_list(relief.lineart_region_overrides)
         project.double_side.enabled = _coerce_bool(project.double_side.enabled, False)
         project.double_side.flip_back_horizontal = _coerce_bool(project.double_side.flip_back_horizontal, True)
         return project

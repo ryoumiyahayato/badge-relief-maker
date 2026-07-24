@@ -273,6 +273,10 @@ class MainWindow(QMainWindow):
                 "height smooth",
                 "layer set",
                 "layer locked",
+                "region background",
+                "region surface",
+                "region raise",
+                "region recess",
                 "crop rectangle",
                 "perspective quadrilateral",
             ],
@@ -615,15 +619,24 @@ class MainWindow(QMainWindow):
         total = max(int(rows) * int(cols), 1)
         coverage = foreground / total * 100.0
         downsampled = "yes" if report.get("downsampled") else "no"
+        region_graph = report.get("lineart_region_graph", {})
+        unresolved = int(region_graph.get("unresolved_region_count", 0))
+        region_note = ""
+        if unresolved:
+            region_note = (
+                f"\nUnresolved line-art regions: {unresolved}. "
+                "Closed white regions are kept neutral and are not automatically raised. "
+                "Use region background/surface/raise/recess on the final preview to confirm their roles.\n"
+            )
         return (
             "Preview ready. Inspect all three panes before exporting.\n\n"
             f"Silhouette method: {mode}\n"
             f"Relief method: {height_mode}\n"
             f"Geometry grid: {cols} x {rows} ({int(rows) * int(cols):,} cells)\n"
             f"Foreground coverage: {coverage:.1f}%\n"
-            f"Downsampled: {downsampled}\n\n"
-            "The red overlay should cover the complete physical badge silhouette, including enclosed white areas. "
-            "The shaded pane is the relief surface that will be sent to the mesh builder."
+            f"Downsampled: {downsampled}\n"
+            f"{region_note}\n"
+            "The red overlay must match the physical solid. The shaded pane is generated from the same height field as the mesh."
         )
 
     @staticmethod
@@ -673,6 +686,16 @@ class MainWindow(QMainWindow):
                 "value": self.brush_height_spin.value(),
             }
             self.project.manual_markers.append(ManualMarker(marker_type="height", target=self.active_side, data=data))
+        elif tool in {"region background", "region surface", "region raise", "region recess"}:
+            side.lineart_region_overrides.append(
+                {
+                    "x": x_normalized,
+                    "y": y_normalized,
+                    "coordinate_space": "final_normalized",
+                    "role": tool.removeprefix("region "),
+                    "amount": self.brush_height_spin.value(),
+                }
+            )
         elif tool in {"layer set", "layer locked"}:
             side.region_layers.append(
                 {
@@ -719,6 +742,7 @@ class MainWindow(QMainWindow):
         side.manual_crop_box = None
         side.mask_edits = []
         side.region_layers = []
+        side.lineart_region_overrides = []
         side.perspective_quad = None
         self.project.manual_markers = [marker for marker in self.project.manual_markers if marker.target not in {self.active_side, "both"}]
         self._dirty = True

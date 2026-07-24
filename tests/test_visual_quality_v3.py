@@ -22,7 +22,7 @@ def test_auto_mask_keeps_enclosed_light_artwork_inside_badge_silhouette():
     assert mode == "background"
     assert not mask[0, 0]
     assert mask[12, 12]
-    assert mask[25, 25]
+    assert mask[25, 25]  # enclosed white artwork remains part of the solid
     assert mask[40, 40]
 
 
@@ -48,6 +48,7 @@ def test_lineart_does_not_auto_raise_enclosed_white_regions():
     mask = np.zeros((96, 96), dtype=bool)
     mask[8:88, 8:88] = True
     rgba[8:88, 8:88, 3] = 255
+    # Closed internal frame and a dark glyph-like cross.
     rgba[20:23, 20:76, :3] = 0
     rgba[73:76, 20:76, :3] = 0
     rgba[20:76, 20:23, :3] = 0
@@ -60,7 +61,10 @@ def test_lineart_does_not_auto_raise_enclosed_white_regions():
     assert classify_artwork(rgba, mask) == "lineart"
     assert height[0, 0] == 0.0
     assert float(np.ptp(height[mask])) > 0.12
+    # The enclosed white centre follows the broad support surface; it is not given
+    # an independent regional dome merely because it is enclosed.
     assert abs(float(height[44, 44]) - float(height[44, 40])) < 0.08
+    # Dark ink is an engraving/groove by default, not a positive foreground layer.
     assert float(height[48, 48]) < float(height[44, 44])
 
 

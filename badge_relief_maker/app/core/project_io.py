@@ -89,6 +89,7 @@ def migrate_project_data(data):
             side.setdefault("perspective_quad", None)
             side.setdefault("mask_edits", [])
             side.setdefault("region_layers", [])
+            side.setdefault("lineart_region_overrides", [])
         migrated.setdefault(
             "double_side",
             {

@@ -42,6 +42,7 @@ class ReliefParameters:
     perspective_quad: tuple | None = None
     manual_mask_edits: tuple = field(default_factory=tuple)
     region_layers: tuple = field(default_factory=tuple)
+    lineart_region_overrides: tuple = field(default_factory=tuple)
     manual_height_markers: tuple = field(default_factory=tuple)
 
 

@@ -260,6 +260,7 @@ def _relief_parameters_from_project(project, side_name="front", quality_mode=Non
         perspective_quad=_perspective_tuple(getattr(side, "perspective_quad", None)),
         manual_mask_edits=tuple(getattr(side, "mask_edits", []) or []),
         region_layers=tuple(getattr(side, "region_layers", []) or []),
+        lineart_region_overrides=tuple(getattr(side, "lineart_region_overrides", []) or []),
         manual_height_markers=_manual_height_markers_from_project(project, side_name),
     ), preset["quality_mode"]
 
