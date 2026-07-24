@@ -1,0 +1,310 @@
+--- a/badge_relief_maker/app/core/project_model.py
++++ b/badge_relief_maker/app/core/project_model.py
+@@ -212,6 +212,7 @@
+     perspective_quad: list | None = None
+     mask_edits: list = field(default_factory=list)
+     region_layers: list = field(default_factory=list)
++    lineart_region_overrides: list = field(default_factory=list)
+ 
+ 
+ @dataclass
+@@ -324,6 +325,7 @@
+             relief.perspective_quad = _perspective_record(relief.perspective_quad)
+             relief.mask_edits = _dict_list(relief.mask_edits)
+             relief.region_layers = _dict_list(relief.region_layers)
++            relief.lineart_region_overrides = _dict_list(relief.lineart_region_overrides)
+         project.double_side.enabled = _coerce_bool(project.double_side.enabled, False)
+         project.double_side.flip_back_horizontal = _coerce_bool(project.double_side.flip_back_horizontal, True)
+         return project
+--- a/badge_relief_maker/app/core/relief_parameters.py
++++ b/badge_relief_maker/app/core/relief_parameters.py
+@@ -42,6 +42,7 @@
+     perspective_quad: tuple | None = None
+     manual_mask_edits: tuple = field(default_factory=tuple)
+     region_layers: tuple = field(default_factory=tuple)
++    lineart_region_overrides: tuple = field(default_factory=tuple)
+     manual_height_markers: tuple = field(default_factory=tuple)
+ 
+ 
+--- a/badge_relief_maker/app/core/project_build.py
++++ b/badge_relief_maker/app/core/project_build.py
+@@ -260,6 +260,7 @@
+         perspective_quad=_perspective_tuple(getattr(side, "perspective_quad", None)),
+         manual_mask_edits=tuple(getattr(side, "mask_edits", []) or []),
+         region_layers=tuple(getattr(side, "region_layers", []) or []),
++        lineart_region_overrides=tuple(getattr(side, "lineart_region_overrides", []) or []),
+         manual_height_markers=_manual_height_markers_from_project(project, side_name),
+     ), preset["quality_mode"]
+ 
+--- a/badge_relief_maker/app/core/single_side_pipeline.py
++++ b/badge_relief_maker/app/core/single_side_pipeline.py
+@@ -7,7 +7,7 @@
+ 
+ from .height_markers import apply_manual_height_markers
+ from .height_processing import apply_region_layers, refine_heightmap
+-from .heightmap_generator import emboss_heightmap, flat_heightmap, grayscale_heightmap
++from .heightmap_generator import classify_artwork, emboss_heightmap, flat_heightmap, grayscale_heightmap
+ from .image_editing import apply_mask_edits, crop_rgba, rectify_perspective
+ from .image_preprocess import load_image, normalize_alpha_background
+ from .image_transform import ImageTransform
+@@ -15,6 +15,7 @@
+ from .marker_transform import transform_manual_height_markers
+ from .mask_generator import foreground_mask
+ from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
++from .lineart_region_graph import analyze_lineart_regions, apply_lineart_region_overrides
+ from .masked_solid_builder import build_layered_relief_solid, build_masked_relief_solid
+ from .mesh_exporter import export_mesh, export_obj_face_groups, single_side_surface_face_groups, export_obj_face_groups, single_side_surface_face_groups
+ from .mesh_repair import repair_mesh_basic
+@@ -229,6 +230,30 @@
+     shape_for_geometry = tuple(mask.shape)
+     image_transform = image_transform.with_geometry_crop(geometry_crop_box, shape_for_geometry)
+ 
++    artwork_interpretation = classify_artwork(rgba, mask) if height_mode == "emboss" else "not_applicable"
++    lineart_region_report = {
++        "enabled": False,
++        "requires_region_confirmation": False,
++        "unresolved_region_count": 0,
++    }
++    lineart_override_report = {"requested_override_count": 0, "applied_override_count": 0, "applied": [], "skipped": []}
++    if artwork_interpretation == "lineart":
++        _, lineart_region_report = analyze_lineart_regions(rgba, mask)
++        lineart_region_report["enabled"] = True
++        mask, heightmap, lineart_override_report = apply_lineart_region_overrides(
++            rgba,
++            mask,
++            heightmap,
++            params.lineart_region_overrides,
++        )
++        resolved_ids = {item["region_id"] for item in lineart_override_report.get("applied", [])}
++        lineart_region_report["resolved_region_count"] = len(resolved_ids)
++        lineart_region_report["unresolved_region_count"] = max(
++            int(lineart_region_report.get("reported_region_count", 0)) - len(resolved_ids),
++            0,
++        )
++        lineart_region_report["requires_region_confirmation"] = bool(lineart_region_report["unresolved_region_count"])
++
+     heightmap, refinement_report = refine_heightmap(
+         heightmap,
+         mask,
+@@ -273,6 +298,9 @@
+         "outline": outline,
+         "manual_height": manual_height_report,
+         "region_layers": layer_report,
++        "lineart_region_graph": lineart_region_report,
++        "lineart_region_overrides": lineart_override_report,
++        "artwork_interpretation": artwork_interpretation,
+         "height_refinement": refinement_report,
+         "rim": rim_report,
+         "mask_mode_requested": str(params.mask_mode),
+--- a/badge_relief_maker/app/ui/main_window.py
++++ b/badge_relief_maker/app/ui/main_window.py
+@@ -273,6 +273,10 @@
+                 "height smooth",
+                 "layer set",
+                 "layer locked",
++                "region background",
++                "region surface",
++                "region raise",
++                "region recess",
+                 "crop rectangle",
+                 "perspective quadrilateral",
+             ],
+@@ -615,15 +619,24 @@
+         total = max(int(rows) * int(cols), 1)
+         coverage = foreground / total * 100.0
+         downsampled = "yes" if report.get("downsampled") else "no"
++        region_graph = report.get("lineart_region_graph", {})
++        unresolved = int(region_graph.get("unresolved_region_count", 0))
++        region_note = ""
++        if unresolved:
++            region_note = (
++                f"\nUnresolved line-art regions: {unresolved}. "
++                "Closed white regions are kept neutral and are not automatically raised. "
++                "Use region background/surface/raise/recess on the final preview to confirm their roles.\n"
++            )
+         return (
+             "Preview ready. Inspect all three panes before exporting.\n\n"
+             f"Silhouette method: {mode}\n"
+             f"Relief method: {height_mode}\n"
+             f"Geometry grid: {cols} x {rows} ({int(rows) * int(cols):,} cells)\n"
+             f"Foreground coverage: {coverage:.1f}%\n"
+-            f"Downsampled: {downsampled}\n\n"
+-            "The red overlay should cover the complete physical badge silhouette, including enclosed white areas. "
+-            "The shaded pane is the relief surface that will be sent to the mesh builder."
++            f"Downsampled: {downsampled}\n"
++            f"{region_note}\n"
++            "The red overlay must match the physical solid. The shaded pane is generated from the same height field as the mesh."
+         )
+ 
+     @staticmethod
+@@ -673,6 +686,16 @@
+                 "value": self.brush_height_spin.value(),
+             }
+             self.project.manual_markers.append(ManualMarker(marker_type="height", target=self.active_side, data=data))
++        elif tool in {"region background", "region surface", "region raise", "region recess"}:
++            side.lineart_region_overrides.append(
++                {
++                    "x": x_normalized,
++                    "y": y_normalized,
++                    "coordinate_space": "final_normalized",
++                    "role": tool.removeprefix("region "),
++                    "amount": self.brush_height_spin.value(),
++                }
++            )
+         elif tool in {"layer set", "layer locked"}:
+             side.region_layers.append(
+                 {
+@@ -719,6 +742,7 @@
+         side.manual_crop_box = None
+         side.mask_edits = []
+         side.region_layers = []
++        side.lineart_region_overrides = []
+         side.perspective_quad = None
+         self.project.manual_markers = [marker for marker in self.project.manual_markers if marker.target not in {self.active_side, "both"}]
+         self._dirty = True
+--- a/badge_relief_maker/app/ui/editor_window.py
++++ b/badge_relief_maker/app/ui/editor_window.py
+@@ -223,6 +223,7 @@
+             side.manual_crop_box
+             or side.mask_edits
+             or side.region_layers
++            or side.lineart_region_overrides
+             or any(str(marker.target).lower() in {self.active_side, "both"} for marker in self.project.manual_markers)
+         )
+         if not has_dependent_edits or QMessageBox is None:
+@@ -239,6 +240,7 @@
+         side.manual_crop_box = None
+         side.mask_edits = []
+         side.region_layers = []
++        side.lineart_region_overrides = []
+         if not keep_perspective:
+             side.perspective_quad = None
+         other_side = "back" if self.active_side == "front" else "front"
+@@ -304,6 +306,19 @@
+                         },
+                     )
+                 )
++            elif tool in {"region background", "region surface", "region raise", "region recess"}:
++                if preview_space != "final":
++                    self._log("Line-art region edits must be applied on the final mask or relief preview.")
++                    return
++                side.lineart_region_overrides.append(
++                    {
++                        "x": x_normalized,
++                        "y": y_normalized,
++                        "coordinate_space": "final_normalized",
++                        "role": tool.removeprefix("region "),
++                        "amount": self.brush_height_spin.value(),
++                    }
++                )
+             elif tool in {"layer set", "layer locked"}:
+                 if preview_space != "final":
+                     self._log("Layer edits must be applied on the final height or mask preview.")
+--- a/badge_relief_maker/app/core/project_io.py
++++ b/badge_relief_maker/app/core/project_io.py
+@@ -89,6 +89,7 @@
+             side.setdefault("perspective_quad", None)
+             side.setdefault("mask_edits", [])
+             side.setdefault("region_layers", [])
++            side.setdefault("lineart_region_overrides", [])
+         migrated.setdefault(
+             "double_side",
+             {
+--- a/tests/test_visual_quality_v3.py
++++ b/tests/test_visual_quality_v3.py
+@@ -43,11 +43,12 @@
+     assert float(height[50, 48]) < float(height[44, 48]) - 0.10
+ 
+ 
+-def test_lineart_uses_sculptural_domming_instead_of_a_flat_white_plate():
++def test_lineart_does_not_auto_raise_enclosed_white_regions():
+     rgba = np.full((96, 96, 4), 255, dtype=np.uint8)
+     mask = np.zeros((96, 96), dtype=bool)
+     mask[8:88, 8:88] = True
+     rgba[8:88, 8:88, 3] = 255
++    # Closed internal frame and a dark glyph-like cross.
+     rgba[20:23, 20:76, :3] = 0
+     rgba[73:76, 20:76, :3] = 0
+     rgba[20:76, 20:23, :3] = 0
+@@ -59,9 +60,12 @@
+ 
+     assert classify_artwork(rgba, mask) == "lineart"
+     assert height[0, 0] == 0.0
+-    assert float(np.ptp(height[mask])) > 0.25
+-    assert float(height[48, 48]) > float(height[21, 48]) + 0.08
+-    assert float(height[48, 44]) > float(height[48, 48])
++    assert float(np.ptp(height[mask])) > 0.12
++    # The enclosed white centre follows the broad support surface; it is not given
++    # an independent regional dome merely because it is enclosed.
++    assert abs(float(height[44, 44]) - float(height[44, 40])) < 0.08
++    # Dark ink is an engraving/groove by default, not a positive foreground layer.
++    assert float(height[48, 48]) < float(height[44, 44])
+ 
+ 
+ def test_new_projects_keep_general_emboss_defaults():
+--- /dev/null
++++ b/tests/test_lineart_region_graph.py
+@@ -0,0 +1,63 @@
++import numpy as np
++
++from badge_relief_maker.app.core.heightmap_generator import emboss_heightmap
++from badge_relief_maker.app.core.lineart_region_graph import (
++    analyze_lineart_regions,
++    apply_lineart_region_overrides,
++)
++
++
++def _fixture():
++    rgba = np.full((80, 100, 4), 255, dtype=np.uint8)
++    mask = np.zeros((80, 100), dtype=bool)
++    mask[5:75, 5:95] = True
++    # Two enclosed light regions separated by dark boundaries. One represents a
++    # surface panel, the other an ambiguous hole/shadow.
++    rgba[20:23, 15:85, :3] = 0
++    rgba[57:60, 15:85, :3] = 0
++    rgba[20:60, 15:18, :3] = 0
++    rgba[20:60, 82:85, :3] = 0
++    rgba[35:38, 20:80, :3] = 0
++    return rgba, mask
++
++
++def test_lineart_region_report_marks_closed_light_regions_unresolved():
++    rgba, mask = _fixture()
++    _, report = analyze_lineart_regions(rgba, mask)
++
++    assert report["requires_region_confirmation"] is True
++    assert report["unresolved_region_count"] >= 2
++    assert "never auto-raise" in report["default_policy"]
++
++
++def test_region_background_override_removes_selected_region_from_solid():
++    rgba, mask = _fixture()
++    height = emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72)
++
++    new_mask, new_height, report = apply_lineart_region_overrides(
++        rgba,
++        mask,
++        height,
++        [{"x": 0.50, "y": 0.48, "coordinate_space": "final_normalized", "role": "background"}],
++    )
++
++    assert report["applied_override_count"] == 1
++    assert not new_mask[38, 50]
++    assert new_height[38, 50] == 0.0
++
++
++def test_region_surface_override_matches_surrounding_level_instead_of_raising():
++    rgba, mask = _fixture()
++    height = emboss_heightmap(rgba, mask, base_level=0.28, detail_strength=0.72)
++    height[23:35, 18:82] += 0.2
++
++    new_mask, new_height, report = apply_lineart_region_overrides(
++        rgba,
++        mask,
++        height,
++        [{"x": 0.50, "y": 0.30, "coordinate_space": "final_normalized", "role": "surface"}],
++    )
++
++    assert report["applied_override_count"] == 1
++    assert new_mask[28, 50]
++    assert abs(float(new_height[28, 50]) - float(new_height[19, 50])) < 0.12
