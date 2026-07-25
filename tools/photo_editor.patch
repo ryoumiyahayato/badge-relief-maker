@@ -1,0 +1,130 @@
+--- a/badge_relief_maker/app/ui/grayscale_studio.py
++++ b/badge_relief_maker/app/ui/grayscale_studio.py
+@@ -73,6 +73,7 @@
+ 
+ from ..core.project_build import export_side_heightmap_master_from_project, relief_parameters_from_project
+ from ..core.project_io import asset_root_for, create_project, import_image_asset, load_project, resolve_project_asset, save_project
++from ..core.project_model import ManualMarker
+ from ..core.single_side_pipeline import prepare_relief_field
+ 
+ 
+@@ -188,6 +189,7 @@
+         self.project_path = None
+         self.output_directory = None
+         self._preview_transform = None
++        self._artwork_interpretation = None
+         self._task_thread = None
+         self._task_worker = None
+         self._task_callback = None
+@@ -279,12 +281,14 @@
+         self.region_operation_combo = QComboBox()
+         self.region_operation_combo.addItems(REGION_OPERATIONS.keys())
+         self.region_amount_spin = self._spin(0.0, 1.0, 0.18, 0.01)
++        self.region_radius_spin = self._spin(0.005, 0.25, 0.035, 0.005)
+         self.undo_button = QPushButton("撤销最后一次区域修改")
+         self.reset_button = QPushButton("清除全部人工修正")
+         region_group = QGroupBox("区域修正")
+         region_form = QFormLayout(region_group)
+         region_form.addRow("点击区域后执行", self.region_operation_combo)
+         region_form.addRow("抬高／压低强度", self.region_amount_spin)
++        region_form.addRow("照片笔刷范围", self.region_radius_spin)
+         region_form.addRow("", self.undo_button)
+         region_form.addRow("", self.reset_button)
+         controls_layout.addWidget(region_group)
+@@ -296,7 +300,7 @@
+             "操作顺序\n"
+             "1. 导入实物照片、扫描图或线稿。\n"
+             "2. 点击“生成／刷新灰度图”。\n"
+-            "3. 在中间的区域图上选择挖空、承载面、抬高或压低。\n"
++            "3. 在线稿中点击会修改整个封闭区域；在实物照片中点击会使用可调范围的笔刷。\n"
+             "4. 每次修正都会累积保存；只有点击撤销或清除时才会删除。\n"
+             "5. 导出16位PNG、32位TIFF、线稿层、实体蒙版和空隙蒙版。\n"
+             "6. 灰度图确认后再进入第二阶段生成3D。"
+@@ -446,6 +450,7 @@
+             self.export_button,
+             self.region_operation_combo,
+             self.region_amount_spin,
++            self.region_radius_spin,
+             self.undo_button,
+             self.reset_button,
+         ):
+@@ -587,6 +592,7 @@
+     def _preview_ready(self, payload):
+         prepared, source_path = payload
+         self._preview_transform = prepared.image_transform
++        self._artwork_interpretation = prepared.report.get("artwork_interpretation")
+         paths = prepared.report.get("preview_paths", {})
+         self.source_preview.set_image(paths.get("source_preview") or source_path)
+         self.region_preview.set_image(paths.get("lineart_region_preview") or paths.get("mask_overlay_preview"))
+@@ -613,17 +619,62 @@
+             self.statusBar().showMessage(f"区域位置：x={x_normalized:.4f}, y={y_normalized:.4f}")
+             return
+         side = self.project.front_relief
+-        side.lineart_region_overrides.append(
+-            {
+-                "x": float(x_normalized),
+-                "y": float(y_normalized),
+-                "coordinate_space": "final_normalized",
+-                "role": role,
+-                "amount": float(self.region_amount_spin.value()),
+-            }
+-        )
++        amount = float(self.region_amount_spin.value())
++        radius = float(self.region_radius_spin.value())
++
++        if self._artwork_interpretation == "lineart":
++            side.lineart_region_overrides.append(
++                {
++                    "x": float(x_normalized),
++                    "y": float(y_normalized),
++                    "coordinate_space": "final_normalized",
++                    "role": role,
++                    "amount": amount,
++                }
++            )
++            operation_note = "已按封闭区域保存修正"
++        else:
++            if role == "background":
++                if self._preview_transform is None:
++                    self._show_error("无法修改照片", "请先生成一次灰度图预览。")
++                    return
++                x_pixel, y_pixel = self._preview_transform.target_to_original_point(
++                    float(x_normalized), float(y_normalized), normalized=True
++                )
++                radius_pixel = self._preview_transform.target_radius_to_original(radius, normalized=True)
++                side.mask_edits.append(
++                    {
++                        "shape": "circle",
++                        "x": float(x_pixel),
++                        "y": float(y_pixel),
++                        "radius_px": float(radius_pixel),
++                        "coordinate_space": "pixel",
++                        "operation": "remove",
++                    }
++                )
++            else:
++                operation = {"surface": "set", "raise": "add", "recess": "subtract"}[role]
++                value = float(self.base_level_spin.value()) if role == "surface" else amount
++                self.project.manual_markers.append(
++                    ManualMarker(
++                        marker_type="height",
++                        target="front",
++                        data={
++                            "shape": "circle",
++                            "x": float(x_normalized),
++                            "y": float(y_normalized),
++                            "radius_normalized": radius,
++                            "coordinate_space": "final_normalized",
++                            "operation": operation,
++                            "value": value,
++                        },
++                    )
++                )
++            operation_note = "已按照片笔刷范围保存修正"
++
+         self._save_project()
+         self._update_correction_count()
++        self.statusBar().showMessage(operation_note)
+         self.generate_previews()
+ 
+     def undo_last_correction(self):
