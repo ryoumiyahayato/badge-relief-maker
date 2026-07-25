@@ -1,0 +1,35 @@
+name: Apply Bezier adaptive patch
+
+on:
+  push:
+    branches:
+      - fix/usable-relief-preview-and-mask
+    paths:
+      - tools/bezier_adaptive_patch.gz.b64
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/usable-relief-preview-and-mask
+          fetch-depth: 0
+      - name: Decode and apply patch
+        shell: bash
+        run: |
+          base64 --decode tools/bezier_adaptive_patch.gz.b64 | gzip --decompress > /tmp/bezier_adaptive.patch
+          git apply --binary --whitespace=fix /tmp/bezier_adaptive.patch
+          rm tools/bezier_adaptive_patch.gz.b64
+          rm .github/workflows/apply-bezier-adaptive-patch.yml
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "OpenAI Codex"
+          git config user.email "codex@openai.com"
+          git add -A
+          git commit -m "feat: add Bezier contour editing and adaptive relief mesh"
+          git push origin HEAD:fix/usable-relief-preview-and-mask
