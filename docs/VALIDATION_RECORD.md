@@ -2,53 +2,46 @@
 
 This file records acceptance evidence that cannot be inferred from the presence of code. Do not mark a current status as passed without the tested commit, environment, fixture and observed result.
 
-## PR #5 boundary-aware V10 review
+## PR #5 grayscale-first V11 review
 
-Tested implementation commit: `45262ba648b4f409b3bacba3adfc15826b32545a`
-Documentation follow-up commit: `a02926b4200bc4089da0eca57d7aebe8a3549bed`
+Current grayscale-first implementation commits:
 
-### User-confirmed French emblem line-art fixture
+- `1e66656346ab54d613f531589b2d4da161a331b8`: project/CLI/GUI grayscale-master export;
+- `7b0e37c0ffe0f37bea83512336e0cdbec69d5ba8`: scalable 8K export and source-resolution linework reconstruction;
+- `48ea34a817a586d796b3a38f99a5bc14d3a6c4da`: grayscale-first acceptance contract.
 
-The fixture uses the user-provided French emblem line drawing. The core library contains no France-, RF-, axe-, ribbon-, oak-, laurel- or leaf-specific rules. The following region assignments are project-level review annotations supplied or confirmed during the visual review:
+### Acceptance order
 
-- true void/background display regions: `7, 8, 11, 12, 17, 26, 38`;
-- carrier surfaces: `1, 4, 6, 15, 19`;
-- recessed/shadow region: `23`;
-- foreground component regions: `10, 35`;
-- lower-left oak branch and lower-right laurel branch receive separate rounded component layers;
-- the RF outer surround uses a raised annular layer while the carrier and letter interiors stay below that surround;
-- the upper fasces/axe and ribbons use separate rounded component mass.
+The editable grayscale master is now the acceptance artifact. A 3D preview or mesh is not accepted as a substitute. Mesh generation remains deferred until the grayscale PNG/TIFF is reviewed.
 
-Observed generated model:
+### User-confirmed French emblem fixture
 
-- requested X/Y size: 100 × 150 mm;
-- base thickness: 2.5 mm;
-- configured front relief budget: 8.0 mm;
-- observed maximum front relief: approximately 7.527 mm;
-- observed total Z bounding-box thickness: approximately 10.027 mm;
-- vertices: 210,240;
-- triangles: 420,484;
-- boundary edges: 0;
-- non-manifold edges: 0;
-- inconsistent winding edges: 0;
-- closed oriented manifold: yes;
-- OBJ groups: `front_relief`, `side_wall`, `flat_back`.
+The user clarified that corrections are cumulative. The confirmed void/background display regions are:
 
-The front render, oblique surface and millimetre cross-sections were generated from the same final floating-point height field used to construct the OBJ. The oblique review view documented a 1.35× Z display exaggeration; the OBJ coordinates remained in true millimetres.
+`5, 7, 8, 10, 11, 12, 17, 20, 26, 38`
+
+The V11 review project preserves all ten entries as `background`; region 10 is no longer treated as a foreground component. The export manifest records the applied void list and states that later exports must not discard earlier confirmed voids.
+
+Observed V11 master export:
+
+- requested/final canvas: 5875 × 8192 pixels;
+- editable height PNG: 16-bit unsigned grayscale;
+- editable height TIFF: 32-bit floating point;
+- separate aligned source, recovered linework, solid mask and void mask;
+- broad component synthesis grid: 2938 × 4096;
+- source linework reconstructed directly at the final 5875 × 8192 resolution;
+- mesh generation: intentionally deferred.
+
+The original fixture image is 408 × 612 pixels. Upscaling alone cannot create genuine new sculptural information; the V11 exporter therefore separates high-resolution contour recovery from broad component mass and exports both the height master and linework mask for manual editing.
 
 ### Automated Windows validation
 
-For documentation commit `a02926b4200bc4089da0eca57d7aebe8a3549bed`, both Windows Python 3.10 and 3.12 quality gates completed successfully, including package installation, entry points, GUI import, Ruff and the complete pytest suite. The PyInstaller Windows executable build, packaged `--help` smoke test and artifact upload also completed successfully in workflow run `30106307192`.
+Workflow run `30148329660` completed the Windows Python 3.10 and Python 3.12 quality gates successfully, including package installation, entry points, GUI import, Ruff and the complete pytest suite. The packaging smoke job was still running when this record was updated.
 
-### Remaining external validation
+### Remaining work
 
-Not completed:
-
-- Blender manual editability and visual inspection record;
-- slicer import and printability review;
-- CAM/tool-access review;
-- mould/draft review;
-- physical print or machined sample measurement;
-- validation across multiple unrelated medal, badge and award artwork classes.
-
-The V10 fixture demonstrates the corrected region-role workflow and closed editable mesh structure. It does not prove fully automatic semantic depth recovery from arbitrary line art.
+- the current French emblem height master is an architecture and topology correction, not yet a professional final sculptural master;
+- region-level height shaping and fine grayscale refinement still require further work;
+- no new OBJ/STL/GLB should be presented as accepted until the grayscale master passes visual review;
+- Blender, slicer, CAM, mould and physical-sample validation remain pending;
+- multiple unrelated medal, badge and award classes still need validation.
