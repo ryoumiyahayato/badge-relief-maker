@@ -85,7 +85,7 @@ STRENGTH_OPTIONS = {
 QUALITY_OPTIONS = {
     "快速预览（约25万网格点）": "preview",
     "精细模型（约120万网格点）": "standard",
-    "极细模型（约240万网格点）": "high",
+    "极细模型（约480万网格点）": "high",
 }
 REVIEW_OPTIONS = {
     "区域语义图": "regions",
@@ -120,7 +120,6 @@ class MainWindow(BaseMainWindow):
             self.setFont(QFont("Segoe UI", 10))
         self._configure_semantic_ui()
 
-    # ----------------------------------------------------------- UI setup
     def _configure_semantic_ui(self):
         self.phase_two_button.hide()
         self.region_operation_combo.hide()
@@ -206,7 +205,6 @@ class MainWindow(BaseMainWindow):
         self.section_position_spin.valueChanged.connect(self._refresh_profile_preview)
         self._update_semantic_count()
 
-    # ----------------------------------------------------------- mouse input
     def _normalized_position(self, event):
         rect = self.region_preview._target_rect()
         if rect is None:
@@ -256,7 +254,6 @@ class MainWindow(BaseMainWindow):
         threshold = BRUSH_OPTIONS[self.brush_combo.currentText()] * 0.35
         return (x1 - x0) ** 2 + (y1 - y0) ** 2 >= threshold**2
 
-    # ----------------------------------------------------------- annotations
     def _selected_role(self):
         return dict(ROLE_OPTIONS[self.role_combo.currentText()])
 
@@ -429,7 +426,6 @@ class MainWindow(BaseMainWindow):
     def _update_correction_count(self):
         self._update_semantic_count()
 
-    # ----------------------------------------------------------- guided review
     def _refresh_review_image(self, *_):
         mode = REVIEW_OPTIONS.get(self.review_combo.currentText(), "regions")
         if mode == "uncertainty":
@@ -459,7 +455,6 @@ class MainWindow(BaseMainWindow):
             f"待确认区域 #{region.get('display_id', '?')}，面积 {region.get('pixel_count', 0)} 像素。"
         )
 
-    # ----------------------------------------------------------- preview/profile
     def generate_previews(self):
         record = self._source_record()
         if record is None or not self.project_path:
@@ -535,7 +530,6 @@ class MainWindow(BaseMainWindow):
         output = save_height_profile_preview(profile, preview_dir / "height_profile_preview.png")
         self.section_preview.set_image(output)
 
-    # ----------------------------------------------------------- export
     def export_heightmap(self):
         if self.project is None or not self.project_path or QFileDialog is None:
             return
