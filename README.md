@@ -1,8 +1,10 @@
 # Badge Relief Maker
 
-Badge Relief Maker is a Windows-first, local and offline tool that converts badge, medal, crest, plaque, nameplate and similar artwork into an editable 2.5D relief base mesh.
+Badge Relief Maker is a Windows-first, local and offline tool for turning badge, medal, crest, plaque, nameplate and similar artwork into an editable grayscale height master and, only after that master is approved, a downstream 2.5D relief mesh.
 
-The intended result is a rough model for later Blender, printing, CNC or mould-design refinement. It is not a general image-to-3D system and does not claim to generate an automatically production-ready object.
+The current acceptance artifact is the exported grayscale master—not the shaded 3D preview and not the OBJ/STL/GLB. The grayscale-first contract is documented in [`docs/GRAYSCALE_FIRST_WORKFLOW.md`](docs/GRAYSCALE_FIRST_WORKFLOW.md).
+
+The intended mesh result remains a base model for later Blender, printing, CNC or mould-design refinement. It is not a general image-to-3D system and does not claim to generate an automatically production-ready object.
 
 The acceptance contract is [`docs/BASELINE_V1.md`](docs/BASELINE_V1.md). Manual Windows, Blender, slicer, CAM and physical evidence belongs in [`docs/VALIDATION_RECORD.md`](docs/VALIDATION_RECORD.md).
 
@@ -32,6 +34,31 @@ Build a Windows executable:
 
 The script installs the packaging extra, builds `dist/BadgeReliefMaker.exe` with PyInstaller and smoke-tests its `--help` entry point. GitHub Actions also contains a Windows 3.12 packaging job that uploads the executable when the complete Windows quality gate passes. Opening the packaged application without command-line arguments launches the GUI; explicit arguments retain the diagnostic CLI.
 
+## Grayscale-master export
+
+The editor provides `Front 16-bit Heightmap` and `Back 16-bit Heightmap` actions. The command-line equivalent is:
+
+```powershell
+python -m badge_relief_maker.app `
+  --project-path test.medalproj `
+  --export-front-heightmap `
+  --heightmap-long-edge-px 8192 `
+  --heightmap-output-dir heightmaps/front
+```
+
+The export produces:
+
+- `height_master_16bit.png`;
+- `height_master_32bit.tiff`;
+- `height_master_preview.png`;
+- `linework_mask.png`;
+- `solid_mask.png`;
+- `void_mask.png`;
+- `source_aligned.png`;
+- `height_master_manifest.json`.
+
+Confirmed void/background regions are accumulated by union. A later export does not discard an earlier confirmed hole unless the project data explicitly reverses that decision. Broad component mass is synthesized on a bounded working grid, while source contours and engraving coverage are reconstructed directly at the requested final resolution. Mesh generation remains deferred during this review stage.
+
 ## Current deterministic pipeline
 
 The current single-side path performs:
@@ -52,24 +79,25 @@ The current single-side path performs:
 12. Set, add, subtract and mask-aware smooth brush operations. Smoothing excludes background and true-void pixels instead of bleeding across physical boundaries.
 13. Optional global smoothing and detail sharpening.
 14. Millimeter-aware rim height processing.
-15. Shared-index closed single-side or fused double-side mesh construction, including local corner-sector splitting around checkerboard void contacts.
-16. Straight, sloped, bevelled or rounded boundary profiles.
-17. Conservative face cleanup and component orientation repair.
-18. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
-19. Atomic OBJ, STL or GLB export.
+15. High-resolution 16-bit PNG and 32-bit TIFF grayscale-master export for visual review and editing.
+16. After grayscale approval, shared-index closed single-side or fused double-side mesh construction, including local corner-sector splitting around checkerboard void contacts.
+17. Straight, sloped, bevelled or rounded boundary profiles.
+18. Conservative face cleanup and component orientation repair.
+19. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
+20. Atomic OBJ, STL or GLB export.
 
 Processing padding and grid density do not define the finished physical size. The final foreground bounding box is scaled to the requested X/Y dimensions.
 
 ## Visual preview and masking
 
-The desktop editor shows four distinct views before export:
+The desktop editor shows four distinct views:
 
 - the source artwork;
 - the exact final silhouette overlay;
 - a numbered, colour-coded line-art topology and region-role pane;
-- a studio-style relief render generated from the same final height field used by the mesh.
+- a shaded relief preview.
 
-The relief render is not an invented image effect. Its normals, lighting, cavity darkening and cast shadow are calculated from the generated heightmap at the configured physical X/Y and relief scale. Dense hatching contributes less to preview lighting than broad form so the user can judge component depth before export.
+The shaded relief preview is diagnostic only. It cannot replace review of the exported 16-bit/32-bit grayscale master.
 
 For opaque badge artwork on a plain background, leave mask mode on `auto`. The editor will use border-connected background removal when that recovers enclosed white or pale regions that a simple luminance threshold would otherwise punch out as holes.
 
@@ -109,9 +137,9 @@ Useful options include:
 ```powershell
 python -m badge_relief_maker.app --new-project "Test Medal" --project-path test.medalproj
 python -m badge_relief_maker.app --project-path test.medalproj --import-front front.png
-python -m badge_relief_maker.app --project-path test.medalproj --import-back back.png
-python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format obj --quality standard
-python -m badge_relief_maker.app --project-path test.medalproj --build-double --project-export-format glb --quality standard
+python -m badge_relief_maker.app --project-path test.medalproj --export-front-heightmap --heightmap-long-edge-px 8192
+# Review and edit the PNG/TIFF master before continuing.
+python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format obj --quality high
 ```
 
 Project format version 2 persists:
@@ -159,10 +187,10 @@ A result is either `blocked` or `review_required`; it is never certified safe fo
 
 Brightness alone is not physical depth. Black-and-white line art also does not unambiguously state whether a closed region is a surface, foreground component, shadow or hole. The automatic line-art path therefore avoids inventing local domes and requires explicit region confirmation for ambiguous structure.
 
-The current system remains a general 2.5D bas-relief base-model generator, not an automatic professional sculptor. Exact object ordering, undercuts, hidden surfaces and fully semantic multi-part modelling still require region confirmation, manual refinement or a future learned depth/normal inference stage.
+The current system remains a general grayscale height-master and 2.5D bas-relief base-model generator, not an automatic professional sculptor. Exact object ordering, undercuts, hidden surfaces and fully semantic multi-part modelling still require region confirmation, manual grayscale refinement or a future learned depth/normal inference stage.
 
 ## Editable master model
 
-A single-side OBJ export is a real closed 3D solid, not a rendered effect image. Its front follows the generated relief, its back is an automatically generated flat plane, and the boundary is closed by side walls. The OBJ keeps one shared vertex pool and names three face groups: `front_relief`, `side_wall`, and `flat_back`.
+After the grayscale master is approved, a single-side OBJ export is a real closed 3D solid. Its front follows the approved relief field, its back is an automatically generated flat plane, and the boundary is closed by side walls. The OBJ keeps one shared vertex pool and names three face groups: `front_relief`, `side_wall`, and `flat_back`.
 
 This makes the same complete model easier to continue editing in Blender, 3ds Max, Maya, ZBrush and other OBJ-compatible tools. STL remains the manufacturing/printing mesh, while GLB remains the compact interchange and viewing format.
