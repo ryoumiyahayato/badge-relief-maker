@@ -1,0 +1,33 @@
+name: Apply grayscale-first patch
+
+on:
+  push:
+    branches:
+      - fix/usable-relief-preview-and-mask
+    paths:
+      - tools/grayscale_first_ready.txt
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Apply grayscale-first changes
+        shell: bash
+        run: |
+          cat tools/grayscale_first_part_* > /tmp/grayscale_first.patch
+          git apply --check /tmp/grayscale_first.patch
+          git apply /tmp/grayscale_first.patch
+          rm tools/grayscale_first_part_* tools/grayscale_first_ready.txt
+          rm .github/workflows/apply-grayscale-first-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: make editable grayscale heightmaps the primary artifact"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
