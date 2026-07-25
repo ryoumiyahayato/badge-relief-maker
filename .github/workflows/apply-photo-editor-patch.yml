@@ -1,0 +1,32 @@
+name: Apply photo editor patch
+
+on:
+  push:
+    branches:
+      - fix/usable-relief-preview-and-mask
+    paths:
+      - tools/photo_editor.patch
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Apply photo editing support
+        shell: bash
+        run: |
+          git apply --check tools/photo_editor.patch
+          git apply tools/photo_editor.patch
+          rm tools/photo_editor.patch
+          rm .github/workflows/apply-photo-editor-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: add photo-aware mask and height editing"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
