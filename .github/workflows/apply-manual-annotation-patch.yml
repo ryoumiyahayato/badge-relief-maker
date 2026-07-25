@@ -6,6 +6,7 @@ on:
       - fix/usable-relief-preview-and-mask
     paths:
       - tools/manual_annotation_patch.gz.b64
+      - tools/manual_annotation_ready.txt
       - .github/workflows/apply-manual-annotation-patch.yml
 
 permissions:
@@ -28,6 +29,7 @@ jobs:
           git apply --check /tmp/manual-annotation.patch
           git apply /tmp/manual-annotation.patch
           rm tools/manual_annotation_patch.gz.b64
+          rm -f tools/manual_annotation_ready.txt
           rm .github/workflows/apply-manual-annotation-patch.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
