@@ -28,7 +28,7 @@ def test_semantic_editor_contract():
     assert set(REVIEW_OPTIONS.values()) == {"regions", "uncertainty", "mask"}
     assert BRUSH_OPTIONS["小"] < BRUSH_OPTIONS["中"] < BRUSH_OPTIONS["大"]
     assert STRENGTH_OPTIONS["轻微"] < STRENGTH_OPTIONS["标准"] < STRENGTH_OPTIONS["明显"]
-    assert QUALITY_OPTIONS["极细模型（约240万网格点）"] == "high"
+    assert QUALITY_OPTIONS["极细模型（约480万网格点）"] == "high"
     levels = [
         ROLE_OPTIONS["实体补填／底面"]["height"],
         ROLE_OPTIONS["低层浮雕"]["height"],
