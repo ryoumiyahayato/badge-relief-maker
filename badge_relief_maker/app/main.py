@@ -9,6 +9,7 @@ from .core.project_build import (
     build_double_side_placeholder_from_project_file,
     build_fused_double_side_from_project_file,
     build_side_relief_from_project_file,
+    export_side_heightmap_master_from_project_file,
 )
 from .core.project_io import create_project, import_image_asset, load_project, save_project
 from .core.relief_parameters import ReliefParameters
@@ -37,8 +38,9 @@ def run_gui() -> int:
 def _selected_action_count(args):
     import_requested = bool(args.import_front_path or args.import_back_path or args.import_reference_path)
     build_requested = bool(args.build_front or args.build_back or args.build_side or args.build_double_placeholder or args.build_double)
+    heightmap_requested = bool(args.export_front_heightmap or args.export_back_heightmap or args.export_heightmap_side)
     direct_requested = bool(args.input_path or args.output_path)
-    return sum(bool(value) for value in [args.gui, args.new_project_name, import_requested, build_requested, direct_requested])
+    return sum(bool(value) for value in [args.gui, args.new_project_name, import_requested, build_requested, heightmap_requested, direct_requested])
 
 
 def _execute(args):
@@ -74,6 +76,25 @@ def _execute(args):
             message = f"Imported reference image: {record.path}"
         save_project(project, args.project_path)
         print(message)
+        return 0
+
+
+    heightmap_side = args.export_heightmap_side
+    if args.export_front_heightmap:
+        heightmap_side = "front"
+    elif args.export_back_heightmap:
+        heightmap_side = "back"
+    if heightmap_side:
+        if not args.project_path:
+            raise ValueError("provide --project-path when exporting a grayscale height master")
+        result = export_side_heightmap_master_from_project_file(
+            args.project_path,
+            side_name=heightmap_side,
+            long_edge_px=args.heightmap_long_edge_px,
+            output_dir=args.heightmap_output_dir,
+            quality_mode="high",
+        )
+        print(result.report)
         return 0
 
     if args.build_double_placeholder:
@@ -183,6 +204,13 @@ def main(argv=None) -> int:
     build_group.add_argument("--build-double-placeholder", action="store_true")
     build_group.add_argument("--build-double", action="store_true", help="build one aligned fused front/back solid")
 
+    heightmap_group = parser.add_mutually_exclusive_group()
+    heightmap_group.add_argument("--export-front-heightmap", action="store_true")
+    heightmap_group.add_argument("--export-back-heightmap", action="store_true")
+    heightmap_group.add_argument("--export-heightmap-side", choices=["front", "back"])
+    parser.add_argument("--heightmap-long-edge-px", type=int, default=8192)
+    parser.add_argument("--heightmap-output-dir")
+
     parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl", "glb"])
     parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
     parser.add_argument("--input", dest="input_path")
@@ -223,7 +251,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if _selected_action_count(args) > 1:
-        parser.error("choose exactly one primary action: GUI, new project, import, project build, or direct image build")
+        parser.error("choose exactly one primary action: GUI, new project, import, grayscale export, project build, or direct image build")
     if bool(args.input_path) != bool(args.output_path):
         parser.error("direct image builds require both --input and --output")
 

@@ -59,6 +59,7 @@ from ..core.project_build import (
     build_double_side_placeholder_from_project,
     build_fused_double_side_from_project,
     build_side_relief_from_project,
+    export_side_heightmap_master_from_project,
     relief_parameters_from_project,
 )
 from ..core.project_io import asset_root_for, create_project, import_image_asset, load_project, resolve_project_asset, save_project
@@ -328,6 +329,8 @@ class MainWindow(QMainWindow):
             ("Import Front", self.import_front_image, False),
             ("Import Back", self.import_back_image, False),
             ("Import Reference", self.import_reference_image, False),
+            ("Front 16-bit Heightmap", self.export_front_heightmap, True),
+            ("Back 16-bit Heightmap", self.export_back_heightmap, True),
             ("Front Editable OBJ", self.build_front_obj, True),
             ("Front STL", self.build_front_stl, True),
             ("Front GLB", self.build_front_glb, True),
@@ -655,6 +658,15 @@ class MainWindow(QMainWindow):
         gate = report.get("manufacturing_gate", {})
         topology = report.get("topology", {})
         bbox = report.get("bbox_size_mm") or report.get("dimensions_mm") or []
+        if report.get("artifact_role") == "authoritative editable grayscale height master":
+            return (
+                f"Grayscale master exported\n\nFile: {output_path}\n"
+                f"Resolution: {report.get('width_px')} × {report.get('height_px')} px\n"
+                f"PNG depth: {report.get('bit_depth_png')} bit\n"
+                f"TIFF depth: {report.get('bit_depth_tiff')} bit float\n\n"
+                "This grayscale master is the current acceptance artifact. "
+                "Mesh generation remains deferred until the heightmap is approved."
+            )
         return (
             f"Export completed\n\nFile: {output_path}\n"
             f"Manufacturing status: {gate.get('status', 'unknown')}\n"
@@ -824,6 +836,24 @@ class MainWindow(QMainWindow):
             f"Building {side_name} {export_format.upper()}",
         )
 
+    def _export_heightmap_master(self, side_name):
+        if not self._ensure_saved_project():
+            return
+        if self._image_record(side_name) is None:
+            self._log(f"Import a {side_name} image before exporting a grayscale master.")
+            return
+        self._apply_controls_to_project(self.active_side)
+        self._start_build(
+            lambda: export_side_heightmap_master_from_project(
+                self.project,
+                self.project_path,
+                side_name,
+                long_edge_px=8192,
+                quality_mode="high",
+            ),
+            f"Exporting {side_name} 16-bit grayscale height master",
+        )
+
     def _build_double(self, export_format, fused=True):
         if not self._ensure_saved_project():
             return
@@ -862,6 +892,8 @@ class MainWindow(QMainWindow):
     def import_front_image(self): self._import_image("front", False)
     def import_back_image(self): self._import_image("back", False)
     def import_reference_image(self): self._import_image("reference", True)
+    def export_front_heightmap(self): self._export_heightmap_master("front")
+    def export_back_heightmap(self): self._export_heightmap_master("back")
     def build_front_obj(self): self._build_side("front", "obj")
     def build_front_stl(self): self._build_side("front", "stl")
     def build_front_glb(self): self._build_side("front", "glb")

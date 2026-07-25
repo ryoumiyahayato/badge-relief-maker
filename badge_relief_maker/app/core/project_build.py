@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from .double_side_builder import build_fused_double_sided_relief
+from .heightmap_master import export_prepared_heightmap_master
 from .manufacturability_check import basic_report
 from .mesh_exporter import export_glb_objects, export_mesh, export_obj_objects
 from .mesh_repair import repair_mesh_basic
@@ -538,5 +539,79 @@ def build_double_side_placeholder_from_project_file(project_path, export_format=
 def build_fused_double_side_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
     project = load_project(project_path)
     result = build_fused_double_side_from_project(project, project_path, export_format, quality_mode, export_name)
+    save_project(project, project_path)
+    return result
+
+
+def export_side_heightmap_master_from_project(
+    project,
+    project_path,
+    side_name="front",
+    *,
+    long_edge_px=8192,
+    output_dir=None,
+    quality_mode="high",
+):
+    """Export the authoritative editable grayscale master without building a mesh."""
+    _validate_project_parameters(project, side_name=side_name)
+    image_record, side = _side_data(project, side_name)
+    if image_record is None:
+        raise ValueError(f"project has no {side_name} image")
+    project_path = Path(project_path)
+    params, resolved_quality = _relief_parameters_from_project(project, side_name, quality_mode)
+    source_image = resolve_project_asset(project_path, image_record.path)
+    prepared = prepare_relief_field(source_image, params, preview_dir=None)
+    if output_dir is None:
+        output_dir = asset_root_for(project_path) / "heightmaps" / side_name
+    source_size = None
+    try:
+        from PIL import Image
+
+        with Image.open(source_image) as image:
+            source_size = list(image.size)
+    except OSError:
+        source_size = None
+    manifest = export_prepared_heightmap_master(
+        prepared,
+        output_dir,
+        long_edge_px=long_edge_px,
+        lineart_region_overrides=tuple(getattr(side, "lineart_region_overrides", []) or []),
+        source_native_size=source_size,
+    )
+    output_path = str(Path(output_dir) / manifest["files"]["height_master_16bit_png"])
+    report = {
+        **manifest,
+        "project_name": project.name,
+        "project_source_role": side_name,
+        "project_quality_mode": resolved_quality,
+        "output_path": output_path,
+        "output_directory": str(Path(output_dir)),
+        "acceptance_stage": "grayscale master; mesh generation intentionally deferred",
+    }
+    return ReliefBuildResult(
+        vertices=np.zeros((0, 3), dtype=float),
+        faces=np.zeros((0, 3), dtype=np.int64),
+        report=report,
+        output_path=output_path,
+    )
+
+
+def export_side_heightmap_master_from_project_file(
+    project_path,
+    side_name="front",
+    *,
+    long_edge_px=8192,
+    output_dir=None,
+    quality_mode="high",
+):
+    project = load_project(project_path)
+    result = export_side_heightmap_master_from_project(
+        project,
+        project_path,
+        side_name,
+        long_edge_px=long_edge_px,
+        output_dir=output_dir,
+        quality_mode=quality_mode,
+    )
     save_project(project, project_path)
     return result
