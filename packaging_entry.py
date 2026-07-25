@@ -9,7 +9,7 @@ def run_desktop_app():
     """Launch the Chinese-first grayscale studio."""
     from PySide6.QtWidgets import QApplication
 
-    from badge_relief_maker.app.ui.grayscale_studio import MainWindow
+    from badge_relief_maker.app.ui.semantic_studio import MainWindow
 
     app = QApplication(sys.argv[:1])
     window = MainWindow()

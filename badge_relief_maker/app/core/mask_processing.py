@@ -5,6 +5,7 @@ from collections import deque
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage as ndi
 
 
 def mask_bbox(mask, padding=0):
@@ -112,33 +113,94 @@ def clean_mask(mask, min_component_pixels=1, fill_hole_pixels=0, smooth_iteratio
     }
 
 
-def crop_to_mask(mask, heightmap, padding=1):
-    """Crop mask and heightmap to the foreground bounding box."""
-    box = mask_bbox(mask, padding=padding)
-    if box is None:
-        return mask, heightmap, None
-    x0, y0, x1, y1 = box
-    return mask[y0:y1, x0:x1], heightmap[y0:y1, x0:x1], box
+
+def regularize_binary_contour(mask, sigma=0.86):
+    """Remove one-pixel edge bumps without flattening established interior detail.
+
+    Only the narrow signed-distance band around the silhouette is changed. Pixels
+    more than roughly 1.5 source pixels inside or outside remain fixed, so thin leaf
+    tips and engraving cut-outs are less likely to disappear than with a global
+    morphological opening/closing operation.
+    """
+    source = np.asarray(mask, dtype=bool)
+    if not source.any() or source.all():
+        return source.copy()
+    inside = ndi.distance_transform_edt(source)
+    outside = ndi.distance_transform_edt(~source)
+    signed = (inside - outside).astype(np.float32)
+    smoothed = ndi.gaussian_filter(signed, sigma=max(float(sigma), 0.0))
+    result = smoothed >= 0.0
+    result[signed >= 2.05] = True
+    result[signed <= -2.05] = False
+    return np.asarray(result, dtype=bool)
 
 
-def resize_mask_and_heightmap(mask, heightmap, max_cells):
-    """Downsample mask and heightmap when the grid is too large."""
-    if max_cells is None or max_cells <= 0:
-        return mask, heightmap, 1.0
+def resample_binary_mask(mask, target_shape):
+    """Resample a binary silhouette through a regularized signed-distance field.
 
-    rows, cols = mask.shape
-    current = rows * cols
-    if current <= max_cells:
-        return mask, heightmap, 1.0
+    The contour is first cleaned only inside a narrow boundary band, then the
+    signed distance is interpolated. A final subpixel Gaussian pass suppresses the
+    isolated staircase dots that otherwise remain visible even on dense meshes.
+    """
+    source = regularize_binary_contour(mask)
+    rows, cols = [int(value) for value in target_shape]
+    if source.shape == (rows, cols):
+        return source.copy()
+    if rows < 1 or cols < 1:
+        raise ValueError("target_shape must be positive")
+    inside = ndi.distance_transform_edt(source)
+    outside = ndi.distance_transform_edt(~source)
+    signed = ndi.gaussian_filter((inside - outside).astype(np.float32), sigma=0.32)
+    image = Image.fromarray(signed, mode="F")
+    resized = np.asarray(image.resize((cols, rows), Image.Resampling.BICUBIC), dtype=np.float32)
+    resized = ndi.gaussian_filter(resized, sigma=0.36)
+    return resized >= 0.0
 
-    scale = math.sqrt(float(max_cells) / float(current))
-    new_cols = max(2, int(cols * scale))
-    new_rows = max(2, int(rows * scale))
 
-    mask_img = Image.fromarray(np.where(mask, 255, 0).astype(np.uint8), mode="L")
-    height_img = Image.fromarray(np.asarray(heightmap, dtype=np.float32), mode="F")
+def resample_mask_and_heightmap(mask, heightmap, target_cells):
+    """Resample a relief field toward a target mesh density.
 
-    resized_mask = np.asarray(mask_img.resize((new_cols, new_rows), Image.Resampling.NEAREST)) > 0
-    resized_height = np.asarray(height_img.resize((new_cols, new_rows), Image.Resampling.BILINEAR), dtype=np.float32)
-    resized_height = np.where(resized_mask, resized_height, 0.0).astype(np.float32)
-    return resized_mask, resized_height, scale
+    ThhИ[\€Ш[€\ШШ[HЭЛ\™\ЫЫ][Ы€ЫЭ\ЩH\ќЫЬљИ™Y›Ь™HY\ЪЩ[™\][ЫЋВ€HЬ™[\ћH™]љY]И]™[XZ[њИ›Э[™YћHHЬљYЪ[[[XYЩHЪ^™K‚€€€‚€›ЭЬЛЫЫИHњ\Ш\њ^JX\ЪКKњЪ\B€Э\њ™[ќHX^
+›ЭЬИ
+€ЫЫЛJB€\™Щ]HX^
+[ќ
+\™Щ]ШЩ[КK
+B€ШШ[HHX]њЬ\ќ
+›Ш]
+\™Щ]
+HИ›Ш]
+Э\њ™[ќ
+JB€™]ЧЬ›ЭЬИHX^
+‹[ќ
+›Э[™
+›ЭЬИ
+€ШШ[JJJB€™]ЧШЫЫИHX^
+‹[ќ
+›Э[™
+ЫЫИ
+€ШШ[JJJB€™\Ъ^™YЫX\ЪИH™\Ш[\WШљ[\ћWЫX\ЪКX\ЪЛ
+™]ЧЬ›ЭЬЛ™]ЧШЫЫКJB€ZYЪЪ[YИH[XYЩK™њ›ЫX\њ^Jњ\Ш\њ^JZYЪX\\O[њ™›Ш]МЉK[ЩOH‘€ЉB€™\Ъ^™YЪZYЪHњ\Ш\њ^JZYЪЪ[YЛњ™\Ъ^™J
+™]ЧШЫЫЛ™]ЧЬ›ЭЬКK[XYЩK”™\Ш[\[™Лђ’PХP’PКK\O[њ™›Ш]МЉB€™\Ъ^™YЪZYЪHњќЪ\™J™\Ъ^™YЫX\ЪЛњЫ\
+™\Ъ^™YЪZYЪЊKЊ
+KЊ
+K\Э\Jњ™›Ш]МЉB€™]\›€™\Ъ^™YЫX\ЪЛ™\Ъ^™YЪZYЪ›Ш]
+ШШ[JB‚™Y€Ь›ЬЭЧЫX\ЪКX\ЪЛZYЪX\Y[™ПLJN‚€€€ђЬ›ЬX\ЪИ[™ZYЪX\ИH›Ь™YЬ›Э[™›Э[™[™И›Ю€€€‚€›ЮHX\ЪЧШ›Ю
+X\ЪЛY[™П\Y[™КB€Y€›Ю\И›Ы™N‚€™]\›€X\ЪЛZYЪX\›Ы™B€LKLHH›Ю€™]\›€X\ЪЦЮLћLKћWKZYЪX\ЮLћLKћWK›Ю‚‚™Y€™\Ъ^™WЫX\ЪЧШ[™ЪZYЪX\
+X\ЪЛZYЪX\X^ШЩ[КN‚€€€‘ЭЫњШ[\HX\ЪИ[™ZYЪX\Ъ[€HЬљY\ИЫИ\™ЩK€€€‚€Y€X^ШЩ[И\И›Ы™HЬ€X^ШЩ[ИH‚€™]\›€X\ЪЛZYЪX\KЊ‚€›ЭЬЛЫЫИHX\ЪЛњЪ\B€Э\њ™[ќH›ЭЬИ
+€ЫЫВ€Y€Э\њ™[ќHX^ШЩ[О‚€™]\›€X\ЪЛZYЪX\KЊ‚€ШШ[HHX]њЬ\ќ
+›Ш]
+X^ШЩ[КHИ›Ш]
+Э\њ™[ќ
+JB€™]ЧШЫЫИHX^
+‹[ќ
+ЫЫИ
+€ШШ[JJB€™]ЧЬ›ЭЬИHX^
+‹[ќ
+›ЭЬИ
+€ШШ[JJB‚€™\Ъ^™YЫX\ЪИH™\Ш[\WШљ[\ћWЫX\ЪКX\ЪЛ
+™]ЧЬ›ЭЬЛ™]ЧШЫЫКJB€ZYЪЪ[YИH[XYЩK™њ›ЫX\њ^Jњ\Ш\њ^JZYЪX\\O[њ™›Ш]МЉK[ЩOH‘€ЉB€™\Ъ^™YЪZYЪHњ\Ш\њ^JZYЪЪ[YЛњ™\Ъ^™J
+™]ЧШЫЫЛ™]ЧЬ›ЭЬКK[XYЩK”™\Ш[\[™Лђ’PХP’PКK\O[њ™›Ш]МЉB€™\Ъ^™YЪZYЪHњќЪ\™J™\Ъ^™YЫX\ЪЛњЫ\
+™\Ъ^™YЪZYЪЊKЊ
+KЊ
+K\Э\Jњ™›Ш]МЉB€™]\›€™\Ъ^™YЫX\ЪЛ™\Ъ^™YЪZYЪ›Ш]
+ШШ[JB
