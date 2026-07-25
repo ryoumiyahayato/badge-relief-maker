@@ -10,7 +10,9 @@ Current grayscale-first implementation commits:
 - `7b0e37c0ffe0f37bea83512336e0cdbec69d5ba8`: scalable 8K export and source-resolution linework reconstruction;
 - `f32d9b4df847b1e0abde2644f5863907895a6808`: explicit approved-heightmap-to-mesh CLI path;
 - `341860b374df959786574a95526de69862f39130`: correct 16-bit height normalization;
-- `4813c4bc96b9b73252bb5704304fbd3ceaa43761`: cumulative correction and approved-master contract.
+- `8f9d0ab96e12a9f75ebe7779684c8099408fc08d`: verify 16-bit values survive conversion;
+- `4813c4bc96b9b73252bb5704304fbd3ceaa43761`: cumulative correction and approved-master contract;
+- `d7d76c48c1a4325e6117ebc518b19c30dc388563`: repository usage documentation.
 
 ### Acceptance order
 
@@ -42,7 +44,7 @@ The new conversion path accepts an explicitly approved 16-bit PNG or 32-bit TIFF
 
 ### Automated Windows validation
 
-Workflow run `30148329660` completed the Windows Python 3.10 and Python 3.12 quality gates successfully, including package installation, entry points, GUI import, Ruff and the complete pytest suite. Later approved-master commits are being revalidated by the current branch workflow and must pass before a new packaged executable is presented.
+Workflow run `30148329660` completed the Windows Python 3.10 and Python 3.12 quality gates successfully, including package installation, entry points, GUI import, Ruff and the complete pytest suite. The later approved-master commits are revalidated by the current branch workflow before a new packaged executable is presented.
 
 ### Remaining work
 
