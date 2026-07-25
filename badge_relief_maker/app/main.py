@@ -21,14 +21,14 @@ _MASK_CHOICES = ["auto", "alpha", "luminance", "luminance-dark", "luminance-ligh
 
 
 def run_gui() -> int:
-    """Run the optional PySide6 GUI."""
+    """Run the Chinese-first grayscale heightmap desktop application."""
     try:
         from PySide6.QtWidgets import QApplication
     except Exception:
         print("PySide6 is not installed. Install GUI dependencies before using --gui.")
         return 2
 
-    from .ui.editor_window import MainWindow
+    from .ui.grayscale_studio import MainWindow
 
     app = QApplication(sys.argv[:1])
     window = MainWindow()
