@@ -18,7 +18,12 @@ def _load_normalized_height(path):
     if image.mode == "F":
         values = array.astype(np.float32)
     elif np.issubdtype(array.dtype, np.integer):
-        maximum = float(np.iinfo(array.dtype).max)
+        if image.mode.startswith("I;16") or (image.mode == "I" and int(array.max(initial=0)) <= 65535):
+            maximum = 65535.0
+        elif image.mode == "L":
+            maximum = 255.0
+        else:
+            maximum = float(np.iinfo(array.dtype).max)
         values = array.astype(np.float32) / max(maximum, 1.0)
     else:
         values = array.astype(np.float32)
