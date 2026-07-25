@@ -1,0 +1,87 @@
++    heightmap_side = args.export_heightmap_side
++    if args.export_front_heightmap:
++        heightmap_side = "front"
++    elif args.export_back_heightmap:
++        heightmap_side = "back"
++    if heightmap_side:
++        if not args.project_path:
++            raise ValueError("provide --project-path when exporting a grayscale height master")
++        result = export_side_heightmap_master_from_project_file(
++            args.project_path,
++            side_name=heightmap_side,
++            long_edge_px=args.heightmap_long_edge_px,
++            output_dir=args.heightmap_output_dir,
++            quality_mode="high",
++        )
++        print(result.report)
++        return 0
++
+     if args.build_double_placeholder:
+         if not args.project_path:
+             raise ValueError("provide --project-path when building a double-side placeholder")
+@@ -183,6 +204,13 @@
+     build_group.add_argument("--build-double-placeholder", action="store_true")
+     build_group.add_argument("--build-double", action="store_true", help="build one aligned fused front/back solid")
+ 
++    heightmap_group = parser.add_mutually_exclusive_group()
++    heightmap_group.add_argument("--export-front-heightmap", action="store_true")
++    heightmap_group.add_argument("--export-back-heightmap", action="store_true")
++    heightmap_group.add_argument("--export-heightmap-side", choices=["front", "back"])
++    parser.add_argument("--heightmap-long-edge-px", type=int, default=8192)
++    parser.add_argument("--heightmap-output-dir")
++
+     parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl", "glb"])
+     parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
+     parser.add_argument("--input", dest="input_path")
+@@ -223,7 +251,7 @@
+     args = parser.parse_args(argv)
+ 
+     if _selected_action_count(args) > 1:
+-        parser.error("choose exactly one primary action: GUI, new project, import, project build, or direct image build")
++        parser.error("choose exactly one primary action: GUI, new project, import, grayscale export, project build, or direct image build")
+     if bool(args.input_path) != bool(args.output_path):
+         parser.error("direct image builds require both --input and --output")
+ 
+--- a/badge_relief_maker/app/ui/main_window.py
++++ b/badge_relief_maker/app/ui/main_window.py
+@@ -59,6 +59,7 @@
+     build_double_side_placeholder_from_project,
+     build_fused_double_side_from_project,
+     build_side_relief_from_project,
++    export_side_heightmap_master_from_project,
+     relief_parameters_from_project,
+ )
+ from ..core.project_io import asset_root_for, create_project, import_image_asset, load_project, resolve_project_asset, save_project
+@@ -328,6 +329,8 @@
+             ("Import Front", self.import_front_image, False),
+             ("Import Back", self.import_back_image, False),
+             ("Import Reference", self.import_reference_image, False),
++            ("Front 16-bit Heightmap", self.export_front_heightmap, True),
++            ("Back 16-bit Heightmap", self.export_back_heightmap, True),
+             ("Front Editable OBJ", self.build_front_obj, True),
+             ("Front STL", self.build_front_stl, True),
+             ("Front GLB", self.build_front_glb, True),
+@@ -655,6 +658,15 @@
+         gate = report.get("manufacturing_gate", {})
+         topology = report.get("topology", {})
+         bbox = report.get("bbox_size_mm") or report.get("dimensions_mm") or []
++        if report.get("artifact_role") == "authoritative editable grayscale height master":
++            return (
++                f"Grayscale master exported\n\nFile: {output_path}\n"
++                f"Resolution: {report.get('width_px')} × {report.get('height_px')} px\n"
++                f"PNG depth: {report.get('bit_depth_png')} bit\n"
++                f"TIFF depth: {report.get('bit_depth_tiff')} bit float\n\n"
++                "This grayscale master is the current acceptance artifact. "
++                "Mesh generation remains deferred until the heightmap is approved."
++            )
+         return (
+             f"Export completed\n\nFile: {output_path}\n"
+             f"Manufacturing status: {gate.get('status', 'unknown')}\n"
+@@ -824,6 +836,24 @@
+             f"Building {side_name} {export_format.upper()}",
+         )
+ 
++    def _export_heightmap_master(self, side_name):
++        if not self._ensure_saved_project():
++            return
++        if self._image_record(side_name) is None:
