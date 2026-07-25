@@ -29,7 +29,7 @@ def test_region_edits_are_reduced_to_four_explicit_roles():
     assert REGION_OPERATIONS["压低为凹陷／阴影"] == "recess"
 
 
-def test_grayscale_studio_constructs_offscreen():
+def _qt_window():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
@@ -37,7 +37,11 @@ def test_grayscale_studio_constructs_offscreen():
     from badge_relief_maker.app.ui.grayscale_studio import MainWindow
 
     app = QApplication.instance() or QApplication([])
-    window = MainWindow()
+    return app, MainWindow()
+
+
+def test_grayscale_studio_constructs_offscreen():
+    app, window = _qt_window()
     assert window.windowTitle() == APP_TITLE
     assert window.import_button.text() == "1  导入图片"
     assert window.generate_button.text() == "2  生成／刷新灰度图"
@@ -46,5 +50,58 @@ def test_grayscale_studio_constructs_offscreen():
     assert window.source_preview is not None
     assert window.region_preview is not None
     assert window.height_preview is not None
+    window.close()
+    app.processEvents()
+
+
+def test_photo_background_click_creates_source_space_mask_brush(monkeypatch):
+    from badge_relief_maker.app.core.project_io import create_project
+
+    class _Transform:
+        @staticmethod
+        def target_to_original_point(x, y, normalized=True):
+            assert normalized is True
+            return x * 1000.0, y * 800.0
+
+        @staticmethod
+        def target_radius_to_original(radius, normalized=True):
+            assert normalized is True
+            return radius * 600.0
+
+    app, window = _qt_window()
+    window.project = create_project("photo")
+    window._artwork_interpretation = "continuous_tone"
+    window._preview_transform = _Transform()
+    window.region_operation_combo.setCurrentText("挖空／设为背景")
+    monkeypatch.setattr(window, "_save_project", lambda: None)
+    monkeypatch.setattr(window, "generate_previews", lambda: None)
+
+    window.apply_region_operation(0.5, 0.4)
+
+    edit = window.project.front_relief.mask_edits[-1]
+    assert edit["operation"] == "remove"
+    assert edit["coordinate_space"] == "pixel"
+    assert edit["x"] == 500.0
+    assert edit["y"] == 320.0
+    assert edit["radius_px"] > 0.0
+    window.close()
+    app.processEvents()
+
+
+def test_lineart_click_preserves_whole_region_override(monkeypatch):
+    from badge_relief_maker.app.core.project_io import create_project
+
+    app, window = _qt_window()
+    window.project = create_project("lineart")
+    window._artwork_interpretation = "lineart"
+    window.region_operation_combo.setCurrentText("抬高为前景构件")
+    monkeypatch.setattr(window, "_save_project", lambda: None)
+    monkeypatch.setattr(window, "generate_previews", lambda: None)
+
+    window.apply_region_operation(0.25, 0.75)
+
+    override = window.project.front_relief.lineart_region_overrides[-1]
+    assert override["role"] == "raise"
+    assert override["coordinate_space"] == "final_normalized"
     window.close()
     app.processEvents()
