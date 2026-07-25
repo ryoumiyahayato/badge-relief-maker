@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "badge-relief-maker"
-version = "0.4.0"
+version = "0.3.0"
 description = "Chinese desktop software for single-image badge and medal grayscale heightmap generation."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
