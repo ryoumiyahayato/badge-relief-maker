@@ -1,0 +1,1 @@
+Apply the grayscale-first workflow patch.
