@@ -17,11 +17,16 @@ def run_desktop_app():
     return int(app.exec())
 
 
+def run_gui():
+    """Compatibility alias retained for packaging tests and existing callers."""
+    return run_desktop_app()
+
+
 def packaged_main(argv=None):
     """Open the desktop application on double-click; retain explicit CLI diagnostics."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments:
-        return run_desktop_app()
+        return run_gui()
     return main(arguments)
 
 
