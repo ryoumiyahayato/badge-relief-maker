@@ -9,7 +9,8 @@ The primary deliverable for badge, medal and award artwork is an editable graysc
 3. Accumulate confirmed void/background regions. A later edit must not discard an earlier confirmed void unless the user explicitly reverses it.
 4. Reconstruct source contours at the requested master resolution.
 5. Export and review the grayscale master.
-6. Only after approval, use that exact grayscale master as the source for OBJ/STL/GLB construction.
+6. Edit the 16-bit PNG or 32-bit TIFF until its component heights, edges and engraving are accepted.
+7. Only after approval, use that exact grayscale master as the source for OBJ/STL/GLB construction.
 
 ## Master files
 
@@ -30,10 +31,29 @@ The default requested long edge is 8192 pixels. Broad component mass is synthesi
 
 - Black is the lowest or absent height; white is the highest normalized height.
 - Confirmed void regions are represented in `void_mask.png` and have zero height in the master.
+- Confirmed voids are cumulative. New corrections are applied on top of earlier corrections and cannot silently re-fill an earlier hole.
 - Fine source lines are shallow engraving detail, not automatic deep trenches.
 - Broad component height and fine engraving are separate signals.
 - The exported PNG/TIFF can be edited in a 16-bit/32-bit capable image editor before any mesh is generated.
 - Mesh export remains intentionally deferred while the grayscale master is under review.
+
+## Approved-master mesh conversion
+
+After the grayscale master is approved, the strict conversion path is:
+
+```powershell
+python -m badge_relief_maker.app `
+  --approved-heightmap height_master_16bit.png `
+  --approved-solid-mask solid_mask.png `
+  --output approved.obj `
+  --width-mm 100 `
+  --height-mm 150 `
+  --base-mm 2.5 `
+  --relief-mm 8 `
+  --max-grid-cells 1000000
+```
+
+This path does not return to the original source image. It does not perform line-art interpretation, automatic embossing or semantic height inference. The approved grayscale is the source of truth. A documented mesh-grid resample may occur when the requested mesh grid exceeds the configured cell limit.
 
 ## Limits
 
