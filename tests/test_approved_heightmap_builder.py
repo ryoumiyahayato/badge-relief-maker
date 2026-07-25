@@ -36,6 +36,7 @@ def test_approved_16bit_heightmap_builds_closed_editable_obj(tmp_path):
     assert Path(result.output_path).is_file()
     assert result.report["source_of_truth"] == "approved grayscale height master"
     assert result.report["automatic_height_synthesis"] is False
+    assert result.report["bbox"]["size_z"] > 5.0
     assert result.report["topology"]["boundary_edge_count"] == 0
     assert result.report["topology"]["non_manifold_edge_count"] == 0
     assert result.report["editable_surface_groups"]["flat_back"] > 0
