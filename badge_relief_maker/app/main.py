@@ -5,6 +5,7 @@ import sys
 
 from badge_relief_maker import __version__
 
+from .core.approved_heightmap_builder import build_relief_from_approved_heightmap
 from .core.project_build import (
     build_double_side_placeholder_from_project_file,
     build_fused_double_side_from_project_file,
@@ -39,8 +40,12 @@ def _selected_action_count(args):
     import_requested = bool(args.import_front_path or args.import_back_path or args.import_reference_path)
     build_requested = bool(args.build_front or args.build_back or args.build_side or args.build_double_placeholder or args.build_double)
     heightmap_requested = bool(args.export_front_heightmap or args.export_back_heightmap or args.export_heightmap_side)
-    direct_requested = bool(args.input_path or args.output_path)
-    return sum(bool(value) for value in [args.gui, args.new_project_name, import_requested, build_requested, heightmap_requested, direct_requested])
+    approved_requested = bool(args.approved_heightmap_path)
+    direct_requested = bool(args.input_path or (args.output_path and not approved_requested))
+    return sum(
+        bool(value)
+        for value in [args.gui, args.new_project_name, import_requested, build_requested, heightmap_requested, approved_requested, direct_requested]
+    )
 
 
 def _execute(args):
@@ -78,7 +83,6 @@ def _execute(args):
         print(message)
         return 0
 
-
     heightmap_side = args.export_heightmap_side
     if args.export_front_heightmap:
         heightmap_side = "front"
@@ -93,6 +97,32 @@ def _execute(args):
             long_edge_px=args.heightmap_long_edge_px,
             output_dir=args.heightmap_output_dir,
             quality_mode="high",
+        )
+        print(result.report)
+        return 0
+
+    if args.approved_heightmap_path:
+        if not args.output_path:
+            raise ValueError("provide --output when building from an approved grayscale heightmap")
+        params = ReliefParameters(
+            width_mm=args.width_mm,
+            height_mm=args.height_mm,
+            base_thickness_mm=args.base_mm,
+            relief_height_mm=args.relief_mm,
+            minimum_thickness_mm=args.minimum_thickness_mm,
+            max_grid_cells=args.max_grid_cells,
+            use_smoothed_side_walls=args.smoothed_side_walls,
+            contour_smoothing_iterations=args.contour_smoothing_iterations,
+            edge_style=args.edge_style,
+            bevel_mm=args.bevel_mm,
+            radius_mm=args.radius_mm,
+            process_profile=args.process_profile,
+        )
+        result = build_relief_from_approved_heightmap(
+            args.approved_heightmap_path,
+            args.output_path,
+            mask_path=args.approved_solid_mask_path,
+            parameters=params,
         )
         print(result.report)
         return 0
@@ -185,7 +215,7 @@ def main(argv=None) -> int:
     if argv is None:
         argv = []
 
-    parser = argparse.ArgumentParser(description="Build a rough local badge relief OBJ, STL or GLB from one image.")
+    parser = argparse.ArgumentParser(description="Build badge relief artifacts from source images or approved grayscale masters.")
     parser.add_argument("--version", action="version", version=f"Badge Relief Maker {__version__}")
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--new-project", dest="new_project_name")
@@ -210,6 +240,8 @@ def main(argv=None) -> int:
     heightmap_group.add_argument("--export-heightmap-side", choices=["front", "back"])
     parser.add_argument("--heightmap-long-edge-px", type=int, default=8192)
     parser.add_argument("--heightmap-output-dir")
+    parser.add_argument("--approved-heightmap", dest="approved_heightmap_path")
+    parser.add_argument("--approved-solid-mask", dest="approved_solid_mask_path")
 
     parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl", "glb"])
     parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
@@ -251,8 +283,12 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if _selected_action_count(args) > 1:
-        parser.error("choose exactly one primary action: GUI, new project, import, grayscale export, project build, or direct image build")
-    if bool(args.input_path) != bool(args.output_path):
+        parser.error(
+            "choose exactly one primary action: GUI, new project, import, grayscale export, approved-heightmap build, project build, or direct image build"
+        )
+    if args.approved_heightmap_path and args.input_path:
+        parser.error("choose either --approved-heightmap or --input, not both")
+    if not args.approved_heightmap_path and bool(args.input_path) != bool(args.output_path):
         parser.error("direct image builds require both --input and --output")
 
     try:
