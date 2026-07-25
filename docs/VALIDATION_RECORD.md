@@ -8,7 +8,9 @@ Current grayscale-first implementation commits:
 
 - `1e66656346ab54d613f531589b2d4da161a331b8`: project/CLI/GUI grayscale-master export;
 - `7b0e37c0ffe0f37bea83512336e0cdbec69d5ba8`: scalable 8K export and source-resolution linework reconstruction;
-- `48ea34a817a586d796b3a38f99a5bc14d3a6c4da`: grayscale-first acceptance contract.
+- `f32d9b4df847b1e0abde2644f5863907895a6808`: explicit approved-heightmap-to-mesh CLI path;
+- `341860b374df959786574a95526de69862f39130`: correct 16-bit height normalization;
+- `4813c4bc96b9b73252bb5704304fbd3ceaa43761`: cumulative correction and approved-master contract.
 
 ### Acceptance order
 
@@ -34,9 +36,13 @@ Observed V11 master export:
 
 The original fixture image is 408 × 612 pixels. Upscaling alone cannot create genuine new sculptural information; the V11 exporter therefore separates high-resolution contour recovery from broad component mass and exports both the height master and linework mask for manual editing.
 
+### Approved-master conversion contract
+
+The new conversion path accepts an explicitly approved 16-bit PNG or 32-bit TIFF plus an optional solid mask. It does not re-read the source artwork, perform line-art inference, add embossing or invent semantic height. The approved grayscale is the source of truth. A test verifies that 16-bit values survive normalization and produce the expected relief thickness.
+
 ### Automated Windows validation
 
-Workflow run `30148329660` completed the Windows Python 3.10 and Python 3.12 quality gates successfully, including package installation, entry points, GUI import, Ruff and the complete pytest suite. The packaging smoke job was still running when this record was updated.
+Workflow run `30148329660` completed the Windows Python 3.10 and Python 3.12 quality gates successfully, including package installation, entry points, GUI import, Ruff and the complete pytest suite. Later approved-master commits are being revalidated by the current branch workflow and must pass before a new packaged executable is presented.
 
 ### Remaining work
 
