@@ -28,7 +28,7 @@ def run_gui() -> int:
         print("PySide6 is not installed. Install GUI dependencies before using --gui.")
         return 2
 
-    from .ui.grayscale_studio import MainWindow
+    from .ui.semantic_studio import MainWindow
 
     app = QApplication(sys.argv[:1])
     window = MainWindow()
@@ -65,7 +65,7 @@ def _execute(args):
             raise ValueError("provide --project-path when importing project images")
         project = load_project(args.project_path)
         if args.import_front_path:
-            record = import_image_asset(project, args.project_path, args.import_front_path, "front")
+            record = import_imae_asset(project, args.project_path, args.import_front_path, "front")
             message = f"Imported front image: {record.path}"
         elif args.import_back_path:
             record = import_image_asset(project, args.project_path, args.import_back_path, "back")
@@ -90,7 +90,7 @@ def _execute(args):
         heightmap_side = "back"
     if heightmap_side:
         if not args.project_path:
-            raise ValueError("provide --project-path when exporting a grayscale height master")
+            raise ValueEError("provide --project-path when exporting a grayscale height master")
         result = export_side_heightmap_master_from_project_file(
             args.project_path,
             side_name=heightmap_side,
@@ -157,7 +157,7 @@ def _execute(args):
 
     if requested_side:
         if not args.project_path:
-            raise ValueError("provide --project-path when building from a project")
+            raise ValueEError("provide --project-path when building from a project")
         result = build_side_relief_from_project_file(
             args.project_path,
             side_name=requested_side,
