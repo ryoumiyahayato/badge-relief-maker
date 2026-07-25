@@ -113,14 +113,13 @@ def clean_mask(mask, min_component_pixels=1, fill_hole_pixels=0, smooth_iteratio
     }
 
 
-
 def regularize_binary_contour(mask, sigma=0.86):
     """Remove one-pixel edge bumps without flattening established interior detail.
 
     Only the narrow signed-distance band around the silhouette is changed. Pixels
-    more than roughly 1.5 source pixels inside or outside remain fixed, so thin leaf
+    more than roughly two source pixels inside or outside remain fixed, so thin leaf
     tips and engraving cut-outs are less likely to disappear than with a global
-    morphological opening/closing operation.
+    morphological opening or closing operation.
     """
     source = np.asarray(mask, dtype=bool)
     if not source.any() or source.all():
@@ -136,18 +135,13 @@ def regularize_binary_contour(mask, sigma=0.86):
 
 
 def resample_binary_mask(mask, target_shape):
-    """Resample a binary silhouette through a regularized signed-distance field.
-
-    The contour is first cleaned only inside a narrow boundary band, then the
-    signed distance is interpolated. A final subpixel Gaussian pass suppresses the
-    isolated staircase dots that otherwise remain visible even on dense meshes.
-    """
+    """Resample a binary silhouette through a signed-distance field."""
     source = regularize_binary_contour(mask)
     rows, cols = [int(value) for value in target_shape]
-    if source.shape == (rows, cols):
-        return source.copy()
     if rows < 1 or cols < 1:
         raise ValueError("target_shape must be positive")
+    if source.shape == (rows, cols):
+        return source.copy()
     inside = ndi.distance_transform_edt(source)
     outside = ndi.distance_transform_edt(~source)
     signed = ndi.gaussian_filter((inside - outside).astype(np.float32), sigma=0.32)
@@ -157,50 +151,33 @@ def resample_binary_mask(mask, target_shape):
     return resized >= 0.0
 
 
-def resample_mask_and_heightmap(mask, heightmap, target_cells):
-    """Resample a relief field toward a target mesh density.
+def crop_to_mask(mask, heightmap, padding=1):
+    """Crop mask and heightmap to the foreground bounding box."""
+    box = mask_bbox(mask, padding=padding)
+    if box is None:
+        return mask, heightmap, None
+    x0, y0, x1, y1 = box
+    return mask[y0:y1, x0:x1], heightmap[y0:y1, x0:x1], box
 
-    ThhÈ[\ˆØ[ˆ\ØØ[HİË\™\ÛÛ][ÛˆÛİ\˜ÙH\ÛÜšÈ™Y›Ü™HY\ÚÙ[™\˜][ÛÂˆHÜ™[˜\H™]šY]È]™[XZ[œÈ›İ[™YHHÜšYÚ[˜[[XYÙHÚ^™K‚ˆˆˆ‚ˆ›İÜËÛÛÈHœ˜\Ø\œ˜^JX\ÚÊKœÚ\Bˆİ\œ™[HX^
-›İÜÈ
-ˆÛÛËJBˆ\™Ù]HX^
-[
-\™Ù]ØÙ[ÊK
-BˆØØ[HHX]œÜ\
-›Ø]
-\™Ù]
-HÈ›Ø]
-İ\œ™[
-JBˆ™]×Ü›İÜÈHX^
-‹[
-›İ[™
-›İÜÈ
-ˆØØ[JJJBˆ™]×ØÛÛÈHX^
-‹[
-›İ[™
-ÛÛÈ
-ˆØØ[JJJBˆ™\Ú^™YÛX\ÚÈH™\Ø[\WØš[˜\WÛX\ÚÊX\ÚË
-™]×Ü›İÜË™]×ØÛÛÊJBˆZYÚÚ[YÈH[XYÙK™œ›ÛX\œ˜^Jœ˜\Ø\œ˜^JZYÚX\\O[œ™›Ø]ÌŠK[ÙOH‘ˆŠBˆ™\Ú^™YÚZYÚHœ˜\Ø\œ˜^JZYÚÚ[YËœ™\Ú^™J
-™]×ØÛÛË™]×Ü›İÜÊK[XYÙK”™\Ø[\[™Ë’PÕP’PÊK\O[œ™›Ø]ÌŠBˆ™\Ú^™YÚZYÚHœÚ\™J™\Ú^™YÛX\ÚËœ˜Û\
-™\Ú^™YÚZYÚŒKŒ
-KŒ
-K˜\İ\Jœ™›Ø]ÌŠBˆ™]\›ˆ™\Ú^™YÛX\ÚË™\Ú^™YÚZYÚ›Ø]
-ØØ[JB‚™YˆÜ›Üİ×ÛX\ÚÊX\ÚËZYÚX\Y[™ÏLJN‚ˆˆˆÜ›ÜX\ÚÈ[™ZYÚX\ÈH›Ü™YÜ›İ[™›İ[™[™È›Şˆˆˆ‚ˆ›ŞHX\Ú×Ø˜›Ş
-X\ÚËY[™Ï\Y[™ÊBˆYˆ›Ş\È›Û™N‚ˆ™]\›ˆX\ÚËZYÚX\›Û™BˆLKLHH›Şˆ™]\›ˆX\ÚÖŞLLKWKZYÚX\ŞLLKWK›Ş‚‚™Yˆ™\Ú^™WÛX\Ú×Ø[™ÚZYÚX\
-X\ÚËZYÚX\X^ØÙ[ÊN‚ˆˆˆ‘İÛœØ[\HX\ÚÈ[™ZYÚX\Ú[ˆHÜšY\ÈÛÈ\™ÙKˆˆˆ‚ˆYˆX^ØÙ[È\È›Û™HÜˆX^ØÙ[ÈH‚ˆ™]\›ˆX\ÚËZYÚX\KŒ‚ˆ›İÜËÛÛÈHX\ÚËœÚ\Bˆİ\œ™[H›İÜÈ
-ˆÛÛÂˆYˆİ\œ™[HX^ØÙ[Î‚ˆ™]\›ˆX\ÚËZYÚX\KŒ‚ˆØØ[HHX]œÜ\
-›Ø]
-X^ØÙ[ÊHÈ›Ø]
-İ\œ™[
-JBˆ™]×ØÛÛÈHX^
-‹[
-ÛÛÈ
-ˆØØ[JJBˆ™]×Ü›İÜÈHX^
-‹[
-›İÜÈ
-ˆØØ[JJB‚ˆ™\Ú^™YÛX\ÚÈH™\Ø[\WØš[˜\WÛX\ÚÊX\ÚË
-™]×Ü›İÜË™]×ØÛÛÊJBˆZYÚÚ[YÈH[XYÙK™œ›ÛX\œ˜^Jœ˜\Ø\œ˜^JZYÚX\\O[œ™›Ø]ÌŠK[ÙOH‘ˆŠBˆ™\Ú^™YÚZYÚHœ˜\Ø\œ˜^JZYÚÚ[YËœ™\Ú^™J
-™]×ØÛÛË™]×Ü›İÜÊK[XYÙK”™\Ø[\[™Ë’PÕP’PÊK\O[œ™›Ø]ÌŠBˆ™\Ú^™YÚZYÚHœÚ\™J™\Ú^™YÛX\ÚËœ˜Û\
-™\Ú^™YÚZYÚŒKŒ
-KŒ
-K˜\İ\Jœ™›Ø]ÌŠBˆ™]\›ˆ™\Ú^™YÛX\ÚË™\Ú^™YÚZYÚ›Ø]
-ØØ[JB
+
+def resize_mask_and_heightmap(mask, heightmap, max_cells):
+    """Resample mask and heightmap when the grid is too large."""
+    if max_cells is None or max_cells <= 0:
+        return mask, heightmap, 1.0
+
+    rows, cols = mask.shape
+    current = rows * cols
+    if current <= max_cells:
+        return mask, heightmap, 1.0
+
+    scale = math.sqrt(float(max_cells) / float(current))
+    new_cols = max(2, int(cols * scale))
+    new_rows = max(2, int(rows * scale))
+
+    resized_mask = resample_binary_mask(mask, (new_rows, new_cols))
+    height_img = Image.fromarray(np.asarray(heightmap, dtype=np.float32), mode="F")
+    resized_height = np.asarray(
+        height_img.resize((new_cols, new_rows), Image.Resampling.BICUBIC), dtype=np.float32
+    )
+    resized_height = np.where(resized_mask, np.clip(resized_height, 0.0, 1.0), 0.0).astype(np.float32)
+    return resized_mask, resized_height, scale
