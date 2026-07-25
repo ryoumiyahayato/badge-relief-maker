@@ -59,6 +59,24 @@ The export produces:
 
 Confirmed void/background regions are accumulated by union. A later export does not discard an earlier confirmed hole unless the project data explicitly reverses that decision. Broad component mass is synthesized on a bounded working grid, while source contours and engraving coverage are reconstructed directly at the requested final resolution. Mesh generation remains deferred during this review stage.
 
+## Build only from an approved grayscale master
+
+After the PNG/TIFF master is approved, generate a mesh from that exact artifact:
+
+```powershell
+python -m badge_relief_maker.app `
+  --approved-heightmap height_master_16bit.png `
+  --approved-solid-mask solid_mask.png `
+  --output approved.obj `
+  --width-mm 100 `
+  --height-mm 150 `
+  --base-mm 2.5 `
+  --relief-mm 8 `
+  --max-grid-cells 1000000
+```
+
+This strict path does not return to the original image and does not run automatic embossing or line-art inference. The approved grayscale is the source of truth. Mesh-grid resampling is reported when the approved master exceeds the configured grid-cell limit.
+
 ## Current deterministic pipeline
 
 The current single-side path performs:
@@ -139,7 +157,7 @@ python -m badge_relief_maker.app --new-project "Test Medal" --project-path test.
 python -m badge_relief_maker.app --project-path test.medalproj --import-front front.png
 python -m badge_relief_maker.app --project-path test.medalproj --export-front-heightmap --heightmap-long-edge-px 8192
 # Review and edit the PNG/TIFF master before continuing.
-python -m badge_relief_maker.app --project-path test.medalproj --build-front --project-export-format obj --quality high
+python -m badge_relief_maker.app --approved-heightmap height_master_16bit.png --approved-solid-mask solid_mask.png --output approved.obj
 ```
 
 Project format version 2 persists:
