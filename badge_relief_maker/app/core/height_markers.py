@@ -2,15 +2,25 @@
 
 import numpy as np
 
-
-_SUPPORTED_MARKER_TYPES = {"height", "height_override", "set_height"}
-_SUPPORTED_TARGETS = {"heightmap", "relief", "front", "back", "both"}
-_SET_OPERATIONS = {"set", "replace", "override", "height_override", "set_height"}
-_ADD_OPERATIONS = {"add", "raise", "increase"}
-_SUBTRACT_OPERATIONS = {"subtract", "sub", "lower", "decrease"}
-_SMOOTH_OPERATIONS = {"smooth", "soften", "blur"}
-_POLYGON_SHAPES = {"polygon", "poly", "freeform", "free_form"}
-_RECTANGLE_SHAPES = {"rectangle", "rect", "box"}
+from .marker_schema import (
+    ADD_OPERATIONS,
+    HEIGHT_MARKER_TYPES,
+    HEIGHT_NORMALIZED_KEYS,
+    HEIGHT_PIXEL_KEYS,
+    HEIGHT_TARGETS,
+    PIXEL_COORDINATE_SPACES,
+    POLYGON_POINT_KEYS,
+    POLYGON_SHAPES,
+    RECTANGLE_SHAPES,
+    SET_OPERATIONS,
+    SMOOTH_OPERATIONS,
+    SUBTRACT_OPERATIONS,
+    WIDTH_NORMALIZED_KEYS,
+    WIDTH_PIXEL_KEYS,
+    first_present_key,
+    marker_list,
+)
+from .validation import clamp01
 
 
 def apply_manual_height_markers(heightmap, mask, markers=()):
@@ -39,20 +49,20 @@ def apply_manual_height_markers(heightmap, mask, markers=()):
         raise ValueError("heightmap must be a 2D array")
 
     result = heightmap.copy()
-    marker_list = _marker_list(markers)
+    marker_items = marker_list(markers)
     report = {
         "enabled": False,
-        "requested_marker_count": int(len(marker_list)),
+        "requested_marker_count": int(len(marker_items)),
         "applied_marker_count": 0,
         "ignored_marker_count": 0,
         "affected_pixel_count": 0,
     }
 
-    if not marker_list or not mask.any():
+    if not marker_items or not mask.any():
         return result, report
 
     affected_total = np.zeros(mask.shape, dtype=bool)
-    for marker in marker_list:
+    for marker in marker_items:
         normalized = normalize_manual_height_marker(marker, mask.shape)
         if normalized is None:
             report["ignored_marker_count"] += 1
@@ -94,26 +104,13 @@ def manual_height_marker_region(mask, marker):
     return _marker_region(mask, normalized)
 
 
-def _marker_list(markers):
-    if markers is None:
-        return []
-    if isinstance(markers, dict):
-        return [markers]
-    if isinstance(markers, (str, bytes)):
-        return [markers]
-    try:
-        return list(markers)
-    except TypeError:
-        return [markers]
-
-
 def _normalize_marker(marker, default_shape):
     marker_type = str(marker.get("marker_type", marker.get("type", marker.get("kind", "height")))).lower()
-    if marker_type not in _SUPPORTED_MARKER_TYPES:
+    if marker_type not in HEIGHT_MARKER_TYPES:
         return None
 
     target = str(marker.get("target", "heightmap")).lower()
-    if target not in _SUPPORTED_TARGETS:
+    if target not in HEIGHT_TARGETS:
         return None
 
     operation = _operation(marker)
@@ -122,7 +119,7 @@ def _normalize_marker(marker, default_shape):
         return None
 
     marker_shape = _marker_shape(marker)
-    if marker_shape in _POLYGON_SHAPES:
+    if marker_shape in POLYGON_SHAPES:
         points = _polygon_points_px(marker, default_shape)
         if points is None:
             return None
@@ -147,7 +144,7 @@ def _normalize_marker(marker, default_shape):
         cx = x * max(cols - 1, 1)
         cy = y * max(rows - 1, 1)
 
-    if marker_shape in _RECTANGLE_SHAPES:
+    if marker_shape in RECTANGLE_SHAPES:
         width_px, height_px = _rectangle_size_px(marker, default_shape)
         if width_px is None or height_px is None or width_px < 0.0 or height_px < 0.0:
             return None
@@ -246,13 +243,13 @@ def _apply_operation(values, marker):
 
 def _operation(marker):
     raw = str(marker.get("operation", marker.get("mode", "set"))).lower()
-    if raw in _ADD_OPERATIONS:
+    if raw in ADD_OPERATIONS:
         return "add"
-    if raw in _SUBTRACT_OPERATIONS:
+    if raw in SUBTRACT_OPERATIONS:
         return "subtract"
-    if raw in _SMOOTH_OPERATIONS:
+    if raw in SMOOTH_OPERATIONS:
         return "smooth"
-    if raw in _SET_OPERATIONS:
+    if raw in SET_OPERATIONS:
         return "set"
     return "set"
 
@@ -260,14 +257,14 @@ def _operation(marker):
 def _operation_value(marker, operation):
     if operation == "smooth":
         value = _float_or_none(marker.get("strength", marker.get("value", 1.0)))
-        return None if value is None else _clamp01(value)
+        return None if value is None else clamp01(value)
     if operation in {"add", "subtract"}:
         for key in ["delta", "delta_height", "height_delta", "value", "height"]:
             if key in marker:
                 value = _float_or_none(marker.get(key))
                 if value is None:
                     return None
-                return _clamp01(abs(value))
+                return clamp01(abs(value))
         return None
     return _height_value(marker)
 
@@ -278,7 +275,7 @@ def _height_value(marker):
             value = _float_or_none(marker.get(key))
             if value is None:
                 return None
-            return _clamp01(value)
+            return clamp01(value)
     return None
 
 
@@ -328,19 +325,14 @@ def _dimension_px(marker, prefix, default_shape):
 
 
 def _dimension_keys(prefix, normalized):
-    suffix = "normalized" if normalized else "px"
     if prefix == "width":
-        return [f"width_{suffix}", f"rect_width_{suffix}", f"region_width_{suffix}", f"box_width_{suffix}"]
-    return [f"height_{suffix}", f"rect_height_{suffix}", f"region_height_{suffix}", f"box_height_{suffix}"] if not normalized else [
-        "rect_height_normalized",
-        "region_height_normalized",
-        "box_height_normalized",
-        "height_size_normalized",
-    ]
+        return WIDTH_NORMALIZED_KEYS if normalized else WIDTH_PIXEL_KEYS
+    return HEIGHT_NORMALIZED_KEYS if normalized else HEIGHT_PIXEL_KEYS
 
 
 def _polygon_points_px(marker, default_shape):
-    points = marker.get("points", marker.get("vertices", marker.get("polygon_points")))
+    points_key = first_present_key(marker, POLYGON_POINT_KEYS)
+    points = marker.get(points_key) if points_key is not None else None
     try:
         points = list(points)
     except TypeError:
@@ -363,7 +355,7 @@ def _polygon_points_px(marker, default_shape):
                 return None
         if x is None or y is None:
             return None
-        if coordinate_space not in {"pixel", "pixels", "image_pixel"}:
+        if coordinate_space not in PIXEL_COORDINATE_SPACES:
             x = x * max(cols - 1, 1)
             y = y * max(rows - 1, 1)
         result.append((float(x), float(y)))
@@ -378,10 +370,6 @@ def _float_or_none(value):
     if not np.isfinite(result):
         return None
     return result
-
-
-def _clamp01(value):
-    return float(min(max(float(value), 0.0), 1.0))
 
 
 def _mean_filter_3x3(values, mask):

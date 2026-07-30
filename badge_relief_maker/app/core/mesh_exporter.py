@@ -1,44 +1,18 @@
 """Mesh export helpers."""
 
 import json
-import os
 import struct
-import tempfile
-from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 
+from .atomic_io import atomic_writer
+from .mesh_data import as_faces, as_vertices
+from .options import EXPORT_FORMATS
+from .validation import clamp01
+
 
 _DEFAULT_BASE_COLOR = [0.8, 0.8, 0.8, 1.0]
-
-
-@contextmanager
-def _atomic_writer(path, mode, encoding=None):
-    """Write beside the target, flush to disk, then atomically replace it."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=str(path.parent),
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        kwargs = {} if "b" in mode else {"encoding": encoding or "utf-8", "newline": "\n"}
-        with os.fdopen(file_descriptor, mode, **kwargs) as fh:
-            yield fh
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(temporary_path, path)
-    except Exception:
-        try:
-            os.close(file_descriptor)
-        except OSError:
-            pass
-        if temporary_path.exists():
-            temporary_path.unlink()
-        raise
 
 
 def _safe_obj_name(name):
@@ -50,7 +24,7 @@ def _safe_obj_name(name):
 def export_obj(path, vertices, faces):
     """Export a minimal OBJ file atomically."""
     vertices, faces = _mesh_arrays(vertices, faces)
-    with _atomic_writer(path, "w", encoding="utf-8") as fh:
+    with atomic_writer(path, "w", encoding="utf-8") as fh:
         for x, y, z in vertices:
             fh.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
         for a, b, c in faces:
@@ -60,7 +34,7 @@ def export_obj(path, vertices, faces):
 def export_obj_objects(path, objects):
     """Export multiple named mesh objects to one atomic OBJ file."""
     vertex_offset = 0
-    with _atomic_writer(path, "w", encoding="utf-8") as fh:
+    with atomic_writer(path, "w", encoding="utf-8") as fh:
         for item in objects:
             name = _safe_obj_name(item.get("name", "object"))
             vertices, faces = _mesh_arrays(item.get("vertices", []), item.get("faces", []))
@@ -86,7 +60,7 @@ def _facet_normal(a, b, c):
 def export_ascii_stl(path, vertices, faces, solid_name="badge_relief"):
     """Export an atomic ASCII STL file using millimeter coordinates."""
     verts, faces = _mesh_arrays(vertices, faces)
-    with _atomic_writer(path, "w", encoding="utf-8") as fh:
+    with atomic_writer(path, "w", encoding="utf-8") as fh:
         fh.write(f"solid {solid_name}\n")
         for face in faces:
             a, b, c = verts[face[0]], verts[face[1]], verts[face[2]]
@@ -131,45 +105,12 @@ def _append_binary_blob(binary_blob, payload):
     return binary_blob, offset
 
 
-def _as_nx3_array(values, dtype, name):
-    try:
-        data = np.asarray(values, dtype=dtype)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be an Nx3 array") from exc
-    if data.size == 0:
-        return np.zeros((0, 3), dtype=dtype)
-    if data.ndim != 2 or data.shape[1] != 3:
-        raise ValueError(f"{name} must be an Nx3 array")
-    return data
-
-
-def _faces_array(faces):
-    face_values = _as_nx3_array(faces, np.float64, "faces")
-    if not np.isfinite(face_values).all():
-        raise ValueError("faces must contain finite integer indices")
-    if not np.equal(face_values, np.rint(face_values)).all():
-        raise ValueError("faces must contain finite integer indices")
-    return face_values.astype(np.int64)
-
-
 def _mesh_arrays(vertices, faces):
-    verts = _as_nx3_array(vertices, np.float32, "vertices")
-    faces = _faces_array(faces)
-    if not np.isfinite(verts).all():
-        raise ValueError("vertices contain non-finite coordinates")
+    verts = as_vertices(vertices, dtype=np.float32)
+    faces = as_faces(faces)
     if len(verts) > 0 and len(faces) > 0 and (faces.min() < 0 or faces.max() >= len(verts)):
         raise ValueError("faces contain vertex indices outside the vertex array")
     return verts, faces
-
-
-def _clamp01(value, default):
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        number = float(default)
-    if not np.isfinite(number):
-        number = float(default)
-    return float(min(max(number, 0.0), 1.0))
 
 
 def _base_color(item):
@@ -183,7 +124,7 @@ def _base_color(item):
                 return list(_DEFAULT_BASE_COLOR)
             if len(values) == 3:
                 values.append(1.0)
-            return [_clamp01(value, default) for value, default in zip(values, _DEFAULT_BASE_COLOR)]
+            return [clamp01(value, default) for value, default in zip(values, _DEFAULT_BASE_COLOR)]
         return list(_DEFAULT_BASE_COLOR)
     try:
         values = [float(value) for value in raw]
@@ -193,7 +134,7 @@ def _base_color(item):
         values.append(1.0)
     if len(values) != 4:
         return list(_DEFAULT_BASE_COLOR)
-    return [_clamp01(value, default) for value, default in zip(values, _DEFAULT_BASE_COLOR)]
+    return [clamp01(value, default) for value, default in zip(values, _DEFAULT_BASE_COLOR)]
 
 
 def _material_from_item(item, name):
@@ -201,8 +142,8 @@ def _material_from_item(item, name):
         "name": f"{name}_material",
         "pbrMetallicRoughness": {
             "baseColorFactor": _base_color(item),
-            "metallicFactor": _clamp01(item.get("metallic", 0.0), 0.0),
-            "roughnessFactor": _clamp01(item.get("roughness", 0.65), 0.65),
+            "metallicFactor": clamp01(item.get("metallic", 0.0), 0.0),
+            "roughnessFactor": clamp01(item.get("roughness", 0.65), 0.65),
         },
     }
 
@@ -337,7 +278,7 @@ def _write_glb(path, document, binary_blob=b""):
     if binary_blob:
         chunks.append((0x004E4942, binary_blob))
     total_length = 12 + sum(8 + len(data) for _, data in chunks)
-    with _atomic_writer(path, "wb") as fh:
+    with atomic_writer(path, "wb") as fh:
         fh.write(struct.pack("<III", 0x46546C67, 2, total_length))
         for chunk_type, data in chunks:
             fh.write(struct.pack("<II", len(data), chunk_type))
@@ -359,8 +300,8 @@ def export_mesh(path, vertices, faces):
 
 
 def supported_formats():
-    return {"stl", "obj", "glb"}
+    return set(EXPORT_FORMATS.values)
 
 
 def implemented_formats():
-    return {"obj", "stl", "glb"}
+    return set(EXPORT_FORMATS.values)

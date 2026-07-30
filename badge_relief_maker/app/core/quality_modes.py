@@ -1,5 +1,7 @@
 """Quality mode presets for relief generation."""
 
+from .options import QUALITY_MODES
+
 
 QUALITY_PRESETS = {
     "preview": {
@@ -25,14 +27,7 @@ QUALITY_PRESETS = {
 
 def normalize_quality_mode(mode):
     """Return a known quality mode name."""
-    value = str(mode or "standard").lower().strip()
-    if value in {"low", "draft"}:
-        return "preview"
-    if value in {"hi", "export", "high_quality"}:
-        return "high"
-    if value not in QUALITY_PRESETS:
-        return "standard"
-    return value
+    return QUALITY_MODES.normalize(mode)
 
 
 def quality_preset(mode):

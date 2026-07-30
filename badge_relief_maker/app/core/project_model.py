@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 import math
 
+from .options import EDGE_STYLES, FOOTPRINT_MODES, HEIGHT_MODES, MASK_MODES, PROCESS_PROFILES, QUALITY_MODES, RIM_PROFILES
+
 
 PROJECT_FILE_VERSION = 2
 
@@ -147,16 +149,6 @@ class ImageRecord:
 
 
 @dataclass
-class OutlineData:
-    """Current project outline state."""
-
-    outline_type: str = "unknown"
-    points: list = field(default_factory=list)
-    confidence: float = 0.0
-    manually_edited: bool = False
-
-
-@dataclass
 class DimensionParameters:
     """Real-world dimensions in millimeters.
 
@@ -175,15 +167,14 @@ class DimensionParameters:
 class EdgeParameters:
     """Parametric side and rim settings."""
 
-    edge_style: str = "straight"
+    edge_style: str = EDGE_STYLES.default
     bevel_mm: float = 0.0
     radius_mm: float = 0.0
     rim_enabled: bool = False
     rim_width_mm: float = 0.0
     rim_width_px: int = 0
     rim_height_mm: float = 0.0
-    rim_profile: str = "flat"
-    use_smoothed_side_walls: bool = False
+    rim_profile: str = RIM_PROFILES.default
     contour_smoothing_iterations: int = 1
 
 
@@ -194,11 +185,10 @@ class ReliefSideParameters:
     enabled: bool = True
     relief_height_mm: float = 3.0
     background_depth_mm: float = 0.0
-    layer_count: int = 4
-    height_mode: str = "grayscale"
-    quality_mode: str = "standard"
+    height_mode: str = HEIGHT_MODES.default
+    quality_mode: str = QUALITY_MODES.default
     invert_height: bool = False
-    mask_mode: str = "auto"
+    mask_mode: str = MASK_MODES.default
     alpha_threshold: int = 1
     luminance_threshold: float = 20.0
     minimum_thickness_mm: float = 0.8
@@ -207,7 +197,7 @@ class ReliefSideParameters:
     uniform_height_normalized: float = 1.0
     smooth_strength: float = 0.0
     detail_sharpness: float = 0.0
-    process_profile: str = "general"
+    process_profile: str = PROCESS_PROFILES.default
     manual_crop_box: list | None = None
     perspective_quad: list | None = None
     mask_edits: list = field(default_factory=list)
@@ -224,7 +214,7 @@ class DoubleSideParameters:
     back_offset_x_mm: float = 0.0
     back_offset_y_mm: float = 0.0
     flip_back_horizontal: bool = True
-    footprint_mode: str = "union"
+    footprint_mode: str = FOOTPRINT_MODES.default
 
 
 @dataclass
@@ -260,7 +250,6 @@ class MedalProject:
     front_image: ImageRecord | None = None
     back_image: ImageRecord | None = None
     reference_images: list = field(default_factory=list)
-    outline: OutlineData = field(default_factory=OutlineData)
     dimensions: DimensionParameters = field(default_factory=DimensionParameters)
     edge: EdgeParameters = field(default_factory=EdgeParameters)
     front_relief: ReliefSideParameters = field(default_factory=ReliefSideParameters)
@@ -294,7 +283,6 @@ class MedalProject:
             for item in (_image_record_from_dict(item) for item in _dict_list(data.get("reference_images", [])))
             if item is not None
         ]
-        project.outline = _dataclass_from_dict(OutlineData, data.get("outline", {}))
         project.dimensions = _dataclass_from_dict(DimensionParameters, data.get("dimensions", {}))
         project.edge = _dataclass_from_dict(EdgeParameters, data.get("edge", {}))
         project.front_relief = _dataclass_from_dict(ReliefSideParameters, data.get("front_relief", {}))
@@ -311,11 +299,7 @@ class MedalProject:
             if item is not None
         ]
 
-        project.outline.manually_edited = _coerce_bool(project.outline.manually_edited, False)
-        if not isinstance(project.outline.points, list):
-            project.outline.points = []
         project.edge.rim_enabled = _coerce_bool(project.edge.rim_enabled, False)
-        project.edge.use_smoothed_side_walls = _coerce_bool(project.edge.use_smoothed_side_walls, False)
         for relief, default_enabled in [(project.front_relief, True), (project.back_relief, False)]:
             relief.enabled = _coerce_bool(relief.enabled, default_enabled)
             relief.invert_height = _coerce_bool(relief.invert_height, False)

@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 
+from .options import EDGE_STYLES, HEIGHT_MODES, MASK_MODES, PROCESS_PROFILES, RIM_PROFILES
+
 
 @dataclass(frozen=True)
 class ReliefParameters:
@@ -12,7 +14,7 @@ class ReliefParameters:
     base_thickness_mm: float = 2.0
     relief_height_mm: float = 3.0
     invert_height: bool = False
-    mask_mode: str = "auto"
+    mask_mode: str = MASK_MODES.default
     alpha_threshold: int = 1
     luminance_threshold: float = 20.0
     minimum_thickness_mm: float = 0.8
@@ -23,21 +25,20 @@ class ReliefParameters:
     min_component_pixels: int = 1
     fill_hole_pixels: int = 0
     mask_smooth_iterations: int = 0
-    use_smoothed_side_walls: bool = False
     contour_smoothing_iterations: int = 1
     rim_width_px: int = 0
     rim_width_mm: float = 0.0
     rim_height_mm: float = 0.0
-    rim_profile: str = "flat"
-    edge_style: str = "straight"
+    rim_profile: str = RIM_PROFILES.default
+    edge_style: str = EDGE_STYLES.default
     bevel_mm: float = 0.0
     radius_mm: float = 0.0
-    height_mode: str = "grayscale"
+    height_mode: str = HEIGHT_MODES.default
     background_depth_mm: float = 0.0
     uniform_height_normalized: float = 1.0
     smooth_strength: float = 0.0
     detail_sharpness: float = 0.0
-    process_profile: str = "general"
+    process_profile: str = PROCESS_PROFILES.default
     manual_crop_box: tuple | None = None
     perspective_quad: tuple | None = None
     manual_mask_edits: tuple = field(default_factory=tuple)

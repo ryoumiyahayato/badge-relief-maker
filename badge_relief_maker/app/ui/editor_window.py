@@ -1,10 +1,4 @@
-"""Corrected visual editor built on the stable project window.
-
-The legacy window already provides the complete control surface. This subclass
-keeps clicks from source and final-grid previews in distinct coordinate spaces,
-prevents edits from drifting after crop/resize, freezes mutable controls while a
-background build reads the project, and supports a user-selected export folder.
-"""
+"""Coordinate-safe visual editor built on the reusable project window shell."""
 
 import json
 import shutil
@@ -23,14 +17,14 @@ except Exception:
 from ..core.image_editing import rectify_perspective
 from ..core.image_preprocess import load_image, normalize_alpha_background
 from ..core.preview_exporter import save_source_preview
-from ..core.project_build import relief_parameters_from_project
 from ..core.project_io import asset_root_for, resolve_project_asset
 from ..core.project_model import ManualMarker
+from ..core.project_parameters import relief_parameters_from_project
 from ..core.single_side_pipeline import prepare_relief_field
-from .main_window import MainWindow as _BaseMainWindow
+from .project_window import ProjectWindow
 
 
-class MainWindow(_BaseMainWindow):
+class MainWindow(ProjectWindow):
     """Project editor with coordinate-safe source and final-grid interactions."""
 
     def __init__(self):
@@ -259,6 +253,101 @@ class MainWindow(_BaseMainWindow):
                 retained.append(marker)
         self.project.manual_markers = retained
 
+    def _apply_mask_tool(self, side, tool, preview_space, x_normalized, y_normalized, radius):
+        side.mask_edits.append(
+            {
+                "shape": "circle",
+                **self._mask_edit_geometry(preview_space, x_normalized, y_normalized, radius),
+                "operation": "add" if tool == "mask add" else "remove",
+            }
+        )
+        return True
+
+    def _apply_height_tool(self, tool, preview_space, x_normalized, y_normalized, radius):
+        if preview_space != "final":
+            self._log("Height edits must be applied on the final height or mask preview.")
+            return False
+        self.project.manual_markers.append(
+            ManualMarker(
+                marker_type="height",
+                target=self.active_side,
+                data={
+                    "shape": "circle",
+                    **self._marker_geometry(preview_space, x_normalized, y_normalized, radius),
+                    "operation": tool.removeprefix("height "),
+                    "value": self.brush_height_spin.value(),
+                },
+            )
+        )
+        return True
+
+    def _apply_layer_tool(self, side, tool, preview_space, x_normalized, y_normalized, radius):
+        if preview_space != "final":
+            self._log("Layer edits must be applied on the final height or mask preview.")
+            return False
+        side.region_layers.append(
+            {
+                "shape": "circle",
+                **self._marker_geometry(preview_space, x_normalized, y_normalized, radius),
+                "height_normalized": self.brush_height_spin.value(),
+                "locked": tool == "layer locked",
+            }
+        )
+        return True
+
+    def _apply_crop_tool(self, side, preview_space, x_normalized, y_normalized):
+        if preview_space != "source":
+            self._log("Crop rectangle must be selected on the source editing preview.")
+            return False
+        if self._preview_processing_shape is None:
+            raise ValueError("refresh previews before selecting a crop")
+        if self._crop_first_point is None:
+            self._crop_first_point = (x_normalized, y_normalized)
+            self._log("Crop first corner recorded; click the opposite corner.")
+            return False
+        first_x, first_y = self._crop_first_point
+        self._crop_first_point = None
+        rows, cols = self._preview_processing_shape
+        side.manual_crop_box = [
+            min(first_x, x_normalized) * cols,
+            min(first_y, y_normalized) * rows,
+            max(first_x, x_normalized) * cols,
+            max(first_y, y_normalized) * rows,
+        ]
+        return True
+
+    def _apply_perspective_tool(self, side, preview_space, x_normalized, y_normalized):
+        if preview_space != "source":
+            self._log("Perspective points must be selected on the oriented source preview.")
+            return False
+        self._perspective_points.append([x_normalized, y_normalized])
+        if len(self._perspective_points) < 4:
+            self._log(f"Perspective point {len(self._perspective_points)}/4 recorded (TL, TR, BR, BL).")
+            return False
+        if not self._confirm_perspective_reset(side):
+            self._perspective_points = []
+            self._log("Perspective change cancelled.")
+            return False
+        points = self._perspective_points[:4]
+        self._perspective_points = []
+        self._clear_side_coordinate_edits(side, keep_perspective=True)
+        side.perspective_quad = points
+        return True
+
+    def _apply_visual_tool(self, side, tool, preview_space, x_normalized, y_normalized):
+        radius = self.brush_radius_spin.value()
+        if tool in {"mask add", "mask remove"}:
+            return self._apply_mask_tool(side, tool, preview_space, x_normalized, y_normalized, radius)
+        if tool in {"height set", "height add", "height subtract", "height smooth"}:
+            return self._apply_height_tool(tool, preview_space, x_normalized, y_normalized, radius)
+        if tool in {"layer set", "layer locked"}:
+            return self._apply_layer_tool(side, tool, preview_space, x_normalized, y_normalized, radius)
+        if tool == "crop rectangle":
+            return self._apply_crop_tool(side, preview_space, x_normalized, y_normalized)
+        if tool == "perspective quadrilateral":
+            return self._apply_perspective_tool(side, preview_space, x_normalized, y_normalized)
+        return False
+
     def _preview_clicked(self, *args):
         if len(args) == 3:
             preview_space, x_normalized, y_normalized = args
@@ -276,87 +365,20 @@ class MainWindow(_BaseMainWindow):
         if tool == "inspect":
             self._log(f"{preview_space} preview point: x={x_normalized:.4f}, y={y_normalized:.4f}")
             return
-        side = self._side_parameters(self.active_side)
-        radius = self.brush_radius_spin.value()
         try:
-            if tool in {"mask add", "mask remove"}:
-                side.mask_edits.append(
-                    {
-                        "shape": "circle",
-                        **self._mask_edit_geometry(preview_space, x_normalized, y_normalized, radius),
-                        "operation": "add" if tool == "mask add" else "remove",
-                    }
-                )
-            elif tool in {"height set", "height add", "height subtract", "height smooth"}:
-                if preview_space != "final":
-                    self._log("Height edits must be applied on the final height or mask preview.")
-                    return
-                self.project.manual_markers.append(
-                    ManualMarker(
-                        marker_type="height",
-                        target=self.active_side,
-                        data={
-                            "shape": "circle",
-                            **self._marker_geometry(preview_space, x_normalized, y_normalized, radius),
-                            "operation": tool.removeprefix("height "),
-                            "value": self.brush_height_spin.value(),
-                        },
-                    )
-                )
-            elif tool in {"layer set", "layer locked"}:
-                if preview_space != "final":
-                    self._log("Layer edits must be applied on the final height or mask preview.")
-                    return
-                side.region_layers.append(
-                    {
-                        "shape": "circle",
-                        **self._marker_geometry(preview_space, x_normalized, y_normalized, radius),
-                        "height_normalized": self.brush_height_spin.value(),
-                        "locked": tool == "layer locked",
-                    }
-                )
-            elif tool == "crop rectangle":
-                if preview_space != "source":
-                    self._log("Crop rectangle must be selected on the source editing preview.")
-                    return
-                if self._preview_processing_shape is None:
-                    raise ValueError("refresh previews before selecting a crop")
-                if self._crop_first_point is None:
-                    self._crop_first_point = (x_normalized, y_normalized)
-                    self._log("Crop first corner recorded; click the opposite corner.")
-                    return
-                first_x, first_y = self._crop_first_point
-                self._crop_first_point = None
-                rows, cols = self._preview_processing_shape
-                side.manual_crop_box = [
-                    min(first_x, x_normalized) * cols,
-                    min(first_y, y_normalized) * rows,
-                    max(first_x, x_normalized) * cols,
-                    max(first_y, y_normalized) * rows,
-                ]
-            elif tool == "perspective quadrilateral":
-                if preview_space != "source":
-                    self._log("Perspective points must be selected on the oriented source preview.")
-                    return
-                self._perspective_points.append([x_normalized, y_normalized])
-                if len(self._perspective_points) < 4:
-                    self._log(f"Perspective point {len(self._perspective_points)}/4 recorded (TL, TR, BR, BL).")
-                    return
-                if not self._confirm_perspective_reset(side):
-                    self._perspective_points = []
-                    self._log("Perspective change cancelled.")
-                    return
-                points = self._perspective_points[:4]
-                self._perspective_points = []
-                self._clear_side_coordinate_edits(side, keep_perspective=True)
-                side.perspective_quad = points
-            else:
-                return
+            applied = self._apply_visual_tool(
+                self._side_parameters(self.active_side),
+                tool,
+                preview_space,
+                x_normalized,
+                y_normalized,
+            )
         except Exception as exc:
             self._error("Could not apply preview edit", exc)
             return
-        self._dirty = True
-        self.refresh_previews()
+        if applied:
+            self._dirty = True
+            self.refresh_previews()
 
     def clear_visual_edits(self):
         if self.project is None:

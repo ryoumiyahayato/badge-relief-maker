@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from badge_relief_maker.app.core.contour_side_builder import build_contour_side_walls, build_smoothed_contour_side_walls
 from badge_relief_maker.app.core.manufacturability_check import basic_report, edge_usage_report
 from badge_relief_maker.app.core.mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from badge_relief_maker.app.core.masked_solid_builder import build_masked_relief_solid
@@ -158,38 +157,6 @@ def test_apply_outer_rim_to_heightmap_supports_linear_profile():
     assert float(boosted[1, 1]) == 0.25
 
 
-def test_contour_side_walls_follow_single_cell_boundary():
-    heightmap = np.zeros((3, 3), dtype=np.float32)
-    heightmap[1, 1] = 1.0
-    mask = np.zeros((3, 3), dtype=bool)
-    mask[1, 1] = True
-    vertices, faces = build_contour_side_walls(heightmap, mask, 9.0, 9.0, 1.0, 2.0)
-    assert vertices.shape == (16, 3)
-    assert faces.shape == (8, 3)
-    assert float(vertices[:, 2].min()) == -1.0
-    assert float(vertices[:, 2].max()) == 2.0
-
-
-def test_smoothed_contour_side_walls_follow_smoothed_boundary():
-    heightmap = np.zeros((3, 3), dtype=np.float32)
-    heightmap[1, 1] = 1.0
-    mask = np.zeros((3, 3), dtype=bool)
-    mask[1, 1] = True
-    vertices, faces = build_smoothed_contour_side_walls(heightmap, mask, 9.0, 9.0, 1.0, 2.0, smoothing_iterations=1)
-    assert vertices.shape == (32, 3)
-    assert faces.shape == (16, 3)
-    assert float(vertices[:, 2].min()) == -1.0
-    assert float(vertices[:, 2].max()) == 2.0
-
-
-def test_contour_side_walls_returns_stable_empty_arrays():
-    heightmap = np.zeros((3, 3), dtype=np.float32)
-    mask = np.zeros((3, 3), dtype=bool)
-    vertices, faces = build_contour_side_walls(heightmap, mask, 9.0, 9.0, 1.0, 2.0)
-    assert vertices.shape == (0, 3)
-    assert faces.shape == (0, 3)
-
-
 def test_masked_relief_solid_closes_non_uniform_height_field():
     heightmap = np.asarray([[0.25, 1.0]], dtype=np.float32)
     mask = np.asarray([[True, True]], dtype=bool)
@@ -202,7 +169,7 @@ def test_masked_relief_solid_closes_non_uniform_height_field():
     assert report["face_geometry"]["signed_volume_mm3"] > 0.0
 
 
-def test_masked_relief_solid_defers_smoothed_side_walls_for_closure():
+def test_masked_relief_solid_closes_single_cell():
     heightmap = np.zeros((3, 3), dtype=np.float32)
     heightmap[1, 1] = 1.0
     mask = np.zeros((3, 3), dtype=bool)
@@ -214,8 +181,6 @@ def test_masked_relief_solid_defers_smoothed_side_walls_for_closure():
         9.0,
         1.0,
         2.0,
-        use_smoothed_side_walls=True,
-        contour_smoothing_iterations=1,
     )
     report = basic_report(vertices, faces)
     assert len(vertices) == 8
@@ -383,7 +348,7 @@ def test_single_side_pipeline_writes_obj_and_previews(tmp_path):
     assert "f " in text
 
 
-def test_single_side_pipeline_defers_smoothed_side_walls_for_closure(tmp_path):
+def test_single_side_pipeline_reports_outline_smoothing(tmp_path):
     image = Image.new("RGBA", (6, 6), (0, 0, 0, 0))
     image.putpixel((2, 2), (255, 255, 255, 255))
     image.putpixel((3, 2), (255, 255, 255, 255))
@@ -396,7 +361,6 @@ def test_single_side_pipeline_defers_smoothed_side_walls_for_closure(tmp_path):
         height_mm=10.0,
         base_thickness_mm=1.0,
         relief_height_mm=2.0,
-        use_smoothed_side_walls=True,
         contour_smoothing_iterations=1,
     )
     result = build_single_side_relief(image_path, output_path, params)
@@ -405,7 +369,6 @@ def test_single_side_pipeline_defers_smoothed_side_walls_for_closure(tmp_path):
     assert result.report["side_wall_mode"] == "grid_contour_closed"
     assert result.report["topology"]["closed_oriented_manifold"] is True
     assert result.report["outline"]["smoothing_iterations"] == 1
-    assert "smoothed side walls were deferred to preserve a closed grid-contour solid" in result.report["warnings"]
 
 
 def test_single_side_pipeline_can_apply_outer_rim(tmp_path):
@@ -452,26 +415,6 @@ def test_single_side_pipeline_can_apply_linear_outer_rim(tmp_path):
     assert result.report["rim"]["enabled"] is True
     assert result.report["rim"]["rim_profile"] == "linear"
     assert result.report["rim"]["rim_pixel_count"] == 24
-
-
-def test_single_side_pipeline_rectangle_ignores_smoothed_side_wall_flag(tmp_path):
-    image = Image.new("RGBA", (4, 4), (255, 255, 255, 255))
-    image_path = tmp_path / "rectangle.png"
-    output_path = tmp_path / "rectangle.obj"
-    image.save(image_path)
-
-    params = ReliefParameters(
-        width_mm=5.0,
-        height_mm=5.0,
-        use_mask_footprint=False,
-        use_smoothed_side_walls=True,
-    )
-    result = build_single_side_relief(image_path, output_path, params)
-
-    assert output_path.exists()
-    assert result.report["footprint_mode"] == "rectangle"
-    assert result.report["side_wall_mode"] == "rectangle"
-    assert "smoothed side walls were deferred to preserve a closed grid-contour solid" not in result.report["warnings"]
 
 
 def test_single_side_pipeline_blocks_empty_foreground(tmp_path):

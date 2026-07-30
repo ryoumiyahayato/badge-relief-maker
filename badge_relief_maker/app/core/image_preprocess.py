@@ -61,13 +61,6 @@ def load_image(path: str | Path) -> LoadedImage:
         exif_orientation=int(orientation) if orientation is not None else None,
         exif_transposed=bool(orientation not in {None, 1}),
     )
-
-
-def load_rgba(path: str | Path) -> np.ndarray:
-    """Load an EXIF-oriented image as RGBA pixels."""
-    return load_image(path).rgba
-
-
 def normalize_alpha_background(image: np.ndarray, threshold: int = 5) -> np.ndarray:
     """Set near-transparent alpha values to zero."""
     image = np.asarray(image)

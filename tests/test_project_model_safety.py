@@ -53,7 +53,7 @@ def test_project_model_normalizes_invalid_name_and_saved_booleans():
         {
             "name": ["not", "text"],
             "same_physical_object": "false",
-            "edge": {"rim_enabled": "false", "use_smoothed_side_walls": "true"},
+            "edge": {"rim_enabled": "false", "use_smoothed_side_walls": "obsolete"},
             "front_relief": {"enabled": "true", "invert_height": "false", "crop_to_foreground": "true"},
         }
     )
@@ -61,7 +61,7 @@ def test_project_model_normalizes_invalid_name_and_saved_booleans():
     assert project.name == "Untitled"
     assert project.same_physical_object is False
     assert project.edge.rim_enabled is False
-    assert project.edge.use_smoothed_side_walls is True
+    assert not hasattr(project.edge, "use_smoothed_side_walls")
     assert project.front_relief.enabled is True
     assert project.front_relief.invert_height is False
     assert project.front_relief.crop_to_foreground is True

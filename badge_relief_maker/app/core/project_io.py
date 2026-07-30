@@ -2,12 +2,11 @@
 
 import json
 import math
-import os
 import shutil
-import tempfile
 from copy import deepcopy
 from pathlib import Path
 
+from .atomic_io import atomic_writer
 from .project_model import PROJECT_FILE_VERSION, ExportRecord, ImageRecord, MedalProject
 
 
@@ -136,27 +135,9 @@ def save_project(project, path):
     ensure_project_dirs(path)
     project.touch()
 
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=str(path.parent),
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump(project.to_dict(), fh, indent=2, ensure_ascii=False, allow_nan=False)
-            fh.write("\n")
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(temporary_path, path)
-    except Exception:
-        try:
-            os.close(file_descriptor)
-        except OSError:
-            pass
-        if temporary_path.exists():
-            temporary_path.unlink()
-        raise
+    with atomic_writer(path, "w", encoding="utf-8") as fh:
+        json.dump(project.to_dict(), fh, indent=2, ensure_ascii=False, allow_nan=False)
+        fh.write("\n")
     return str(path)
 
 

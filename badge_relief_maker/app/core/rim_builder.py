@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from .options import RIM_PROFILES
+
 
 def boundary_cell_mask(mask):
     """Return foreground cells that touch the exterior of the mask."""
@@ -72,10 +74,10 @@ def rim_boost_map(mask, width_px=1, boost_normalized=0.0, profile="flat"):
         return result
 
     width = max(1, int(width_px))
-    normalized_profile = str(profile or "flat").lower()
+    normalized_profile = str(profile or RIM_PROFILES.default).lower()
     if normalized_profile == "flat":
         result[distances >= 0] = boost
-    elif normalized_profile in {"linear", "smooth"}:
+    elif normalized_profile in RIM_PROFILES:
         active = distances >= 0
         t = np.clip(1.0 - (distances.astype(float) / float(width)), 0.0, 1.0)
         if normalized_profile == "smooth":

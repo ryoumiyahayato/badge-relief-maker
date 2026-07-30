@@ -23,7 +23,6 @@ def test_project_save_load_roundtrip(tmp_path):
     project.edge.rim_width_px = 2
     project.edge.rim_height_mm = 1.0
     project.edge.rim_profile = "smooth"
-    project.edge.use_smoothed_side_walls = True
     project_path = tmp_path / "test.medalproj"
 
     saved_path = save_project(project, project_path)
@@ -34,7 +33,6 @@ def test_project_save_load_roundtrip(tmp_path):
     assert loaded.edge.rim_enabled is True
     assert loaded.edge.rim_width_px == 2
     assert loaded.edge.rim_profile == "smooth"
-    assert loaded.edge.use_smoothed_side_walls is True
     assert asset_root_for(project_path).exists()
 
 
@@ -155,7 +153,6 @@ def test_project_edge_settings_are_used_for_side_build(tmp_path):
     project.edge.rim_width_px = 1
     project.edge.rim_height_mm = 1.0
     project.edge.rim_profile = "smooth"
-    project.edge.use_smoothed_side_walls = True
     project.edge.contour_smoothing_iterations = 1
     project_path = tmp_path / "project_edge.medalproj"
     save_project(project, project_path)
@@ -168,7 +165,6 @@ def test_project_edge_settings_are_used_for_side_build(tmp_path):
     assert result.report["rim"]["rim_profile"] == "smooth"
     assert result.report["side_wall_mode"] == "grid_contour_closed"
     assert "outer rim height boost was applied" in result.report["warnings"]
-    assert "smoothed side walls were deferred to preserve a closed grid-contour solid" in result.report["warnings"]
 
 
 def test_project_rim_width_mm_converts_to_pixel_width(tmp_path):

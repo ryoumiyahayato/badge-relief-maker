@@ -1,12 +1,15 @@
 """Local mesh, footprint and process-oriented advisory analysis."""
 
-from collections import defaultdict, deque
+from collections import defaultdict
 from heapq import heappop, heappush
 
 import numpy as np
 
+from .components import connected_components
+from .options import PROCESS_PROFILES
 
-PROCESS_PROFILES = {
+
+PROCESS_PROFILE_LIMITS = {
     "general": {"minimum_wall_mm": 0.8, "minimum_feature_mm": 0.4, "maximum_overhang_deg": 45.0},
     "fdm": {"minimum_wall_mm": 0.8, "minimum_feature_mm": 0.4, "maximum_overhang_deg": 45.0},
     "resin": {"minimum_wall_mm": 0.5, "minimum_feature_mm": 0.2, "maximum_overhang_deg": 35.0},
@@ -16,10 +19,10 @@ PROCESS_PROFILES = {
 
 
 def process_profile(name="general", minimum_thickness_mm=None):
-    normalized = str(name or "general").strip().lower()
+    normalized = str(name or PROCESS_PROFILES.default).strip().lower()
     if normalized not in PROCESS_PROFILES:
         raise ValueError(f"unsupported process profile: {name}")
-    result = dict(PROCESS_PROFILES[normalized])
+    result = dict(PROCESS_PROFILE_LIMITS[normalized])
     if minimum_thickness_mm is not None:
         result["minimum_wall_mm"] = max(float(minimum_thickness_mm), result["minimum_wall_mm"])
     result["name"] = normalized
@@ -217,27 +220,6 @@ def self_intersection_report(vertices, faces, max_candidate_pairs=2_000_000):
     }
 
 
-def _mask_components(mask):
-    rows, cols = mask.shape
-    visited = np.zeros(mask.shape, dtype=bool)
-    components = []
-    for start_row, start_col in zip(*np.nonzero(mask)):
-        if visited[start_row, start_col]:
-            continue
-        queue = deque([(int(start_row), int(start_col))])
-        visited[start_row, start_col] = True
-        pixels = []
-        while queue:
-            row, col = queue.popleft()
-            pixels.append((row, col))
-            for next_row, next_col in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
-                if 0 <= next_row < rows and 0 <= next_col < cols and mask[next_row, next_col] and not visited[next_row, next_col]:
-                    visited[next_row, next_col] = True
-                    queue.append((next_row, next_col))
-        components.append(pixels)
-    return components
-
-
 def _distance_to_background(mask, cell_w, cell_h):
     rows, cols = mask.shape
     distances = np.full(mask.shape, np.inf, dtype=float)
@@ -279,7 +261,7 @@ def footprint_feature_report(mask, heightmap, width_mm, height_mm, base_thicknes
     rows, cols = mask.shape
     cell_w = float(width_mm) / float(max(cols, 1))
     cell_h = float(height_mm) / float(max(rows, 1))
-    components = _mask_components(mask)
+    components = [component.pixels for component in connected_components(mask)]
     distance = _distance_to_background(mask, cell_w, cell_h)
     local_maxima = []
     for row, col in zip(*np.nonzero(mask)):

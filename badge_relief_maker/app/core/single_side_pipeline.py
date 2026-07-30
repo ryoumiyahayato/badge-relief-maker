@@ -18,18 +18,14 @@ from .mask_processing import clean_mask, crop_to_mask, resize_mask_and_heightmap
 from .masked_solid_builder import build_layered_relief_solid, build_masked_relief_solid
 from .mesh_exporter import export_mesh
 from .mesh_repair import repair_mesh_basic
+from .options import EDGE_STYLES, HEIGHT_MODES, MASK_MODES, PROCESS_PROFILES, RIM_PROFILES
 from .outline_extractor import outline_report
 from .preview_exporter import save_heightmap_preview, save_mask_overlay_preview, save_mask_preview, save_source_preview
 from .relief_parameters import PreparedReliefField, ReliefBuildResult, ReliefParameters
 from .rim_builder import apply_outer_rim_to_heightmap
 from .solid_builder import build_rectangular_relief_solid
-
-
-_SUPPORTED_MASK_MODES = {"auto", "alpha", "luminance", "luminance-dark", "luminance-light"}
-_SUPPORTED_RIM_PROFILES = {"flat", "linear", "smooth"}
-_SUPPORTED_HEIGHT_MODES = {"grayscale", "layers", "hybrid"}
-_SUPPORTED_EDGE_STYLES = {"straight", "bevel", "rounded", "sloped"}
-_SUPPORTED_PROCESS_PROFILES = {"general", "fdm", "resin", "cnc", "mould"}
+from .units import STL_UNIT_CONVENTION
+from .validation import finite_number, integer
 
 
 def _side_wall_mode(params):
@@ -38,67 +34,38 @@ def _side_wall_mode(params):
     return "grid_contour_closed"
 
 
-def _finite_number(value, name, *, positive=False, nonnegative=False):
-    try:
-        result = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be numeric") from exc
-    if not np.isfinite(result):
-        raise ValueError(f"{name} must be finite")
-    if positive and result <= 0.0:
-        raise ValueError(f"{name} must be positive")
-    if nonnegative and result < 0.0:
-        raise ValueError(f"{name} must be non-negative")
-    return result
-
-
-def _integer(value, name, *, minimum=None, maximum=None):
-    try:
-        converted = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be an integer") from exc
-    if not np.isfinite(converted) or converted != round(converted):
-        raise ValueError(f"{name} must be an integer")
-    result = int(converted)
-    if minimum is not None and result < minimum:
-        raise ValueError(f"{name} must be at least {minimum}")
-    if maximum is not None and result > maximum:
-        raise ValueError(f"{name} must be at most {maximum}")
-    return result
-
-
 def _validate_parameters(params):
-    _finite_number(params.width_mm, "width_mm", positive=True)
-    _finite_number(params.height_mm, "height_mm", positive=True)
-    _finite_number(params.base_thickness_mm, "base_thickness_mm", nonnegative=True)
-    relief_height = _finite_number(params.relief_height_mm, "relief_height_mm", nonnegative=True)
-    _finite_number(params.minimum_thickness_mm, "minimum_thickness_mm", nonnegative=True)
-    _finite_number(params.luminance_threshold, "luminance_threshold", nonnegative=True)
-    _finite_number(params.rim_width_mm, "rim_width_mm", nonnegative=True)
-    rim_height = _finite_number(params.rim_height_mm, "rim_height_mm", nonnegative=True)
-    _finite_number(params.bevel_mm, "bevel_mm", nonnegative=True)
-    _finite_number(params.radius_mm, "radius_mm", nonnegative=True)
-    _finite_number(params.background_depth_mm, "background_depth_mm", nonnegative=True)
-    uniform_height = _finite_number(params.uniform_height_normalized, "uniform_height_normalized", nonnegative=True)
-    smooth_strength = _finite_number(params.smooth_strength, "smooth_strength", nonnegative=True)
-    detail_sharpness = _finite_number(params.detail_sharpness, "detail_sharpness", nonnegative=True)
-    _integer(params.alpha_threshold, "alpha_threshold", minimum=0, maximum=255)
-    _integer(params.crop_padding_px, "crop_padding_px", minimum=0)
-    _integer(params.max_grid_cells, "max_grid_cells", minimum=1)
-    _integer(params.min_component_pixels, "min_component_pixels", minimum=0)
-    _integer(params.fill_hole_pixels, "fill_hole_pixels", minimum=0)
-    _integer(params.mask_smooth_iterations, "mask_smooth_iterations", minimum=0)
-    _integer(params.contour_smoothing_iterations, "contour_smoothing_iterations", minimum=0)
-    _integer(params.rim_width_px, "rim_width_px", minimum=0)
-    if str(params.mask_mode).strip().lower() not in _SUPPORTED_MASK_MODES:
+    finite_number(params.width_mm, "width_mm", positive=True)
+    finite_number(params.height_mm, "height_mm", positive=True)
+    finite_number(params.base_thickness_mm, "base_thickness_mm", nonnegative=True)
+    relief_height = finite_number(params.relief_height_mm, "relief_height_mm", nonnegative=True)
+    finite_number(params.minimum_thickness_mm, "minimum_thickness_mm", nonnegative=True)
+    finite_number(params.luminance_threshold, "luminance_threshold", nonnegative=True)
+    finite_number(params.rim_width_mm, "rim_width_mm", nonnegative=True)
+    rim_height = finite_number(params.rim_height_mm, "rim_height_mm", nonnegative=True)
+    finite_number(params.bevel_mm, "bevel_mm", nonnegative=True)
+    finite_number(params.radius_mm, "radius_mm", nonnegative=True)
+    finite_number(params.background_depth_mm, "background_depth_mm", nonnegative=True)
+    uniform_height = finite_number(params.uniform_height_normalized, "uniform_height_normalized", nonnegative=True)
+    smooth_strength = finite_number(params.smooth_strength, "smooth_strength", nonnegative=True)
+    detail_sharpness = finite_number(params.detail_sharpness, "detail_sharpness", nonnegative=True)
+    integer(params.alpha_threshold, "alpha_threshold", minimum=0, maximum=255)
+    integer(params.crop_padding_px, "crop_padding_px", minimum=0)
+    integer(params.max_grid_cells, "max_grid_cells", minimum=1)
+    integer(params.min_component_pixels, "min_component_pixels", minimum=0)
+    integer(params.fill_hole_pixels, "fill_hole_pixels", minimum=0)
+    integer(params.mask_smooth_iterations, "mask_smooth_iterations", minimum=0)
+    integer(params.contour_smoothing_iterations, "contour_smoothing_iterations", minimum=0)
+    integer(params.rim_width_px, "rim_width_px", minimum=0)
+    if str(params.mask_mode).strip().lower() not in MASK_MODES:
         raise ValueError(f"unsupported mask mode: {params.mask_mode}")
-    if str(params.rim_profile).strip().lower() not in _SUPPORTED_RIM_PROFILES:
+    if str(params.rim_profile).strip().lower() not in RIM_PROFILES:
         raise ValueError("rim_profile must be 'flat', 'linear' or 'smooth'")
-    if str(params.height_mode).strip().lower() not in _SUPPORTED_HEIGHT_MODES:
+    if str(params.height_mode).strip().lower() not in HEIGHT_MODES:
         raise ValueError("height_mode must be 'grayscale', 'layers' or 'hybrid'")
-    if str(params.edge_style).strip().lower() not in _SUPPORTED_EDGE_STYLES:
+    if str(params.edge_style).strip().lower() not in EDGE_STYLES:
         raise ValueError("edge_style must be 'straight', 'sloped', 'bevel' or 'rounded'")
-    if str(params.process_profile).strip().lower() not in _SUPPORTED_PROCESS_PROFILES:
+    if str(params.process_profile).strip().lower() not in PROCESS_PROFILES:
         raise ValueError(f"unsupported process_profile: {params.process_profile}")
     if uniform_height > 1.0 or smooth_strength > 1.0 or detail_sharpness > 1.0:
         raise ValueError("uniform_height_normalized, smooth_strength and detail_sharpness must be between 0 and 1")
@@ -308,25 +275,13 @@ def _blocking_topology_errors(report):
     return reasons
 
 
-def build_single_side_relief(image_path, output_path=None, parameters=None, preview_dir=None):
-    """Build a closed rough relief solid from one local image."""
-    params = parameters or ReliefParameters()
-    _validate_parameters(params)
-    prepared = prepare_relief_field(image_path, params, preview_dir=preview_dir)
+def _build_relief_mesh(params, prepared):
     mask = prepared.mask
     heightmap = prepared.heightmap
-    field_report = prepared.report
-    outline = field_report["outline"]
-    manual_height_report = field_report["manual_height"]
-    rim_report = field_report["rim"]
-    cleanup_report = field_report["mask_cleanup"]
-    effective_rim_width_px = rim_report["effective_rim_width_px"]
-    resize_scale = field_report["resize_scale"]
-
     if params.use_mask_footprint and str(params.height_mode).lower() == "layers":
         if str(params.edge_style).lower() != "straight":
             raise ValueError("exact layered height steps currently require edge_style='straight'")
-        vertices, faces = build_layered_relief_solid(
+        return build_layered_relief_solid(
             heightmap,
             mask,
             params.width_mm,
@@ -334,39 +289,37 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
             params.base_thickness_mm,
             params.relief_height_mm,
         )
-    elif params.use_mask_footprint:
-        vertices, faces = build_masked_relief_solid(
+    if params.use_mask_footprint:
+        return build_masked_relief_solid(
             heightmap,
             mask,
             params.width_mm,
             params.height_mm,
             params.base_thickness_mm,
             params.relief_height_mm,
-            use_smoothed_side_walls=params.use_smoothed_side_walls,
-            contour_smoothing_iterations=params.contour_smoothing_iterations,
             edge_style=params.edge_style,
             bevel_mm=params.bevel_mm,
             radius_mm=params.radius_mm,
         )
-    else:
-        vertices, faces = build_rectangular_relief_solid(
-            heightmap,
-            params.width_mm,
-            params.height_mm,
-            params.base_thickness_mm,
-            params.relief_height_mm,
-        )
+    return build_rectangular_relief_solid(
+        heightmap,
+        params.width_mm,
+        params.height_mm,
+        params.base_thickness_mm,
+        params.relief_height_mm,
+    )
 
-    raw_vertex_count = int(len(vertices))
-    raw_face_count = int(len(faces))
-    vertices, faces, repair_report = repair_mesh_basic(vertices, faces)
+
+def _create_mesh_report(params, prepared, vertices, faces, raw_counts, repair_report):
+    field_report = prepared.report
+    rim_report = field_report["rim"]
     report = basic_report(
         vertices,
         faces,
         params.minimum_thickness_mm,
         analysis_context={
-            "mask": mask,
-            "heightmap": heightmap,
+            "mask": prepared.mask,
+            "heightmap": prepared.heightmap,
             "width_mm": params.width_mm,
             "height_mm": params.height_mm,
             "base_thickness_mm": params.base_thickness_mm,
@@ -376,17 +329,12 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         },
         process_profile=params.process_profile,
     )
-    report["raw_vertex_count"] = raw_vertex_count
-    report["raw_face_count"] = raw_face_count
-    report["optimized_vertex_count"] = raw_vertex_count
-    report["optimized_face_count"] = raw_face_count
+    report["raw_vertex_count"], report["raw_face_count"] = raw_counts
+    report["optimized_vertex_count"], report["optimized_face_count"] = raw_counts
     report["mesh_optimization"] = {"mode": "indexed_builder_preserved", "global_vertex_deduplication": False}
     report["repaired_vertex_count"] = int(len(vertices))
     report["repaired_face_count"] = int(len(faces))
     report["mesh_repair"] = repair_report
-    report["outline"] = outline
-    report["manual_height"] = manual_height_report
-    report["rim"] = rim_report
     report["side_wall_mode"] = _side_wall_mode(params)
     report.update(field_report)
     report["footprint_mode"] = "mask" if params.use_mask_footprint else "rectangle"
@@ -404,14 +352,20 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         "occurred": bool(rim_report["clipped_pixel_count"] > 0),
         "rim_clipped_pixel_count": int(rim_report["clipped_pixel_count"]),
     }
+    return report
 
+
+def _append_pipeline_warnings(report, params, repair_report):
+    manual_height_report = report["manual_height"]
+    rim_report = report["rim"]
+    cleanup_report = report["mask_cleanup"]
     if report["mask_pixel_count"] < 4:
         report["warnings"].append("mask is very small and may produce an unusable model")
     if manual_height_report["enabled"]:
         report["warnings"].append("manual height markers were applied")
     if rim_report["enabled"]:
         report["warnings"].append("outer rim height boost was applied")
-    elif effective_rim_width_px > 0 or params.rim_height_mm > 0.0:
+    elif rim_report["effective_rim_width_px"] > 0 or params.rim_height_mm > 0.0:
         report["warnings"].append("outer rim was requested but not applied")
     if rim_report["clipped_pixel_count"] > 0:
         report["warnings"].append("requested rim height was clipped by the configured relief height limit")
@@ -421,22 +375,33 @@ def build_single_side_relief(image_path, output_path=None, parameters=None, prev
         report["warnings"].append("small mask holes were filled")
     if cleanup_report["smooth_iterations"] > 0:
         report["warnings"].append("mask smoothing was applied")
-    if resize_scale < 1.0:
+    if report["resize_scale"] < 1.0:
         report["warnings"].append("input was downsampled before mesh generation")
     if any(value > 0 for value in repair_report.values()):
         report["warnings"].append("basic mesh repair removed invalid or redundant geometry")
-    if params.use_mask_footprint and params.use_smoothed_side_walls:
-        report["warnings"].append("smoothed side walls were deferred to preserve a closed grid-contour solid")
+def _export_checked_mesh(output_path, vertices, faces, report):
+    if output_path is None:
+        return None
+    blocking_errors = _blocking_topology_errors(report)
+    if blocking_errors:
+        raise ValueError("mesh export blocked by topology errors: " + ", ".join(blocking_errors))
+    written = str(Path(output_path))
+    export_mesh(written, vertices, faces)
+    report["export_path"] = written
+    report["export_format"] = Path(written).suffix.lower().lstrip(".")
+    report["unit_convention"] = STL_UNIT_CONVENTION
+    return written
 
-    written = None
-    if output_path is not None:
-        blocking_errors = _blocking_topology_errors(report)
-        if blocking_errors:
-            raise ValueError("mesh export blocked by topology errors: " + ", ".join(blocking_errors))
-        written = str(Path(output_path))
-        export_mesh(written, vertices, faces)
-        report["export_path"] = written
-        report["export_format"] = Path(written).suffix.lower().lstrip(".")
-        report["unit_convention"] = "millimeters (STL stores no explicit unit metadata)"
 
+def build_single_side_relief(image_path, output_path=None, parameters=None, preview_dir=None):
+    """Build a closed rough relief solid from one local image."""
+    params = parameters or ReliefParameters()
+    _validate_parameters(params)
+    prepared = prepare_relief_field(image_path, params, preview_dir=preview_dir)
+    vertices, faces = _build_relief_mesh(params, prepared)
+    raw_counts = int(len(vertices)), int(len(faces))
+    vertices, faces, repair_report = repair_mesh_basic(vertices, faces)
+    report = _create_mesh_report(params, prepared, vertices, faces, raw_counts, repair_report)
+    _append_pipeline_warnings(report, params, repair_report)
+    written = _export_checked_mesh(output_path, vertices, faces, report)
     return ReliefBuildResult(vertices=vertices, faces=faces, report=report, output_path=written)

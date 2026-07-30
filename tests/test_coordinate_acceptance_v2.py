@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from badge_relief_maker.app.core.project_build import relief_parameters_from_project
+from badge_relief_maker.app.core.project_parameters import relief_parameters_from_project
 from badge_relief_maker.app.core.project_io import (
     create_project,
     import_image_asset,

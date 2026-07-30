@@ -1,108 +1,135 @@
 # Architecture
 
-## Pipeline
+Badge Relief Maker is organized around one deterministic core that is consumed
+by the CLI, project workflows and the desktop editor. The public layers may
+select parameters and coordinate work; image, mesh and persistence rules remain
+in `app/core`.
+
+## Dependency direction
 
 ```text
-Input image
-  -> image preprocess
-  -> mask generation
-  -> contour extraction
-  -> heightmap generation
-  -> relief mesh building
-  -> base and side closure
-  -> mesh repair
-  -> manufacturing report
-  -> export
+CLI / desktop editor
+        |
+        v
+project_build ---------> project_io
+        |                     |
+        v                     v
+project_parameters      project_model
+        |
+        v
+single_side_pipeline / double_side_builder
+        |
+        v
+image + marker + mesh primitives
+        |
+        v
+shared catalogs, validation, components, mesh data, units and atomic I/O
 ```
 
-## Module responsibilities
+Lower layers do not import the CLI or UI. Persisted project dataclasses do not
+act as runtime build parameters: `project_parameters` is the explicit validated
+adapter between those two representations.
 
-### image_preprocess
+## Build flows
 
-Loads images, normalizes format, handles crop and prepares RGBA data.
+### Single side
 
-### mask_generator
+```text
+load and orient image
+  -> optional perspective correction
+  -> mask generation and source-space mask edits
+  -> crop, cleanup and grid resize
+  -> grayscale/layer/hybrid height field
+  -> final-grid layer and height edits
+  -> rim and edge profile
+  -> indexed closed solid
+  -> repair and advisory analysis
+  -> atomic OBJ/STL/GLB export
+```
 
-Creates foreground masks from alpha, luminance, color key or manual user corrections.
+`prepare_relief_field` owns the image-to-field transformation.
+`build_single_side_relief` owns mesh construction, report composition and
+optional export. Callers needing previews or double-sided assembly reuse the
+prepared field rather than duplicating image processing.
 
-### contour_extractor
+### Project and double side
 
-Finds outer contour and internal regions. Later versions should use OpenCV or scikit image for connected components, edges and region boundaries.
+`project_build` owns project-level orchestration, derived paths, unique export
+names and export-history updates. Its `ProjectBuildWorkspace` is the sole
+abstraction for build output and preview locations.
 
-### heightmap_generator
+The placeholder workflow deliberately emits two separate complete solids. The
+fused workflow prepares both fields with the same quality mode, aligns them onto
+one grid, constructs one shared body, repairs it and blocks export if mandatory
+manufacturing checks fail.
 
-Builds the 2D height field used for relief. It should support brightness mode, layer mode and hybrid mode.
+## Shared contracts
 
-### relief_mesh_builder
+The following modules are deliberately small single sources of truth:
 
-Converts a heightmap to vertices and faces. The early version can use a regular grid. Later versions should reduce unnecessary triangles outside the mask and preserve sharp edges.
+- `options.py`: ordered values, defaults and aliases for CLI, UI, models and
+  validation.
+- `validation.py`: strict finite-number, integer and normalized-value checks.
+- `project_parameters.py`: project validation and persisted-to-runtime mapping.
+- `marker_schema.py`: marker types, operations, shapes, coordinate aliases and
+  height keys.
+- `components.py`: deterministic 4/8-connected binary-grid traversal and labels.
+- `mesh_data.py`: strict `N x 3` vertex/face normalization, valid-face masks and
+  signed volume.
+- `atomic_io.py`: flush, `fsync` and atomic replacement for project and mesh
+  files.
+- `units.py`: report/export unit conventions.
 
-### double_side_builder
+Feature modules should import these contracts. They should not create local
+copies of supported-value sets, marker aliases, breadth-first searches, mesh
+array validators or temporary-file replacement logic.
 
-Aligns front and back data, then connects both sides with total thickness and generated side walls.
+## Persistence boundary
 
-### mesh_repair
+`project_model.py` defines tolerant JSON-facing dataclasses. Unknown saved
+fields are ignored so older and forward-extended files can still be read.
+`project_io.py` validates versions, constrains asset paths to the project asset
+root and performs atomic saves.
 
-Handles cleanup, duplicate removal, smoothing, simplification, normal repair, hole filling and small part removal.
+Runtime code uses immutable `ReliefParameters`. New saved settings therefore
+require three explicit changes:
 
-### manufacturability_check
+1. Add the persisted field to the appropriate project dataclass.
+2. Validate and map it in `project_parameters.py`.
+3. Consume it in the relevant core stage and cover the path with a test.
 
-Produces warnings for manufacturing use. It should not claim the model is guaranteed safe. It should report measurable risks.
+Do not persist derived reports or fields that can be reproduced during a build.
 
-### mesh_exporter
+## Desktop UI
 
-Exports OBJ first because it is easy to verify. STL and GLB should follow through trimesh or another mesh library.
+The UI has one public entry point:
 
-### ui
+```python
+from badge_relief_maker.app.ui.main_window import MainWindow
+```
 
-The desktop interface should expose simple terms: import image, crop, mask preview, relief height, base thickness, total thickness, generate, repair, export.
+`ProjectWindow` provides project controls, asynchronous build plumbing and
+explicit preview/edit hooks. `editor_window.MainWindow` implements
+coordinate-safe source/final-grid editing and external export copies.
+`ui/main_window.py` only exposes that concrete editor, preventing two divergent
+window implementations.
 
-## Data objects
+## Extension rules
 
-### ReliefParameters
+- Add a string option to `options.py` first, then derive model, CLI and UI
+  choices from that catalog.
+- Add marker vocabulary to `marker_schema.py`; keep transforms and application
+  code schema-driven.
+- Reuse `connected_components`, `mesh_data` and `atomic_writer`.
+- Keep project-file load/build/save wrappers on `_run_project_file_build`.
+- Preserve physical-dimension semantics: single-side base thickness and fused
+  central-body thickness are different settings.
+- Treat manufacturing reports as advisory; they never certify a model.
 
-Suggested fields:
+## Known complexity
 
-- width_mm
-- height_mm
-- total_thickness_mm
-- base_thickness_mm
-- front_relief_height_mm
-- back_relief_height_mm
-- edge_radius_mm
-- bevel_mm
-- smooth_strength
-- detail_sharpness
-- minimum_thickness_mm
-
-### ReliefBuildResult
-
-Suggested fields:
-
-- vertices
-- faces
-- report
-- warnings
-- export_paths
-
-## Implementation strategy
-
-Start with a small deterministic pipeline:
-
-1. Load a clean transparent PNG.
-2. Generate a mask from alpha.
-3. Generate a simple heightmap.
-4. Build a front grid surface.
-5. Add a flat base and side walls.
-6. Export OBJ.
-7. Add STL and GLB.
-
-Only after this works should the project add advanced segmentation, manual region editing and double side generation.
-
-## Constraints
-
-- Local offline first.
-- No required cloud API.
-- No required heavy AI model.
-- No Paint 3D dependency.
-- Blender is a downstream editor, not a dependency for MVP.
+Geometry construction, self-intersection analysis and manufacturing reporting
+remain algorithmically dense. Their branch and argument counts are monitored as
+maintainability debt, but are not split solely to satisfy a metric: any future
+extraction must preserve topology, coordinate and manufacturing-report
+invariants with focused tests.

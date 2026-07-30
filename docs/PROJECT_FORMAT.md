@@ -24,7 +24,6 @@ The current supported `file_version` is `2`.
   "front_image": null,
   "back_image": null,
   "reference_images": [],
-  "outline": {},
   "dimensions": {},
   "edge": {},
   "front_relief": {},
@@ -78,7 +77,6 @@ All numeric values must be finite. Width, height and fused body thickness must b
   "enabled": true,
   "relief_height_mm": 3.0,
   "background_depth_mm": 0.0,
-  "layer_count": 4,
   "height_mode": "grayscale",
   "quality_mode": "standard",
   "invert_height": false,
@@ -123,7 +121,6 @@ Mask edits are applied in source space before crop and resize. Region layers are
   "rim_width_px": 0,
   "rim_height_mm": 0.0,
   "rim_profile": "flat",
-  "use_smoothed_side_walls": false,
   "contour_smoothing_iterations": 1
 }
 ```

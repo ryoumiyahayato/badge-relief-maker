@@ -31,8 +31,8 @@ Image input
   -> mask generation
   -> contour and region extraction
   -> heightmap generation
-  -> relief mesh builder
-  -> side and base builder
+  -> prepared relief field
+  -> indexed closed-solid builder
   -> mesh repair and checks
   -> export
 ```
@@ -43,11 +43,14 @@ Image input
 - `mask_generator.py`: create foreground masks.
 - `contour_extractor.py`: find outer shapes and internal detail regions.
 - `heightmap_generator.py`: convert brightness or layers into height values.
-- `relief_mesh_builder.py`: turn heightmaps into mesh surfaces.
+- `single_side_pipeline.py`: orchestrate image-to-field and field-to-solid stages.
+- `masked_solid_builder.py`: turn masked height fields into indexed closed solids.
 - `double_side_builder.py`: align and combine front/back reliefs.
 - `mesh_repair.py`: clean, smooth and simplify meshes.
 - `mesh_exporter.py`: export OBJ first, then STL and GLB.
 - `manufacturability_check.py`: report face counts, thickness risks and mesh warnings.
+- `project_parameters.py`: validate and map persisted settings into runtime parameters.
+- `options.py`, `components.py`, `mesh_data.py`, `atomic_io.py`: shared cross-feature contracts.
 
 ## MVP parameters
 

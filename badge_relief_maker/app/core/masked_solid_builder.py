@@ -1,8 +1,9 @@
 """Build a closed relief solid from a masked height field."""
 
-from collections import deque
-
 import numpy as np
+
+from .components import component_labels
+from .options import EDGE_STYLES
 
 
 def _empty_mesh():
@@ -25,27 +26,6 @@ def _validate_inputs(heightmap, mask, width_mm, height_mm, base_thickness_mm, re
     if float(base_thickness_mm) < 0.0 or float(relief_height_mm) < 0.0:
         raise ValueError("base and relief thickness must be non-negative")
     return heightmap, mask
-
-
-def _component_labels(mask):
-    """Label four-connected foreground cells so separate parts keep separate vertices."""
-    rows, cols = mask.shape
-    labels = np.full(mask.shape, -1, dtype=np.int64)
-    component = 0
-    for start_row, start_col in zip(*np.nonzero(mask)):
-        if labels[start_row, start_col] >= 0:
-            continue
-        labels[start_row, start_col] = component
-        queue = deque([(int(start_row), int(start_col))])
-        while queue:
-            row, col = queue.popleft()
-            for next_row, next_col in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
-                if 0 <= next_row < rows and 0 <= next_col < cols:
-                    if mask[next_row, next_col] and labels[next_row, next_col] < 0:
-                        labels[next_row, next_col] = component
-                        queue.append((next_row, next_col))
-        component += 1
-    return labels, component
 
 
 def _corner_heights(top_z, labels, component_count):
@@ -102,8 +82,8 @@ def _boundary_inward_vectors(mask, labels):
 
 
 def _profile_settings(edge_style, bevel_mm, radius_mm, cell_w, cell_h):
-    style = str(edge_style or "straight").lower()
-    if style not in {"straight", "sloped", "bevel", "rounded"}:
+    style = str(edge_style or EDGE_STYLES.default).lower()
+    if style not in EDGE_STYLES:
         raise ValueError("edge_style must be straight, sloped, bevel or rounded")
     requested = float(radius_mm if style == "rounded" else bevel_mm)
     if style == "sloped" and requested <= 0.0:
@@ -137,7 +117,8 @@ def _build_indexed_solid(
     foreground_cols = col_max - col_min + 1
     cell_w = float(width_mm) / float(foreground_cols)
     cell_h = float(height_mm) / float(foreground_rows)
-    labels, component_count = _component_labels(mask)
+    labels, components = component_labels(mask)
+    component_count = len(components)
     top_corners = _corner_heights(np.asarray(top_z, dtype=float), labels, component_count)
     bottom_corners = _corner_heights(np.asarray(bottom_z, dtype=float), labels, component_count)
     inward_vectors = _boundary_inward_vectors(mask, labels)
@@ -259,8 +240,6 @@ def build_masked_relief_solid(
     height_mm,
     base_thickness_mm,
     relief_height_mm,
-    use_smoothed_side_walls=False,
-    contour_smoothing_iterations=1,
     edge_style="straight",
     bevel_mm=0.0,
     radius_mm=0.0,
@@ -273,11 +252,9 @@ def build_masked_relief_solid(
     components use separate vertex namespaces, and outer walls reuse the same top
     and bottom vertices as the horizontal surfaces.
 
-    ``use_smoothed_side_walls`` and ``contour_smoothing_iterations`` remain in the
-    signature for project compatibility. The manufacturing path currently favors
-    the closed indexed surface over the older non-watertight smoothed preview wall.
+    The manufacturing path uses one closed indexed surface for the horizontal
+    faces and outer walls.
     """
-    del use_smoothed_side_walls, contour_smoothing_iterations
     heightmap, mask = _validate_inputs(
         heightmap,
         mask,
@@ -375,7 +352,7 @@ def build_layered_relief_solid(
     col_min, col_max = int(xs.min()), int(xs.max())
     cell_w = float(width_mm) / float(col_max - col_min + 1)
     cell_h = float(height_mm) / float(row_max - row_min + 1)
-    labels, _ = _component_labels(mask)
+    labels, _ = component_labels(mask)
     rows, cols = mask.shape
     occupied = np.zeros((len(levels) - 1, rows, cols), dtype=bool)
     for level_index in range(len(levels) - 1):

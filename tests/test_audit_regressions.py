@@ -186,12 +186,12 @@ def test_project_string_booleans_are_parsed_explicitly():
         {
             "name": "Boolean Test",
             "same_physical_object": "false",
-            "edge": {"rim_enabled": "false", "use_smoothed_side_walls": "true"},
+            "edge": {"rim_enabled": "false", "use_smoothed_side_walls": "obsolete"},
             "back_relief": {"enabled": "false"},
         }
     )
 
     assert project.same_physical_object is False
     assert project.edge.rim_enabled is False
-    assert project.edge.use_smoothed_side_walls is True
+    assert not hasattr(project.edge, "use_smoothed_side_walls")
     assert project.back_relief.enabled is False

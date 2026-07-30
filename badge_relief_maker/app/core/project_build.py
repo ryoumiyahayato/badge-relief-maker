@@ -1,5 +1,6 @@
 """Project-aware build and export workflows."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -8,28 +9,18 @@ from .double_side_builder import build_fused_double_sided_relief
 from .manufacturability_check import basic_report
 from .mesh_exporter import export_glb_objects, export_mesh, export_obj_objects
 from .mesh_repair import repair_mesh_basic
+from .options import EXPORT_FORMATS
+from .project_parameters import (
+    map_project_relief_parameters,
+    project_side,
+    resolve_double_quality,
+    validate_project_parameters,
+)
 from .project_io import add_export_record, asset_root_for, load_project, resolve_project_asset, save_project
-from .quality_modes import normalize_quality_mode, quality_preset
-from .relief_parameters import ReliefBuildResult, ReliefParameters
+from .quality_modes import quality_preset
+from .relief_parameters import ReliefBuildResult
 from .single_side_pipeline import build_single_side_relief, prepare_relief_field
-
-
-_HEIGHT_MARKER_TYPES = {"height", "height_override", "set_height"}
-_HEIGHT_VALUE_KEYS = {
-    "height_normalized",
-    "normalized_height",
-    "value",
-    "height",
-    "delta",
-    "delta_height",
-    "height_delta",
-    "strength",
-}
-_SIDE_MODES = {"auto", "alpha", "luminance", "luminance-dark", "luminance-light"}
-_HEIGHT_MODES = {"grayscale", "layers", "hybrid"}
-_PROCESS_PROFILES = {"general", "fdm", "resin", "cnc", "mould"}
-_EDGE_STYLES = {"straight", "sloped", "bevel", "rounded"}
-_FOOTPRINT_MODES = {"union", "intersection", "front", "back"}
+from .units import STL_UNIT_CONVENTION
 
 
 def _safe_name(value):
@@ -49,230 +40,38 @@ def _unique_output_path(directory, stem, export_format):
     return candidate
 
 
-def _side_data(project, side_name):
-    if side_name == "front":
-        return project.front_image, project.front_relief
-    if side_name == "back":
-        return project.back_image, project.back_relief
-    raise ValueError(f"unsupported project side: {side_name}")
+@dataclass(frozen=True)
+class ProjectBuildWorkspace:
+    """Own all derived paths for one project build invocation."""
 
+    project_path: Path
 
-def _number(value, name, *, positive=False, nonnegative=False, maximum=None):
-    try:
-        result = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be numeric") from exc
-    if not np.isfinite(result):
-        raise ValueError(f"{name} must be finite")
-    if positive and result <= 0.0:
-        raise ValueError(f"{name} must be positive")
-    if nonnegative and result < 0.0:
-        raise ValueError(f"{name} must be non-negative")
-    if maximum is not None and result > float(maximum):
-        raise ValueError(f"{name} must be at most {maximum}")
-    return result
+    def __init__(self, project_path):
+        object.__setattr__(self, "project_path", Path(project_path))
 
+    @property
+    def export_dir(self):
+        directory = asset_root_for(self.project_path) / "exports"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
-def _integer(value, name, *, minimum=None, maximum=None):
-    converted = _number(value, name)
-    if converted != round(converted):
-        raise ValueError(f"{name} must be an integer")
-    result = int(converted)
-    if minimum is not None and result < minimum:
-        raise ValueError(f"{name} must be at least {minimum}")
-    if maximum is not None and result > maximum:
-        raise ValueError(f"{name} must be at most {maximum}")
-    return result
+    def preview_dir(self, *parts):
+        directory = asset_root_for(self.project_path) / "previews"
+        for part in parts:
+            directory /= str(part)
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
+    def output_path(self, stem, export_format):
+        return _unique_output_path(self.export_dir, stem, export_format)
 
-def _validate_side_parameters(side, label):
-    _number(side.relief_height_mm, f"{label} relief_height_mm", nonnegative=True)
-    _number(side.background_depth_mm, f"{label} background_depth_mm", nonnegative=True)
-    _number(side.luminance_threshold, f"{label} luminance_threshold", nonnegative=True)
-    _number(side.minimum_thickness_mm, f"{label} minimum_thickness_mm", nonnegative=True)
-    _number(side.uniform_height_normalized, f"{label} uniform_height_normalized", nonnegative=True, maximum=1.0)
-    _number(side.smooth_strength, f"{label} smooth_strength", nonnegative=True, maximum=1.0)
-    _number(side.detail_sharpness, f"{label} detail_sharpness", nonnegative=True, maximum=1.0)
-    _integer(side.alpha_threshold, f"{label} alpha_threshold", minimum=0, maximum=255)
-    _integer(side.crop_padding_px, f"{label} crop_padding_px", minimum=0)
-    if str(side.mask_mode).strip().lower() not in _SIDE_MODES:
-        raise ValueError(f"unsupported {label} mask_mode: {side.mask_mode}")
-    if str(side.height_mode).strip().lower() not in _HEIGHT_MODES:
-        raise ValueError(f"unsupported {label} height_mode: {side.height_mode}")
-    if str(side.process_profile).strip().lower() not in _PROCESS_PROFILES:
-        raise ValueError(f"unsupported {label} process_profile: {side.process_profile}")
-
-
-def _validate_double_alignment(project):
-    alignment = project.double_side
-    _number(alignment.back_scale, "back_scale", positive=True)
-    _number(alignment.back_rotation_deg, "back_rotation_deg")
-    _number(alignment.back_offset_x_mm, "back_offset_x_mm")
-    _number(alignment.back_offset_y_mm, "back_offset_y_mm")
-    if str(alignment.footprint_mode).strip().lower() not in _FOOTPRINT_MODES:
-        raise ValueError("footprint_mode must be union, intersection, front or back")
-
-
-def _validate_project_parameters(project, *, double_side=False, side_name=None, fused=False):
-    """Validate dimensions and only the settings consumed by the requested build.
-
-    ``total_thickness_mm`` is a fused-body setting and is not consumed by a
-    single-side build. The non-fused placeholder is the only mode that needs
-    room for two complete single-side bases.
-    """
-    dimensions = project.dimensions
-    width = _number(dimensions.width_mm, "width_mm", positive=True)
-    height = _number(dimensions.height_mm, "height_mm", positive=True)
-    base = _number(dimensions.base_thickness_mm, "base_thickness_mm", nonnegative=True)
-    total = None
-    if double_side or fused or side_name is None:
-        total = _number(dimensions.total_thickness_mm, "total_thickness_mm", positive=True)
-    if double_side and not fused and total < base * 2.0:
-        raise ValueError("total_thickness_mm must be at least twice base_thickness_mm for a double-side placeholder")
-
-    if double_side or fused or side_name is None:
-        sides = [(project.front_relief, "front"), (project.back_relief, "back")]
-    else:
-        _, selected_side = _side_data(project, side_name)
-        sides = [(selected_side, side_name)]
-    for side, label in sides:
-        _validate_side_parameters(side, label)
-
-    edge = project.edge
-    _number(edge.rim_width_mm, "rim_width_mm", nonnegative=True)
-    _number(edge.rim_height_mm, "rim_height_mm", nonnegative=True)
-    _number(edge.bevel_mm, "bevel_mm", nonnegative=True)
-    _number(edge.radius_mm, "radius_mm", nonnegative=True)
-    _integer(edge.rim_width_px, "rim_width_px", minimum=0)
-    _integer(edge.contour_smoothing_iterations, "contour_smoothing_iterations", minimum=0)
-    if str(edge.edge_style).strip().lower() not in _EDGE_STYLES:
-        raise ValueError(f"unsupported edge_style: {edge.edge_style}")
-    if fused:
-        front_profile = str(project.front_relief.process_profile).strip().lower()
-        back_profile = str(project.back_relief.process_profile).strip().lower()
-        if front_profile != back_profile:
-            raise ValueError("front and back process_profile must match for a fused build")
-        _validate_double_alignment(project)
-    return width, height
-
-
-def _resolve_double_quality(project, quality_mode=None):
-    """Return one quality mode for both sides, rejecting ambiguous saved state."""
-    if quality_mode is not None:
-        return normalize_quality_mode(quality_mode)
-    front_quality = normalize_quality_mode(project.front_relief.quality_mode)
-    back_quality = normalize_quality_mode(project.back_relief.quality_mode)
-    if front_quality != back_quality:
-        raise ValueError("front and back quality_mode must match unless a build quality override is provided")
-    return front_quality
-
-
-def _rim_width_px_from_project(project, preset):
-    """Use only explicit pixel width; millimeter conversion happens on the final grid."""
-    del preset
-    edge = project.edge
-    if not bool(edge.rim_enabled):
-        return 0
-    return max(0, int(getattr(edge, "rim_width_px", 0)))
-
-
-def _potential_height_marker(data):
-    if not isinstance(data, dict) or not data:
-        return False
-    operation = str(data.get("operation", data.get("mode", "set"))).lower()
-    if operation not in {"smooth", "soften", "blur"} and not any(key in data for key in _HEIGHT_VALUE_KEYS):
-        return False
-    shape = str(data.get("shape", data.get("shape_type", "circle"))).lower()
-    if shape in {"polygon", "poly", "freeform", "free_form"}:
-        points = data.get("points", data.get("vertices", data.get("polygon_points")))
-        return isinstance(points, (list, tuple)) and len(points) >= 3
-    return ("x" in data or "center_x" in data) and ("y" in data or "center_y" in data)
-
-
-def _manual_height_markers_from_project(project, side_name):
-    """Return valid saved manual height marker data for one build side."""
-    allowed_targets = {side_name, "both", "heightmap", "relief"}
-    result = []
-    for marker in getattr(project, "manual_markers", []):
-        marker_type = str(getattr(marker, "marker_type", "")).lower()
-        target = str(getattr(marker, "target", "")).lower()
-        raw_data = getattr(marker, "data", {})
-        if marker_type not in _HEIGHT_MARKER_TYPES or target not in allowed_targets or not _potential_height_marker(raw_data):
-            continue
-        data = dict(raw_data)
-        data["marker_type"] = marker_type
-        data["target"] = target
-        result.append(data)
-    return tuple(result)
-
-
-def _optional_tuple(value):
-    return tuple(value) if isinstance(value, (list, tuple)) else None
-
-
-def _perspective_tuple(value):
-    if not isinstance(value, (list, tuple)):
-        return None
-    try:
-        return tuple(tuple(point) for point in value)
-    except TypeError:
-        return None
-
-
-def _relief_parameters_from_project(project, side_name="front", quality_mode=None):
-    """Create runtime parameters from persisted project settings."""
-    _, side = _side_data(project, side_name)
-    preset = quality_preset(quality_mode or side.quality_mode)
-    edge = project.edge
-    rim_enabled = bool(getattr(edge, "rim_enabled", False))
-    return ReliefParameters(
-        width_mm=project.dimensions.width_mm,
-        height_mm=project.dimensions.height_mm,
-        base_thickness_mm=project.dimensions.base_thickness_mm,
-        relief_height_mm=side.relief_height_mm,
-        invert_height=bool(side.invert_height),
-        mask_mode=str(side.mask_mode),
-        alpha_threshold=int(side.alpha_threshold),
-        luminance_threshold=float(side.luminance_threshold),
-        minimum_thickness_mm=float(side.minimum_thickness_mm),
-        crop_to_foreground=bool(side.crop_to_foreground),
-        crop_padding_px=int(side.crop_padding_px),
-        max_grid_cells=preset["max_grid_cells"],
-        min_component_pixels=preset["min_component_pixels"],
-        fill_hole_pixels=preset["fill_hole_pixels"],
-        mask_smooth_iterations=preset["mask_smooth_iterations"],
-        use_smoothed_side_walls=bool(getattr(edge, "use_smoothed_side_walls", False)),
-        contour_smoothing_iterations=int(getattr(edge, "contour_smoothing_iterations", 1)),
-        rim_width_px=_rim_width_px_from_project(project, preset),
-        rim_width_mm=float(getattr(edge, "rim_width_mm", 0.0)) if rim_enabled else 0.0,
-        rim_height_mm=float(edge.rim_height_mm) if rim_enabled else 0.0,
-        rim_profile=str(getattr(edge, "rim_profile", "flat") or "flat"),
-        edge_style=str(getattr(edge, "edge_style", "straight") or "straight"),
-        bevel_mm=float(getattr(edge, "bevel_mm", 0.0)),
-        radius_mm=float(getattr(edge, "radius_mm", 0.0)),
-        height_mode=str(getattr(side, "height_mode", "grayscale") or "grayscale"),
-        background_depth_mm=float(getattr(side, "background_depth_mm", 0.0)),
-        uniform_height_normalized=float(getattr(side, "uniform_height_normalized", 1.0)),
-        smooth_strength=float(getattr(side, "smooth_strength", 0.0)),
-        detail_sharpness=float(getattr(side, "detail_sharpness", 0.0)),
-        process_profile=str(getattr(side, "process_profile", "general") or "general"),
-        manual_crop_box=_optional_tuple(getattr(side, "manual_crop_box", None)),
-        perspective_quad=_perspective_tuple(getattr(side, "perspective_quad", None)),
-        manual_mask_edits=tuple(getattr(side, "mask_edits", []) or []),
-        region_layers=tuple(getattr(side, "region_layers", []) or []),
-        manual_height_markers=_manual_height_markers_from_project(project, side_name),
-    ), preset["quality_mode"]
-
-
-def relief_parameters_from_project(project, side_name="front", quality_mode=None):
-    """Public validated runtime-parameter adapter used by GUI preview code."""
-    _validate_project_parameters(project, side_name=side_name)
-    return _relief_parameters_from_project(project, side_name, quality_mode)
+    def history_path(self, output_path):
+        return str(Path(output_path).relative_to(self.project_path.parent))
 
 
 def _validate_export_format(export_format):
     value = str(export_format or "obj").lower().lstrip(".")
-    if value not in {"obj", "stl", "glb"}:
+    if value not in EXPORT_FORMATS:
         raise ValueError(f"unsupported project export format: {value}")
     return value
 
@@ -309,19 +108,19 @@ def _mirror_z_mesh(vertices, faces):
 
 
 def _build_side_mesh_only(project, project_path, side_name, quality_mode, preview_root):
-    image_record, _ = _side_data(project, side_name)
+    image_record, _ = project_side(project, side_name)
     if image_record is None:
         raise ValueError(f"project has no {side_name} image")
-    params, resolved_quality = _relief_parameters_from_project(project, side_name, quality_mode)
+    params, resolved_quality = map_project_relief_parameters(project, side_name, quality_mode)
     source_image = resolve_project_asset(project_path, image_record.path)
     return build_single_side_relief(source_image, None, params, preview_dir=Path(preview_root) / side_name), resolved_quality
 
 
 def _prepare_side_field(project, project_path, side_name, quality_mode, preview_root):
-    image_record, _ = _side_data(project, side_name)
+    image_record, _ = project_side(project, side_name)
     if image_record is None:
         raise ValueError(f"project has no {side_name} image")
-    params, resolved_quality = _relief_parameters_from_project(project, side_name, quality_mode)
+    params, resolved_quality = map_project_relief_parameters(project, side_name, quality_mode)
     source_image = resolve_project_asset(project_path, image_record.path)
     prepared = prepare_relief_field(source_image, params, preview_dir=Path(preview_root) / side_name)
     return prepared, params, resolved_quality
@@ -329,19 +128,17 @@ def _prepare_side_field(project, project_path, side_name, quality_mode, preview_
 
 def build_side_relief_from_project(project, project_path, side_name="front", export_format="obj", quality_mode=None, export_name=None):
     """Build one side relief for an existing project and update export history."""
-    _validate_project_parameters(project, side_name=side_name)
-    image_record, _ = _side_data(project, side_name)
+    validate_project_parameters(project, side_name=side_name)
+    image_record, _ = project_side(project, side_name)
     if image_record is None:
         raise ValueError(f"project has no {side_name} image")
-    project_path = Path(project_path)
-    export_dir = asset_root_for(project_path) / "exports"
-    preview_dir = asset_root_for(project_path) / "previews" / side_name
-    export_dir.mkdir(parents=True, exist_ok=True)
-    preview_dir.mkdir(parents=True, exist_ok=True)
+    workspace = ProjectBuildWorkspace(project_path)
+    project_path = workspace.project_path
+    preview_dir = workspace.preview_dir(side_name)
     export_format = _validate_export_format(export_format)
-    params, resolved_quality = _relief_parameters_from_project(project, side_name, quality_mode)
+    params, resolved_quality = map_project_relief_parameters(project, side_name, quality_mode)
     source_image = resolve_project_asset(project_path, image_record.path)
-    output_path = _unique_output_path(export_dir, f"{_safe_name(export_name or project.name)}_{side_name}_{resolved_quality}", export_format)
+    output_path = workspace.output_path(f"{_safe_name(export_name or project.name)}_{side_name}_{resolved_quality}", export_format)
     result = build_single_side_relief(source_image, output_path, params, preview_dir=preview_dir)
     result.report.update(
         {
@@ -353,22 +150,20 @@ def build_side_relief_from_project(project, project_path, side_name="front", exp
             "thickness_semantics": "single-side bbox thickness equals base plus generated relief; total thickness is the fused-body setting",
         }
     )
-    add_export_record(project, str(output_path.relative_to(project_path.parent)), export_format, report=result.report, notes=f"{side_name} relief {resolved_quality}")
+    add_export_record(project, workspace.history_path(output_path), export_format, report=result.report, notes=f"{side_name} relief {resolved_quality}")
     return result
 
 
 def build_double_side_placeholder_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
     """Build two separate closed side meshes for non-production inspection."""
-    _validate_project_parameters(project, double_side=True)
+    validate_project_parameters(project, double_side=True)
     if project.front_image is None or project.back_image is None:
         raise ValueError("double-side placeholder requires both front and back images")
-    project_path = Path(project_path)
-    export_dir = asset_root_for(project_path) / "exports"
-    preview_root = asset_root_for(project_path) / "previews" / "double_placeholder"
-    export_dir.mkdir(parents=True, exist_ok=True)
-    preview_root.mkdir(parents=True, exist_ok=True)
+    workspace = ProjectBuildWorkspace(project_path)
+    project_path = workspace.project_path
+    preview_root = workspace.preview_dir("double_placeholder")
     export_format = _validate_export_format(export_format)
-    build_quality = _resolve_double_quality(project, quality_mode)
+    build_quality = resolve_double_quality(project, quality_mode)
     front_result, resolved_quality = _build_side_mesh_only(project, project_path, "front", build_quality, preview_root)
     back_result, _ = _build_side_mesh_only(project, project_path, "back", build_quality, preview_root)
     half_thickness = float(project.dimensions.total_thickness_mm) / 2.0
@@ -401,15 +196,15 @@ def build_double_side_placeholder_from_project(project, project_path, export_for
     report["manufacturing_gate"]["topology_checks_passed"] = False
     if warning not in report["manufacturing_gate"]["blockers"]:
         report["manufacturing_gate"]["blockers"].append(warning)
-    output_path = _unique_output_path(export_dir, f"{_safe_name(export_name or project.name)}_double_placeholder_{resolved_quality}", export_format)
+    output_path = workspace.output_path(f"{_safe_name(export_name or project.name)}_double_placeholder_{resolved_quality}", export_format)
     if export_format == "obj":
         export_obj_objects(output_path, split_objects)
     elif export_format == "glb":
         export_glb_objects(output_path, split_objects)
     else:
         export_mesh(output_path, vertices, faces)
-    report.update({"export_path": str(output_path), "export_format": export_format, "unit_convention": "millimeters (STL stores no explicit unit metadata)"})
-    add_export_record(project, str(output_path.relative_to(project_path.parent)), export_format, report=report, notes=f"double side placeholder {resolved_quality}")
+    report.update({"export_path": str(output_path), "export_format": export_format, "unit_convention": STL_UNIT_CONVENTION})
+    add_export_record(project, workspace.history_path(output_path), export_format, report=report, notes=f"double side placeholder {resolved_quality}")
     return ReliefBuildResult(vertices=vertices, faces=faces, report=report, output_path=str(output_path))
 
 
@@ -417,14 +212,12 @@ def build_fused_double_side_from_project(project, project_path, export_format="o
     """Build one aligned, fused and oriented front/back production candidate."""
     if project.front_image is None or project.back_image is None:
         raise ValueError("fused double-side mode requires both front and back images")
-    _validate_project_parameters(project, fused=True)
+    validate_project_parameters(project, fused=True)
     export_format = _validate_export_format(export_format)
-    project_path = Path(project_path)
-    export_dir = asset_root_for(project_path) / "exports"
-    preview_root = asset_root_for(project_path) / "previews" / "double_fused"
-    export_dir.mkdir(parents=True, exist_ok=True)
-    preview_root.mkdir(parents=True, exist_ok=True)
-    build_quality = _resolve_double_quality(project, quality_mode)
+    workspace = ProjectBuildWorkspace(project_path)
+    project_path = workspace.project_path
+    preview_root = workspace.preview_dir("double_fused")
+    build_quality = resolve_double_quality(project, quality_mode)
     front, front_params, resolved_quality = _prepare_side_field(project, project_path, "front", build_quality, preview_root)
     back, back_params, _ = _prepare_side_field(project, project_path, "back", build_quality, preview_root)
     alignment_model = project.double_side
@@ -490,33 +283,29 @@ def build_fused_double_side_from_project(project, project_path, export_format="o
             "front_relief_height_mm": float(front_params.relief_height_mm),
             "back_relief_height_mm": float(back_params.relief_height_mm),
             "thickness_semantics": "body thickness excludes outward front and back relief heights",
-            "unit_convention": "millimeters (STL stores no explicit unit metadata)",
+            "unit_convention": STL_UNIT_CONVENTION,
         }
     )
     if report["components"]["component_count"] != 1:
         raise ValueError("fused double-side result must contain exactly one connected component")
     if report["manufacturing_gate"]["status"] == "blocked":
         raise ValueError("fused double-side export blocked: " + "; ".join(report["manufacturing_gate"]["blockers"]))
-    output_path = _unique_output_path(export_dir, f"{_safe_name(export_name or project.name)}_double_fused_{resolved_quality}", export_format)
+    output_path = workspace.output_path(f"{_safe_name(export_name or project.name)}_double_fused_{resolved_quality}", export_format)
     export_mesh(output_path, vertices, faces)
     report.update({"export_path": str(output_path), "export_format": export_format})
-    add_export_record(project, str(output_path.relative_to(project_path.parent)), export_format, report=report, notes=f"fused double-side {resolved_quality}")
+    add_export_record(project, workspace.history_path(output_path), export_format, report=report, notes=f"fused double-side {resolved_quality}")
     return ReliefBuildResult(vertices=vertices, faces=faces, report=report, output_path=str(output_path))
 
 
-def build_front_relief_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
-    return build_side_relief_from_project(project, project_path, "front", export_format, quality_mode, export_name)
-
-
-def build_back_relief_from_project(project, project_path, export_format="obj", quality_mode=None, export_name=None):
-    return build_side_relief_from_project(project, project_path, "back", export_format, quality_mode, export_name)
-
-
 def build_side_relief_from_project_file(project_path, side_name="front", export_format="obj", quality_mode=None, export_name=None):
-    project = load_project(project_path)
-    result = build_side_relief_from_project(project, project_path, side_name, export_format, quality_mode, export_name)
-    save_project(project, project_path)
-    return result
+    return _run_project_file_build(
+        project_path,
+        build_side_relief_from_project,
+        side_name,
+        export_format,
+        quality_mode,
+        export_name,
+    )
 
 
 def build_front_relief_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
@@ -528,14 +317,28 @@ def build_back_relief_from_project_file(project_path, export_format="obj", quali
 
 
 def build_double_side_placeholder_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
-    project = load_project(project_path)
-    result = build_double_side_placeholder_from_project(project, project_path, export_format, quality_mode, export_name)
-    save_project(project, project_path)
-    return result
+    return _run_project_file_build(
+        project_path,
+        build_double_side_placeholder_from_project,
+        export_format,
+        quality_mode,
+        export_name,
+    )
 
 
 def build_fused_double_side_from_project_file(project_path, export_format="obj", quality_mode=None, export_name=None):
+    return _run_project_file_build(
+        project_path,
+        build_fused_double_side_from_project,
+        export_format,
+        quality_mode,
+        export_name,
+    )
+
+
+def _run_project_file_build(project_path, operation, *args):
+    """Load, build and save through one persistence path."""
     project = load_project(project_path)
-    result = build_fused_double_side_from_project(project, project_path, export_format, quality_mode, export_name)
+    result = operation(project, project_path, *args)
     save_project(project, project_path)
     return result

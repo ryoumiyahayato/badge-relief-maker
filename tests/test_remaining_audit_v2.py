@@ -10,7 +10,7 @@ from badge_relief_maker import __version__
 from badge_relief_maker.app.main import main
 from badge_relief_maker.app.core.double_side_builder import align_relief_fields, build_fused_double_sided_relief
 from badge_relief_maker.app.core.mesh_analysis import overhang_tool_access_report, self_intersection_report
-from badge_relief_maker.app.core.project_build import _validate_project_parameters, relief_parameters_from_project
+from badge_relief_maker.app.core.project_parameters import relief_parameters_from_project, validate_project_parameters
 from badge_relief_maker.app.core.project_io import (
     ProjectFormatError,
     asset_root_for,
@@ -35,9 +35,9 @@ def test_single_side_does_not_validate_unused_fused_total_thickness():
     project = create_project("Independent thickness")
     project.dimensions.total_thickness_mm = "unused by a single side"
 
-    assert _validate_project_parameters(project, side_name="front") == (80.0, 80.0)
+    assert validate_project_parameters(project, side_name="front") == (80.0, 80.0)
     with pytest.raises(ValueError, match="total_thickness_mm must be numeric"):
-        _validate_project_parameters(project, fused=True)
+        validate_project_parameters(project, fused=True)
 
 
 @pytest.mark.parametrize("unsafe_number", ["NaN", "Infinity", "-Infinity", "1e400"])

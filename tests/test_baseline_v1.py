@@ -9,7 +9,7 @@ from badge_relief_maker.app.core.manufacturability_check import basic_report
 from badge_relief_maker.app.core.marker_transform import transform_manual_height_markers
 from badge_relief_maker.app.core.mask_generator import foreground_mask
 from badge_relief_maker.app.core.mesh_exporter import export_obj
-from badge_relief_maker.app.core.project_build import _relief_parameters_from_project
+from badge_relief_maker.app.core.project_parameters import map_project_relief_parameters
 from badge_relief_maker.app.core.project_io import (
     UnsupportedProjectVersionError,
     create_project,
@@ -171,7 +171,7 @@ def test_persisted_side_processing_settings_reach_runtime_parameters():
     project.front_relief.crop_to_foreground = False
     project.front_relief.crop_padding_px = 4
 
-    params, quality = _relief_parameters_from_project(project, "front", quality_mode="preview")
+    params, quality = map_project_relief_parameters(project, "front", quality_mode="preview")
 
     assert quality == "preview"
     assert params.invert_height is True

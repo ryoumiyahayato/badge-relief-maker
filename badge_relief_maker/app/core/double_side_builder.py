@@ -1,11 +1,11 @@
 """Front/back alignment and fused double-side relief construction."""
 
-from collections import deque
-
 import numpy as np
 from PIL import Image
 
+from .components import connected_components
 from .masked_solid_builder import build_double_sided_relief_solid
+from .options import FOOTPRINT_MODES
 
 
 def common_grid_shape(width_mm, height_mm, max_cells):
@@ -75,26 +75,6 @@ def _affine_back(mask, heightmap, width_mm, height_mm, scale, rotation_deg, offs
     return result_mask, np.where(result_mask, result_height, 0.0).astype(np.float32)
 
 
-def _component_count(mask):
-    mask = np.asarray(mask, dtype=bool)
-    visited = np.zeros(mask.shape, dtype=bool)
-    count = 0
-    rows, cols = mask.shape
-    for start_row, start_col in zip(*np.nonzero(mask)):
-        if visited[start_row, start_col]:
-            continue
-        count += 1
-        visited[start_row, start_col] = True
-        queue = deque([(int(start_row), int(start_col))])
-        while queue:
-            row, col = queue.popleft()
-            for next_row, next_col in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
-                if 0 <= next_row < rows and 0 <= next_col < cols and mask[next_row, next_col] and not visited[next_row, next_col]:
-                    visited[next_row, next_col] = True
-                    queue.append((next_row, next_col))
-    return count
-
-
 def align_relief_fields(
     front_mask,
     front_heightmap,
@@ -125,17 +105,17 @@ def align_relief_fields(
         back_offset_y_mm,
         flip_back_horizontal,
     )
-    mode = str(footprint_mode or "union").lower()
+    mode = str(footprint_mode or FOOTPRINT_MODES.default).lower()
+    if mode not in FOOTPRINT_MODES:
+        raise ValueError("double-side footprint_mode must be union, intersection, front or back")
     if mode == "intersection":
         footprint = front_mask & back_mask
     elif mode == "front":
         footprint = front_mask.copy()
     elif mode == "back":
         footprint = back_mask.copy()
-    elif mode == "union":
-        footprint = front_mask | back_mask
     else:
-        raise ValueError("double-side footprint_mode must be union, intersection, front or back")
+        footprint = front_mask | back_mask
     if not footprint.any():
         raise ValueError("aligned front/back masks have no shared production footprint")
     front_heightmap = np.where(front_mask & footprint, front_heightmap, 0.0)
@@ -143,7 +123,7 @@ def align_relief_fields(
     return footprint, front_heightmap, back_heightmap, {
         "grid_shape": list(shape),
         "footprint_mode": mode,
-        "footprint_component_count": _component_count(footprint),
+        "footprint_component_count": len(connected_components(footprint)),
         "back_scale": float(back_scale),
         "back_rotation_deg": float(back_rotation_deg),
         "back_offset_mm_xy": [float(back_offset_x_mm), float(back_offset_y_mm)],
@@ -199,10 +179,3 @@ def build_fused_double_sided_relief(
         radius_mm=radius_mm,
     )
     return vertices, faces, footprint, front_field, back_field, report
-
-
-def align_placeholder(front_heightmap, back_heightmap):
-    """Backward-compatible exact-shape alignment helper."""
-    if front_heightmap.shape != back_heightmap.shape:
-        raise ValueError("front and back heightmaps must have the same shape")
-    return front_heightmap, back_heightmap

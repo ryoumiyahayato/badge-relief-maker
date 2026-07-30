@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from .options import MASK_MODES
+
 
 def _rgba_array(rgba):
     rgba = np.asarray(rgba)
@@ -52,9 +54,8 @@ def luminance_mask(rgba: np.ndarray, threshold: int = 20, polarity="contrast") -
 def foreground_mask(rgba, mode="auto", alpha_threshold=1, luminance_threshold=20):
     """Resolve alpha/luminance foreground masking and report the selected mode."""
     rgba = _rgba_array(rgba)
-    mode = str(mode or "auto").strip().lower()
-    supported = {"auto", "alpha", "luminance", "luminance-dark", "luminance-light"}
-    if mode not in supported:
+    mode = str(mode or MASK_MODES.default).strip().lower()
+    if mode not in MASK_MODES:
         raise ValueError(f"unsupported mask mode: {mode}")
 
     if mode == "alpha":

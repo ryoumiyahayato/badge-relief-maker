@@ -2,9 +2,19 @@
 
 from .height_markers import normalize_manual_height_marker
 from .image_transform import ImageTransform
+from .marker_schema import (
+    HEIGHT_NORMALIZED_KEYS,
+    HEIGHT_PIXEL_KEYS,
+    PIXEL_COORDINATE_SPACES,
+    POLYGON_POINT_KEYS,
+    POLYGON_SHAPES,
+    WIDTH_NORMALIZED_KEYS,
+    WIDTH_PIXEL_KEYS,
+    first_present_key,
+    marker_list,
+)
 
 
-_POLYGON_SHAPES = {"polygon", "poly", "freeform", "free_form"}
 _NORMALIZED_GRID_SPACES = {
     "final_normalized",
     "geometry_normalized",
@@ -13,19 +23,6 @@ _NORMALIZED_GRID_SPACES = {
     "heightmap_normalized",
     "resized_normalized",
 }
-
-
-def _marker_list(markers):
-    if markers is None:
-        return []
-    if isinstance(markers, dict):
-        return [markers]
-    if isinstance(markers, (str, bytes)):
-        return [markers]
-    try:
-        return list(markers)
-    except TypeError:
-        return [markers]
 
 
 def _point_values(point):
@@ -62,11 +59,11 @@ def _transform_grid_dimensions(data, coordinate_space, transform):
         target_rows, target_cols = transform.target_shape
         if "radius_normalized" in data:
             data["radius_px"] = float(data.pop("radius_normalized")) * min(target_rows, target_cols)
-        for key in ["width_normalized", "rect_width_normalized", "region_width_normalized", "box_width_normalized"]:
+        for key in WIDTH_NORMALIZED_KEYS:
             if key in data:
                 data["width_px"] = float(data.pop(key)) * max(target_cols - 1, 1)
                 break
-        for key in ["rect_height_normalized", "region_height_normalized", "box_height_normalized", "height_size_normalized"]:
+        for key in HEIGHT_NORMALIZED_KEYS:
             if key in data:
                 data["height_px"] = float(data.pop(key)) * max(target_rows - 1, 1)
                 break
@@ -76,11 +73,11 @@ def _transform_grid_dimensions(data, coordinate_space, transform):
         resized_rows, resized_cols = transform.resized_shape
         if "radius_normalized" in data:
             data["radius_px"] = float(data.pop("radius_normalized")) * min(resized_rows, resized_cols)
-        for key in ["width_normalized", "rect_width_normalized", "region_width_normalized", "box_width_normalized"]:
+        for key in WIDTH_NORMALIZED_KEYS:
             if key in data:
                 data["width_px"] = float(data.pop(key)) * max(resized_cols - 1, 1)
                 break
-        for key in ["rect_height_normalized", "region_height_normalized", "box_height_normalized", "height_size_normalized"]:
+        for key in HEIGHT_NORMALIZED_KEYS:
             if key in data:
                 data["height_px"] = float(data.pop(key)) * max(resized_rows - 1, 1)
                 break
@@ -88,12 +85,12 @@ def _transform_grid_dimensions(data, coordinate_space, transform):
 
 
 def _map_grid_marker_to_target(data, shape, coordinate_space, transform):
-    if shape in _POLYGON_SHAPES:
-        points_key = next((key for key in ["points", "vertices", "polygon_points"] if key in data), None)
+    if shape in POLYGON_SHAPES:
+        points_key = first_present_key(data, POLYGON_POINT_KEYS)
         if points_key is None:
             return None
         data["points"] = _transform_grid_points(list(data[points_key]), coordinate_space, transform)
-        for key in ["vertices", "polygon_points"]:
+        for key in POLYGON_POINT_KEYS[1:]:
             data.pop(key, None)
     else:
         x_key = "x" if "x" in data else "center_x" if "center_x" in data else None
@@ -123,13 +120,13 @@ def _transform_marker(marker, transform):
         data = _map_grid_marker_to_target(data, shape, coordinate_space, transform)
         return data if data is not None and normalize_manual_height_marker(data, transform.target_shape) is not None else None
 
-    normalized = coordinate_space not in {"pixel", "pixels", "image_pixel"}
-    if shape in _POLYGON_SHAPES:
-        points_key = next((key for key in ["points", "vertices", "polygon_points"] if key in data), None)
+    normalized = coordinate_space not in PIXEL_COORDINATE_SPACES
+    if shape in POLYGON_SHAPES:
+        points_key = first_present_key(data, POLYGON_POINT_KEYS)
         if points_key is None:
             return None
         data["points"] = _transform_original_points(list(data[points_key]), normalized, transform)
-        for key in ["vertices", "polygon_points"]:
+        for key in POLYGON_POINT_KEYS[1:]:
             data.pop(key, None)
     else:
         x_key = "x" if "x" in data else "center_x" if "center_x" in data else None
@@ -147,20 +144,20 @@ def _transform_marker(marker, transform):
     elif "radius_normalized" in data:
         data["radius_px"] = transform.original_radius_to_processed(data.pop("radius_normalized"), normalized=True)
 
-    for key in ["width_px", "rect_width_px", "region_width_px", "box_width_px"]:
+    for key in WIDTH_PIXEL_KEYS:
         if key in data:
             data[key] = transform.original_length_to_processed(data[key], "x", normalized=False)
-    for key in ["height_px", "rect_height_px", "region_height_px", "box_height_px"]:
+    for key in HEIGHT_PIXEL_KEYS:
         if key in data:
             data[key] = transform.original_length_to_processed(data[key], "y", normalized=False)
     if "size_px" in data:
         data["size_px"] = transform.original_radius_to_processed(data["size_px"], normalized=False)
 
-    for key in ["width_normalized", "rect_width_normalized", "region_width_normalized", "box_width_normalized"]:
+    for key in WIDTH_NORMALIZED_KEYS:
         if key in data:
             data["width_px"] = transform.original_length_to_processed(data.pop(key), "x", normalized=True)
             break
-    for key in ["rect_height_normalized", "region_height_normalized", "box_height_normalized", "height_size_normalized"]:
+    for key in HEIGHT_NORMALIZED_KEYS:
         if key in data:
             data["height_px"] = transform.original_length_to_processed(data.pop(key), "y", normalized=True)
             break
@@ -196,7 +193,7 @@ def transform_manual_height_markers(
         raise TypeError("image_transform must be an ImageTransform")
 
     transformed = []
-    for marker in _marker_list(markers):
+    for marker in marker_list(markers):
         try:
             data = _transform_marker(marker, transform)
         except (TypeError, ValueError, IndexError, KeyError, OverflowError):

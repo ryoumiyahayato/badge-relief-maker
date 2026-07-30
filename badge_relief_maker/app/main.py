@@ -10,12 +10,19 @@ from .core.project_build import (
     build_fused_double_side_from_project_file,
     build_side_relief_from_project_file,
 )
+from .core.options import (
+    EDGE_STYLES,
+    EXPORT_FORMATS,
+    HEIGHT_MODES,
+    MASK_MODES,
+    PROCESS_PROFILES,
+    QUALITY_MODES,
+    RIM_PROFILES,
+    SIDE_NAMES,
+)
 from .core.project_io import create_project, import_image_asset, load_project, save_project
 from .core.relief_parameters import ReliefParameters
 from .core.single_side_pipeline import build_single_side_relief
-
-
-_MASK_CHOICES = ["auto", "alpha", "luminance", "luminance-dark", "luminance-light"]
 
 
 def run_gui() -> int:
@@ -26,7 +33,7 @@ def run_gui() -> int:
         print("PySide6 is not installed. Install GUI dependencies before using --gui.")
         return 2
 
-    from .ui.editor_window import MainWindow
+    from .ui.main_window import MainWindow
 
     app = QApplication(sys.argv[:1])
     window = MainWindow()
@@ -137,7 +144,6 @@ def _execute(args):
         min_component_pixels=args.min_component_pixels,
         fill_hole_pixels=args.fill_hole_pixels,
         mask_smooth_iterations=args.mask_smooth_iterations,
-        use_smoothed_side_walls=args.smoothed_side_walls,
         contour_smoothing_iterations=args.contour_smoothing_iterations,
         rim_width_px=args.rim_width_px,
         rim_width_mm=args.rim_width_mm,
@@ -164,6 +170,7 @@ def main(argv=None) -> int:
     if argv is None:
         argv = []
 
+    defaults = ReliefParameters()
     parser = argparse.ArgumentParser(description="Build a rough local badge relief OBJ, STL or GLB from one image.")
     parser.add_argument("--version", action="version", version=f"Badge Relief Maker {__version__}")
     parser.add_argument("--gui", action="store_true")
@@ -179,46 +186,45 @@ def main(argv=None) -> int:
     build_group = parser.add_mutually_exclusive_group()
     build_group.add_argument("--build-front", action="store_true")
     build_group.add_argument("--build-back", action="store_true")
-    build_group.add_argument("--build-side", choices=["front", "back"])
+    build_group.add_argument("--build-side", choices=SIDE_NAMES.values)
     build_group.add_argument("--build-double-placeholder", action="store_true")
     build_group.add_argument("--build-double", action="store_true", help="build one aligned fused front/back solid")
 
-    parser.add_argument("--project-export-format", default="obj", choices=["obj", "stl", "glb"])
-    parser.add_argument("--quality", default="standard", choices=["preview", "standard", "high"])
+    parser.add_argument("--project-export-format", default=EXPORT_FORMATS.default, choices=EXPORT_FORMATS.values)
+    parser.add_argument("--quality", default=QUALITY_MODES.default, choices=QUALITY_MODES.values)
     parser.add_argument("--input", dest="input_path")
     parser.add_argument("--output", dest="output_path")
-    parser.add_argument("--width-mm", type=float, default=80.0)
-    parser.add_argument("--height-mm", type=float, default=80.0)
-    parser.add_argument("--base-mm", type=float, default=2.0)
-    parser.add_argument("--relief-mm", type=float, default=3.0)
-    parser.add_argument("--minimum-thickness-mm", type=float, default=0.8)
+    parser.add_argument("--width-mm", type=float, default=defaults.width_mm)
+    parser.add_argument("--height-mm", type=float, default=defaults.height_mm)
+    parser.add_argument("--base-mm", type=float, default=defaults.base_thickness_mm)
+    parser.add_argument("--relief-mm", type=float, default=defaults.relief_height_mm)
+    parser.add_argument("--minimum-thickness-mm", type=float, default=defaults.minimum_thickness_mm)
     parser.add_argument("--invert", action="store_true")
-    parser.add_argument("--mask-mode", default="auto", choices=_MASK_CHOICES)
-    parser.add_argument("--alpha-threshold", type=int, default=1)
-    parser.add_argument("--luminance-threshold", type=float, default=20.0)
+    parser.add_argument("--mask-mode", default=MASK_MODES.default, choices=MASK_MODES.values)
+    parser.add_argument("--alpha-threshold", type=int, default=defaults.alpha_threshold)
+    parser.add_argument("--luminance-threshold", type=float, default=defaults.luminance_threshold)
     parser.add_argument("--rectangle-footprint", action="store_true")
-    parser.add_argument("--smoothed-side-walls", action="store_true")
-    parser.add_argument("--contour-smoothing-iterations", type=int, default=1)
-    parser.add_argument("--rim-width-px", type=int, default=0)
-    parser.add_argument("--rim-width-mm", type=float, default=0.0)
-    parser.add_argument("--rim-height-mm", type=float, default=0.0)
-    parser.add_argument("--rim-profile", default="flat", choices=["flat", "linear", "smooth"])
-    parser.add_argument("--edge-style", default="straight", choices=["straight", "sloped", "bevel", "rounded"])
-    parser.add_argument("--bevel-mm", type=float, default=0.0)
-    parser.add_argument("--radius-mm", type=float, default=0.0)
-    parser.add_argument("--height-mode", default="grayscale", choices=["grayscale", "layers", "hybrid"])
-    parser.add_argument("--background-depth-mm", type=float, default=0.0)
-    parser.add_argument("--uniform-height", type=float, default=1.0)
-    parser.add_argument("--smooth-strength", type=float, default=0.0)
-    parser.add_argument("--detail-sharpness", type=float, default=0.0)
-    parser.add_argument("--process-profile", default="general", choices=["general", "fdm", "resin", "cnc", "mould"])
+    parser.add_argument("--contour-smoothing-iterations", type=int, default=defaults.contour_smoothing_iterations)
+    parser.add_argument("--rim-width-px", type=int, default=defaults.rim_width_px)
+    parser.add_argument("--rim-width-mm", type=float, default=defaults.rim_width_mm)
+    parser.add_argument("--rim-height-mm", type=float, default=defaults.rim_height_mm)
+    parser.add_argument("--rim-profile", default=RIM_PROFILES.default, choices=RIM_PROFILES.values)
+    parser.add_argument("--edge-style", default=EDGE_STYLES.default, choices=EDGE_STYLES.values)
+    parser.add_argument("--bevel-mm", type=float, default=defaults.bevel_mm)
+    parser.add_argument("--radius-mm", type=float, default=defaults.radius_mm)
+    parser.add_argument("--height-mode", default=HEIGHT_MODES.default, choices=HEIGHT_MODES.values)
+    parser.add_argument("--background-depth-mm", type=float, default=defaults.background_depth_mm)
+    parser.add_argument("--uniform-height", type=float, default=defaults.uniform_height_normalized)
+    parser.add_argument("--smooth-strength", type=float, default=defaults.smooth_strength)
+    parser.add_argument("--detail-sharpness", type=float, default=defaults.detail_sharpness)
+    parser.add_argument("--process-profile", default=PROCESS_PROFILES.default, choices=PROCESS_PROFILES.values)
     parser.add_argument("--manual-crop-box", type=float, nargs=4, metavar=("X0", "Y0", "X1", "Y1"))
     parser.add_argument("--no-crop", action="store_true")
-    parser.add_argument("--crop-padding-px", type=int, default=1)
-    parser.add_argument("--max-grid-cells", type=int, default=20000)
-    parser.add_argument("--min-component-pixels", type=int, default=1)
-    parser.add_argument("--fill-hole-pixels", type=int, default=0)
-    parser.add_argument("--mask-smooth-iterations", type=int, default=0)
+    parser.add_argument("--crop-padding-px", type=int, default=defaults.crop_padding_px)
+    parser.add_argument("--max-grid-cells", type=int, default=defaults.max_grid_cells)
+    parser.add_argument("--min-component-pixels", type=int, default=defaults.min_component_pixels)
+    parser.add_argument("--fill-hole-pixels", type=int, default=defaults.fill_hole_pixels)
+    parser.add_argument("--mask-smooth-iterations", type=int, default=defaults.mask_smooth_iterations)
     parser.add_argument("--preview-dir", dest="preview_dir")
     args = parser.parse_args(argv)
 
@@ -237,3 +243,7 @@ def main(argv=None) -> int:
 def cli() -> int:
     """Console-script wrapper that consumes the real process arguments."""
     return main(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())

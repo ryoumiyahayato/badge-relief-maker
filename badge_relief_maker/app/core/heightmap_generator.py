@@ -3,11 +3,6 @@
 import numpy as np
 
 
-def empty_heightmap(shape):
-    """Create an empty heightmap for tests and early wiring."""
-    return np.zeros(shape, dtype=np.float32)
-
-
 def grayscale_heightmap(rgba, mask=None, invert=False, uniform_value=1.0):
     """Convert image brightness to a normalized foreground heightmap.
 
@@ -46,11 +41,3 @@ def grayscale_heightmap(rgba, mask=None, invert=False, uniform_value=1.0):
     if foreground is not None:
         result = np.where(foreground, result, 0.0)
     return result.astype(np.float32)
-
-
-def layered_heightmap(regions, heights, shape):
-    """Assign fixed heights to region masks."""
-    result = np.zeros(shape, dtype=np.float32)
-    for region, height in zip(regions, heights):
-        result[region.astype(bool)] = float(height)
-    return result
