@@ -37,12 +37,15 @@ adapter between those two representations.
 ```text
 load and orient image
   -> optional perspective correction
-  -> mask generation and source-space mask edits
+  -> mask generation, source-space mask edits and Bezier contour operations
+  -> source-space semantic void/fill decisions
   -> crop, cleanup and grid resize
   -> grayscale/layer/hybrid height field
-  -> final-grid layer and height edits
+  -> line-art regions and fixed/relative semantic height decisions
+  -> final-grid layer and height edits, with confirmed semantic locks last
   -> rim and edge profile
-  -> indexed closed solid
+  -> feature detection at contours, engraving and height jumps
+  -> adaptive or uniform indexed closed solid
   -> repair and advisory analysis
   -> atomic OBJ/STL/GLB export
 ```
@@ -51,6 +54,12 @@ load and orient image
 `build_single_side_relief` owns mesh construction, report composition and
 optional export. Callers needing previews or double-sided assembly reuse the
 prepared field rather than duplicating image processing.
+
+`semantic_annotations`, `lineart_regions`, `confidence_preview` and
+`profile_inspection` share the final geometry grid and `ImageTransform`.
+`bezier_contours` remains source-normalized because it changes footprint
+topology before crop. `adaptive_mesh` consumes only the prepared mask/height
+field and physical dimensions; it does not depend on UI or project classes.
 
 ### Project and double side
 
@@ -111,8 +120,9 @@ from badge_relief_maker.app.ui.main_window import MainWindow
 `ProjectWindow` provides project controls, asynchronous build plumbing and
 explicit preview/edit hooks. `editor_window.MainWindow` implements
 coordinate-safe source/final-grid editing and external export copies.
-`ui/main_window.py` only exposes that concrete editor, preventing two divergent
-window implementations.
+`semantic_studio.MainWindow` extends that concrete editor with semantic review,
+millimeter profiles and the Bezier editor. `ui/main_window.py` exposes only the
+semantic studio, preventing divergent public windows.
 
 ## Extension rules
 

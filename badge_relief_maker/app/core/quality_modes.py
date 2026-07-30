@@ -5,22 +5,25 @@ from .options import QUALITY_MODES
 
 QUALITY_PRESETS = {
     "preview": {
-        "max_grid_cells": 5000,
-        "min_component_pixels": 4,
+        "max_grid_cells": 250000,
+        "min_component_pixels": 32,
         "fill_hole_pixels": 8,
-        "mask_smooth_iterations": 1,
+        "mask_smooth_iterations": 0,
+        "adaptive_coarse_cell_px": 8,
     },
     "standard": {
-        "max_grid_cells": 20000,
-        "min_component_pixels": 2,
-        "fill_hole_pixels": 16,
-        "mask_smooth_iterations": 0,
-    },
-    "high": {
-        "max_grid_cells": 80000,
-        "min_component_pixels": 1,
+        "max_grid_cells": 1200000,
+        "min_component_pixels": 32,
         "fill_hole_pixels": 8,
         "mask_smooth_iterations": 0,
+        "adaptive_coarse_cell_px": 4,
+    },
+    "high": {
+        "max_grid_cells": 4800000,
+        "min_component_pixels": 20,
+        "fill_hole_pixels": 4,
+        "mask_smooth_iterations": 0,
+        "adaptive_coarse_cell_px": 2,
     },
 }
 

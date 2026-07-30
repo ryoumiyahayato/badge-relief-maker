@@ -39,20 +39,22 @@ The current single-side path performs:
 1. EXIF-aware JPG/PNG loading.
 2. Optional normalized four-point perspective rectification.
 3. `auto`, `alpha`, `luminance`, `luminance-dark` or `luminance-light` foreground masking.
-4. Source-space manual mask additions/removals.
-5. Optional manual crop, component cleanup, hole filling and mask smoothing.
-6. Foreground-only grayscale height normalization with a defined uniform-brightness policy.
-7. Processing crop and quality-dependent grid resize.
-8. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
-9. Region layers, local locks and circle/rectangle/polygon height edits.
-10. Set, add, subtract and mask-aware smooth brush operations.
-11. Optional global smoothing and detail sharpening.
-12. Millimeter-aware rim height processing.
-13. Shared-index closed single-side or fused double-side mesh construction.
-14. Straight, sloped, bevelled or rounded boundary profiles.
-15. Conservative face cleanup and component orientation repair.
-16. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
-17. Atomic OBJ, STL or GLB export.
+4. Source-space manual mask additions/removals and ordered Bezier contour Boolean operations.
+5. Human semantic topology decisions for void and filled regions.
+6. Optional manual crop, component cleanup, hole filling and mask smoothing.
+7. Foreground-only grayscale height normalization with a defined uniform-brightness policy.
+8. Processing crop and quality-dependent grid resize through a narrow-band signed-distance mask and bicubic fields.
+9. A recorded `ImageTransform` through source, crop, resized grid, final geometry crop and millimeters.
+10. Fixed semantic relief levels (`base`, `low`, `mid`, `high`, `top`) and local relative raise/recess adjustments.
+11. Region layers, local locks and circle/rectangle/polygon height edits.
+12. Set, add, subtract and mask-aware smooth brush operations.
+13. Optional global smoothing, detail sharpening and millimeter-aware rim processing.
+14. Feature-driven adaptive mesh density around footprint contours, engraving and height jumps.
+15. Shared-index closed single-side or fused double-side mesh construction.
+16. Straight, sloped, bevelled or rounded boundary profiles.
+17. Conservative face cleanup and component orientation repair.
+18. Advisory topology, self-intersection, feature-size, thickness and process-direction analysis.
+19. Atomic OBJ, STL or GLB export.
 
 Processing padding and grid density do not define the finished physical size. The final foreground bounding box is scaled to the requested X/Y dimensions.
 
@@ -98,7 +100,8 @@ Project format version 2 persists:
 - front/back/reference assets;
 - physical dimensions and separate single-side base/fused-body thickness semantics;
 - mask, crop, perspective and quality settings;
-- mask edits, region layers and height markers;
+- mask edits, semantic region decisions, Bezier contours, region layers and height markers;
+- confirmed-region locking and adaptive-mesh selection;
 - rim and boundary-profile parameters;
 - front/back alignment parameters;
 - manufacturing-process profile;
@@ -119,6 +122,19 @@ The editor can copy a completed project-owned export into a user-selected output
 
 All mutable controls, including export-folder controls, are disabled while a background build reads the project.
 
+The default editor also provides:
+
+- eight explicit manual meanings: void, filled/base, low, middle, high, top, relative raise and relative recess;
+- confirmed-region locking, enabled by default;
+- semantic-region, deterministic uncertainty and exact solid-mask review views;
+- a guided “next unresolved region” action;
+- horizontal/vertical physical cross-sections in millimeters;
+- a persistent cubic Bezier contour editor with draggable anchors and in/out handles;
+- preview/standard/high budgets of about 250,000, 1,200,000 and 4,800,000 grid points;
+- adaptive meshing enabled by default for straight-edge masked solids.
+
+The uncertainty view is a deterministic review aid. Its values are not classifier probabilities and do not claim calibrated recognition confidence.
+
 ## Double-side modes
 
 Two deliberately different operations remain available:
@@ -138,10 +154,10 @@ A result is either `blocked` or `review_required`; it is never certified safe fo
 
 Current external acceptance still pending:
 
-1. A GitHub Actions run after the current validation follow-up is committed and pushed; local gates on the `e15ebe79`-based working tree pass with `226` tests on Windows Python 3.10 and 3.12.
+1. A GitHub Actions run after the current semantic/Bezier/adaptive working tree is committed and pushed; local Windows Python 3.10 and 3.12 gates pass with `242` tests.
 2. Blender import records for OBJ, STL and GLB.
 3. Slicer and CAM records using representative fixtures.
-4. A clean-machine packaged executable test; the local PyInstaller artifact, version metadata, CLI, GUI startup and six single/fused export read-backs already pass on the development machine.
+4. A clean-machine packaged executable test; the current local PyInstaller artifact, version metadata, CLI, GUI startup and packaged semantic/adaptive build already pass on the development machine.
 5. Physical print/CNC measurements and process-specific tolerances.
 
 Brightness is only a visual proxy for depth. Fine text, lines and decorative details may disappear during sampling or fail in the selected manufacturing process, so manual refinement remains part of the intended workflow.

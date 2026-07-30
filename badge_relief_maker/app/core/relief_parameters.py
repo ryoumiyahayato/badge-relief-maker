@@ -2,7 +2,15 @@
 
 from dataclasses import dataclass, field
 
-from .options import EDGE_STYLES, HEIGHT_MODES, MASK_MODES, PROCESS_PROFILES, RIM_PROFILES
+from .options import (
+    ADAPTIVE_MESH_DEFAULT,
+    EDGE_STYLES,
+    HEIGHT_MODES,
+    LOCK_CONFIRMED_REGIONS_DEFAULT,
+    MASK_MODES,
+    PROCESS_PROFILES,
+    RIM_PROFILES,
+)
 
 
 @dataclass(frozen=True)
@@ -44,6 +52,11 @@ class ReliefParameters:
     manual_mask_edits: tuple = field(default_factory=tuple)
     region_layers: tuple = field(default_factory=tuple)
     manual_height_markers: tuple = field(default_factory=tuple)
+    semantic_annotations: tuple = field(default_factory=tuple)
+    lock_confirmed_regions: bool = LOCK_CONFIRMED_REGIONS_DEFAULT
+    bezier_contours: tuple = field(default_factory=tuple)
+    adaptive_mesh_enabled: bool = ADAPTIVE_MESH_DEFAULT
+    adaptive_coarse_cell_px: int = 4
 
 
 @dataclass(frozen=True)

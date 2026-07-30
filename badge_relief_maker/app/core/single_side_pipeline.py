@@ -5,12 +5,16 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from .adaptive_mesh import build_adaptive_layered_relief_solid, build_adaptive_relief_solid
+from .bezier_contours import apply_bezier_contours
+from .confidence_preview import build_uncertainty_map, save_uncertainty_preview
 from .height_markers import apply_manual_height_markers
 from .height_processing import apply_region_layers, refine_heightmap
 from .heightmap_generator import grayscale_heightmap
 from .image_editing import apply_mask_edits, crop_rgba, rectify_perspective
 from .image_preprocess import load_image, normalize_alpha_background
 from .image_transform import ImageTransform
+from .lineart_regions import analyze_lineart_regions, save_semantic_region_preview
 from .manufacturability_check import basic_report
 from .marker_transform import transform_manual_height_markers
 from .mask_generator import foreground_mask
@@ -23,6 +27,11 @@ from .outline_extractor import outline_report
 from .preview_exporter import save_heightmap_preview, save_mask_overlay_preview, save_mask_preview, save_source_preview
 from .relief_parameters import PreparedReliefField, ReliefBuildResult, ReliefParameters
 from .rim_builder import apply_outer_rim_to_heightmap
+from .semantic_annotations import (
+    apply_semantic_heights,
+    apply_semantic_topology,
+    transform_semantic_annotations,
+)
 from .solid_builder import build_rectangular_relief_solid
 from .units import STL_UNIT_CONVENTION
 from .validation import finite_number, integer
@@ -57,6 +66,7 @@ def _validate_parameters(params):
     integer(params.mask_smooth_iterations, "mask_smooth_iterations", minimum=0)
     integer(params.contour_smoothing_iterations, "contour_smoothing_iterations", minimum=0)
     integer(params.rim_width_px, "rim_width_px", minimum=0)
+    integer(params.adaptive_coarse_cell_px, "adaptive_coarse_cell_px", minimum=1)
     if str(params.mask_mode).strip().lower() not in MASK_MODES:
         raise ValueError(f"unsupported mask mode: {params.mask_mode}")
     if str(params.rim_profile).strip().lower() not in RIM_PROFILES:
@@ -127,6 +137,13 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
         luminance_threshold=params.luminance_threshold,
     )
     mask, mask_edit_report = apply_mask_edits(mask, params.manual_mask_edits)
+    mask, bezier_report = apply_bezier_contours(mask, params.bezier_contours)
+    source_lineart_labels, _ = analyze_lineart_regions(rgba, mask)
+    mask, semantic_topology_report = apply_semantic_topology(
+        mask,
+        params.semantic_annotations,
+        lineart_labels=source_lineart_labels,
+    )
     original_mask_pixel_count = int(mask.sum())
 
     manual_crop_box = None
@@ -190,6 +207,29 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
         smooth_strength=params.smooth_strength,
         detail_sharpness=params.detail_sharpness,
     )
+    lineart_labels, lineart_report = analyze_lineart_regions(rgba, mask)
+    transformed_semantics = transform_semantic_annotations(params.semantic_annotations, image_transform)
+    heightmap, _, unlocked_semantic_report = apply_semantic_heights(
+        heightmap,
+        mask,
+        transformed_semantics,
+        lineart_labels=lineart_labels,
+        locked=False,
+    )
+    early_locked_semantic_report = {
+        "applied_annotation_count": 0,
+        "affected_pixel_count": 0,
+        "role_counts": {},
+        "applied": [],
+    }
+    if not params.lock_confirmed_regions:
+        heightmap, _, early_locked_semantic_report = apply_semantic_heights(
+            heightmap,
+            mask,
+            transformed_semantics,
+            lineart_labels=lineart_labels,
+            locked=True,
+        )
     transformed_layers = transform_manual_height_markers(params.region_layers, image_transform=image_transform)
     heightmap, locked_pixels, layer_report = apply_region_layers(heightmap, mask, transformed_layers)
     transformed_markers = transform_manual_height_markers(params.manual_height_markers, image_transform=image_transform)
@@ -209,6 +249,44 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
     rim_report["effective_rim_width_px"] = int(effective_rim_width_px)
     cell_w_mm, cell_h_mm = image_transform.geometry_cell_size_mm(params.width_mm, params.height_mm)
     rim_report["geometry_cell_size_mm_xy"] = [cell_w_mm, cell_h_mm]
+    locked_semantic_pixels = np.zeros(mask.shape, dtype=bool)
+    locked_semantic_report = {
+        "applied_annotation_count": 0,
+        "affected_pixel_count": 0,
+        "role_counts": {},
+        "applied": [],
+    }
+    if params.lock_confirmed_regions:
+        heightmap, locked_semantic_pixels, locked_semantic_report = apply_semantic_heights(
+            heightmap,
+            mask,
+            transformed_semantics,
+            lineart_labels=lineart_labels,
+            locked=True,
+        )
+    semantic_applied = (
+        unlocked_semantic_report["applied"]
+        + early_locked_semantic_report["applied"]
+        + locked_semantic_report["applied"]
+    )
+    resolved_region_ids = {
+        int(item["region_id"])
+        for item in semantic_applied
+        if item.get("region_id") is not None
+    }
+    for region in lineart_report["regions"]:
+        if int(region["region_id"]) in resolved_region_ids:
+            region["status"] = "confirmed"
+    lineart_report["unresolved_region_count"] = sum(item["status"] != "confirmed" for item in lineart_report["regions"])
+    semantic_report = {
+        "topology": semantic_topology_report,
+        "unlocked": unlocked_semantic_report,
+        "locked_before_automatic_adjustments": early_locked_semantic_report,
+        "locked": locked_semantic_report,
+        "locked_pixel_count": int(locked_semantic_pixels.sum()),
+        "lock_confirmed_regions": bool(params.lock_confirmed_regions),
+        "applied": semantic_applied,
+    }
     outline = outline_report(mask, params.width_mm, params.height_mm, smoothing_iterations=params.contour_smoothing_iterations)
 
     preview_paths = {}
@@ -219,6 +297,35 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
         preview_paths["mask_preview"] = save_mask_preview(mask, preview_base / "mask_preview.png")
         preview_paths["mask_overlay_preview"] = save_mask_overlay_preview(rgba, mask, preview_base / "mask_overlay_preview.png")
         preview_paths["heightmap_preview"] = save_heightmap_preview(heightmap, preview_base / "heightmap_preview.png")
+        preview_paths["semantic_region_preview"] = save_semantic_region_preview(
+            rgba,
+            mask,
+            lineart_labels,
+            lineart_report,
+            semantic_applied,
+            preview_base / "semantic_region_preview.png",
+        )
+        uncertainty_map, uncertainty_report = build_uncertainty_map(
+            rgba,
+            mask,
+            lineart_labels=lineart_labels,
+            lineart_report=lineart_report,
+            applied_annotations=semantic_applied,
+        )
+        preview_paths["confidence_heatmap_preview"] = save_uncertainty_preview(
+            rgba,
+            uncertainty_map,
+            preview_base / "confidence_heatmap_preview.png",
+            uncertainty_report,
+        )
+    else:
+        _, uncertainty_report = build_uncertainty_map(
+            rgba,
+            mask,
+            lineart_labels=lineart_labels,
+            lineart_report=lineart_report,
+            applied_annotations=semantic_applied,
+        )
 
     source_report = loaded_image.report()
     source_report["processing_shape_after_perspective"] = list(processing_shape)
@@ -236,6 +343,11 @@ def prepare_relief_field(image_path, parameters=None, preview_dir=None):
         "mask_pixel_count": int(mask.sum()),
         "mask_cleanup": cleanup_report,
         "mask_edits": mask_edit_report,
+        "bezier_contours": bezier_report,
+        "semantic_annotations": semantic_report,
+        "semantic_review": lineart_report,
+        "recognition_uncertainty": uncertainty_report,
+        "edge_resampling": "narrow-band signed-distance mask with bicubic field resampling",
         "image_source": source_report,
         "image_transform": image_transform.to_report(),
         "original_shape": processing_shape,
@@ -281,6 +393,22 @@ def _build_relief_mesh(params, prepared):
     if params.use_mask_footprint and str(params.height_mode).lower() == "layers":
         if str(params.edge_style).lower() != "straight":
             raise ValueError("exact layered height steps currently require edge_style='straight'")
+        if params.adaptive_mesh_enabled:
+            vertices, faces, adaptive_report = build_adaptive_layered_relief_solid(
+                heightmap,
+                mask,
+                params.width_mm,
+                params.height_mm,
+                params.base_thickness_mm,
+                params.relief_height_mm,
+                coarse_cell_px=params.adaptive_coarse_cell_px,
+            )
+            prepared.report["adaptive_mesh"] = adaptive_report
+            return vertices, faces
+        prepared.report["adaptive_mesh"] = {
+            "adaptive": False,
+            "reason": "adaptive mesh disabled; exact uniform layered builder selected",
+        }
         return build_layered_relief_solid(
             heightmap,
             mask,
@@ -290,6 +418,22 @@ def _build_relief_mesh(params, prepared):
             params.relief_height_mm,
         )
     if params.use_mask_footprint:
+        if params.adaptive_mesh_enabled and str(params.edge_style).lower() == "straight":
+            vertices, faces, adaptive_report = build_adaptive_relief_solid(
+                heightmap,
+                mask,
+                params.width_mm,
+                params.height_mm,
+                params.base_thickness_mm,
+                params.relief_height_mm,
+                coarse_cell_px=params.adaptive_coarse_cell_px,
+            )
+            prepared.report["adaptive_mesh"] = adaptive_report
+            return vertices, faces
+        prepared.report["adaptive_mesh"] = {
+            "adaptive": False,
+            "reason": "adaptive mesh requires a mask footprint, non-layered height mode and straight edge style",
+        }
         return build_masked_relief_solid(
             heightmap,
             mask,

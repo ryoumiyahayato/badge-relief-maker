@@ -93,7 +93,11 @@ All numeric values must be finite. Width, height and fused body thickness must b
   "manual_crop_box": null,
   "perspective_quad": null,
   "mask_edits": [],
-  "region_layers": []
+  "region_layers": [],
+  "semantic_annotations": [],
+  "lock_confirmed_regions": true,
+  "bezier_contours": [],
+  "adaptive_mesh_enabled": true
 }
 ```
 
@@ -108,6 +112,18 @@ Supported values:
 `manual_crop_box` is `[x0, y0, x1, y1]` in the post-perspective source pixel grid. `perspective_quad` contains four normalized source points ordered top-left, top-right, bottom-right and bottom-left.
 
 Mask edits are applied in source space before crop and resize. Region layers are applied after the final geometry crop.
+
+Semantic annotations use the roles `void`, `base`, `low`, `mid`, `high`, `top`,
+`raise` and `recess`. A record stores its source/final coordinate space, tool
+(`part` or `brush`), point, radius, optional relative amount and lock state.
+Locked fixed-level annotations are re-applied after automatic height operations
+when `lock_confirmed_regions` is true.
+
+Bezier contours store normalized anchors plus cubic `in`/`out` handles. Closed
+contours are evaluated in saved order with `replace`, `add`, `remove` or
+`intersect`. `adaptive_mesh_enabled` selects feature-local XY refinement for
+straight-edge masked solids; discrete layer mode retains exact flat plateaus and
+vertical steps.
 
 ## Edge and rim settings
 

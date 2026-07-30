@@ -219,6 +219,7 @@ def test_project_fused_double_export_roundtrip(tmp_path):
     loaded = load_project(project_path)
     assert Path(result.output_path).is_file()
     assert result.report["assembly_mode"] == "aligned_fused_double_side"
+    assert result.report["alignment"]["adaptive_mesh"]["adaptive"] is True
     assert result.report["components"]["component_count"] == 1
     assert loaded.export_history[-1].notes.startswith("fused double-side")
 

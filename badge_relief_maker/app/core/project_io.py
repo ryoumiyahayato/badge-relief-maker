@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from .atomic_io import atomic_writer
+from .options import ADAPTIVE_MESH_DEFAULT, LOCK_CONFIRMED_REGIONS_DEFAULT
 from .project_model import PROJECT_FILE_VERSION, ExportRecord, ImageRecord, MedalProject
 
 
@@ -88,6 +89,10 @@ def migrate_project_data(data):
             side.setdefault("perspective_quad", None)
             side.setdefault("mask_edits", [])
             side.setdefault("region_layers", [])
+            side.setdefault("semantic_annotations", [])
+            side.setdefault("lock_confirmed_regions", LOCK_CONFIRMED_REGIONS_DEFAULT)
+            side.setdefault("bezier_contours", [])
+            side.setdefault("adaptive_mesh_enabled", ADAPTIVE_MESH_DEFAULT)
         migrated.setdefault(
             "double_side",
             {

@@ -4,6 +4,7 @@ import math
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage as ndi
 
 from .components import connected_components
 
@@ -84,7 +85,7 @@ def crop_to_mask(mask, heightmap, padding=1):
 
 
 def resize_mask_and_heightmap(mask, heightmap, max_cells):
-    """Downsample mask and heightmap when the grid is too large."""
+    """Downsample through a signed-distance boundary and bicubic height field."""
     if max_cells is None or max_cells <= 0:
         return mask, heightmap, 1.0
 
@@ -97,10 +98,28 @@ def resize_mask_and_heightmap(mask, heightmap, max_cells):
     new_cols = max(2, int(cols * scale))
     new_rows = max(2, int(rows * scale))
 
-    mask_img = Image.fromarray(np.where(mask, 255, 0).astype(np.uint8), mode="L")
-    height_img = Image.fromarray(np.clip(heightmap * 255.0, 0, 255).astype(np.uint8), mode="L")
+    foreground_distance = ndi.distance_transform_edt(mask)
+    background_distance = ndi.distance_transform_edt(~np.asarray(mask, dtype=bool))
+    # Only the boundary band should influence resampling; distant interior
+    # values are intentionally saturated so a resize cannot soften the whole
+    # foreground merely because the source contains a large solid region.
+    band_radius = 4.0
+    signed_distance = np.clip(
+        foreground_distance - background_distance,
+        -band_radius,
+        band_radius,
+    ).astype(np.float32)
+    distance_image = Image.fromarray(signed_distance, mode="F")
+    height_image = Image.fromarray(np.asarray(heightmap, dtype=np.float32), mode="F")
 
-    resized_mask = np.asarray(mask_img.resize((new_cols, new_rows), Image.Resampling.NEAREST)) > 0
-    resized_height = np.asarray(height_img.resize((new_cols, new_rows), Image.Resampling.BILINEAR)).astype(np.float32) / 255.0
+    resized_distance = np.asarray(
+        distance_image.resize((new_cols, new_rows), Image.Resampling.BICUBIC),
+        dtype=np.float32,
+    )
+    resized_mask = resized_distance >= 0.0
+    resized_height = np.asarray(
+        height_image.resize((new_cols, new_rows), Image.Resampling.BICUBIC),
+        dtype=np.float32,
+    )
     resized_height = np.where(resized_mask, resized_height, 0.0).astype(np.float32)
     return resized_mask, resized_height, scale

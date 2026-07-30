@@ -8,6 +8,24 @@ Current working-tree status: **local Windows gates passed; GitHub Actions run st
 
 The latest workflow is configured for Windows Python 3.10 and 3.12 and runs installation, CLI entry points, corrected GUI import, Ruff and full pytest. A dependent Windows 3.12 job builds, smoke-tests and uploads `BadgeReliefMaker.exe`.
 
+### 2026-07-30 semantic, Bezier and adaptive-mesh follow-up
+
+| Field | Recorded result |
+|---|---|
+| Current base commit | `9a8c9e0` plus uncommitted semantic/Bezier/adaptive working tree |
+| Windows Python 3.10.20 | CLI, `--help`, `--version`, Ruff and `242 passed`; SciPy 1.15.3 |
+| Windows Python 3.12.13 | CLI, `--help`, `--version`, Ruff and `242 passed`; SciPy 1.18.0 |
+| Current GitHub Actions | pending until this working tree is committed and pushed |
+| Remote feature-branch evidence | run `30162103298` passed 3.10, 3.12 and package jobs at `57cc292`; it does not cover the current implementation |
+| Local package build | PyInstaller 6.21.0 passed |
+| Current executable | 97,940,617 bytes; file/product/CLI version 0.3.0; SHA-256 `98542ECC1F5B9C35472D8D9A76F554B7E756E8A40762AC255BF664DA2839BF16` |
+| Packaged feature smoke | image input created OBJ, semantic-region preview and deterministic uncertainty heatmap through the packaged SciPy/adaptive path |
+| Packaged GUI smoke | no-argument process remained alive for five seconds, then the smoke process was stopped |
+| Clean machine / Blender / slicer / CAM / physical | pending |
+
+Detailed claim-by-claim evidence is in
+[`FEATURE_LANDING_AUDIT_2026-07-30.md`](FEATURE_LANDING_AUDIT_2026-07-30.md).
+
 ### Historical intermediate local run
 
 The interrupted development session reported the following before the final GUI/coordinate continuation:

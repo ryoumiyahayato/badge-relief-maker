@@ -1,7 +1,15 @@
 """Boundary between persisted project settings and runtime relief parameters."""
 
 from .marker_schema import HEIGHT_MARKER_TYPES, HEIGHT_VALUE_KEYS, POLYGON_SHAPES, SMOOTH_OPERATIONS
-from .options import EDGE_STYLES, FOOTPRINT_MODES, HEIGHT_MODES, MASK_MODES, PROCESS_PROFILES
+from .options import (
+    ADAPTIVE_MESH_DEFAULT,
+    EDGE_STYLES,
+    FOOTPRINT_MODES,
+    HEIGHT_MODES,
+    LOCK_CONFIRMED_REGIONS_DEFAULT,
+    MASK_MODES,
+    PROCESS_PROFILES,
+)
 from .quality_modes import normalize_quality_mode, quality_preset
 from .relief_parameters import ReliefParameters
 from .validation import finite_number, integer
@@ -176,6 +184,15 @@ def map_project_relief_parameters(project, side_name="front", quality_mode=None)
         manual_mask_edits=tuple(getattr(side, "mask_edits", []) or []),
         region_layers=tuple(getattr(side, "region_layers", []) or []),
         manual_height_markers=_manual_height_markers(project, side_name),
+        semantic_annotations=tuple(getattr(side, "semantic_annotations", []) or []),
+        lock_confirmed_regions=bool(
+            getattr(side, "lock_confirmed_regions", LOCK_CONFIRMED_REGIONS_DEFAULT)
+        ),
+        bezier_contours=tuple(getattr(side, "bezier_contours", []) or []),
+        adaptive_mesh_enabled=bool(
+            getattr(side, "adaptive_mesh_enabled", ADAPTIVE_MESH_DEFAULT)
+        ),
+        adaptive_coarse_cell_px=int(preset["adaptive_coarse_cell_px"]),
     )
     return parameters, preset["quality_mode"]
 

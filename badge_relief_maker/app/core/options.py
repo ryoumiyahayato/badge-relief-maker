@@ -41,3 +41,11 @@ EDGE_STYLES = OptionCatalog(("straight", "sloped", "bevel", "rounded"), "straigh
 RIM_PROFILES = OptionCatalog(("flat", "linear", "smooth"), "flat")
 FOOTPRINT_MODES = OptionCatalog(("union", "intersection", "front", "back"), "union")
 EXPORT_FORMATS = OptionCatalog(("obj", "stl", "glb"), "obj")
+SEMANTIC_ROLES = OptionCatalog(
+    ("void", "base", "low", "mid", "high", "top", "raise", "recess"),
+    "mid",
+)
+CONTOUR_OPERATIONS = OptionCatalog(("replace", "add", "remove", "intersect"), "replace")
+
+LOCK_CONFIRMED_REGIONS_DEFAULT = True
+ADAPTIVE_MESH_DEFAULT = True

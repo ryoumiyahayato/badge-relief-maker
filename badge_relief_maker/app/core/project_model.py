@@ -4,7 +4,17 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 import math
 
-from .options import EDGE_STYLES, FOOTPRINT_MODES, HEIGHT_MODES, MASK_MODES, PROCESS_PROFILES, QUALITY_MODES, RIM_PROFILES
+from .options import (
+    ADAPTIVE_MESH_DEFAULT,
+    EDGE_STYLES,
+    FOOTPRINT_MODES,
+    HEIGHT_MODES,
+    LOCK_CONFIRMED_REGIONS_DEFAULT,
+    MASK_MODES,
+    PROCESS_PROFILES,
+    QUALITY_MODES,
+    RIM_PROFILES,
+)
 
 
 PROJECT_FILE_VERSION = 2
@@ -202,6 +212,10 @@ class ReliefSideParameters:
     perspective_quad: list | None = None
     mask_edits: list = field(default_factory=list)
     region_layers: list = field(default_factory=list)
+    semantic_annotations: list = field(default_factory=list)
+    lock_confirmed_regions: bool = LOCK_CONFIRMED_REGIONS_DEFAULT
+    bezier_contours: list = field(default_factory=list)
+    adaptive_mesh_enabled: bool = ADAPTIVE_MESH_DEFAULT
 
 
 @dataclass
@@ -304,10 +318,20 @@ class MedalProject:
             relief.enabled = _coerce_bool(relief.enabled, default_enabled)
             relief.invert_height = _coerce_bool(relief.invert_height, False)
             relief.crop_to_foreground = _coerce_bool(relief.crop_to_foreground, True)
+            relief.lock_confirmed_regions = _coerce_bool(
+                relief.lock_confirmed_regions,
+                LOCK_CONFIRMED_REGIONS_DEFAULT,
+            )
+            relief.adaptive_mesh_enabled = _coerce_bool(
+                relief.adaptive_mesh_enabled,
+                ADAPTIVE_MESH_DEFAULT,
+            )
             relief.manual_crop_box = _crop_box_record(relief.manual_crop_box)
             relief.perspective_quad = _perspective_record(relief.perspective_quad)
             relief.mask_edits = _dict_list(relief.mask_edits)
             relief.region_layers = _dict_list(relief.region_layers)
+            relief.semantic_annotations = _dict_list(relief.semantic_annotations)
+            relief.bezier_contours = _dict_list(relief.bezier_contours)
         project.double_side.enabled = _coerce_bool(project.double_side.enabled, False)
         project.double_side.flip_back_horizontal = _coerce_bool(project.double_side.flip_back_horizontal, True)
         return project

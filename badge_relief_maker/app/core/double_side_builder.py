@@ -3,6 +3,7 @@
 import numpy as np
 from PIL import Image
 
+from .adaptive_mesh import build_adaptive_double_sided_relief_solid
 from .components import connected_components
 from .masked_solid_builder import build_double_sided_relief_solid
 from .options import FOOTPRINT_MODES
@@ -146,6 +147,8 @@ def build_fused_double_sided_relief(
     edge_style="straight",
     bevel_mm=0.0,
     radius_mm=0.0,
+    adaptive_mesh_enabled=False,
+    adaptive_coarse_cell_px=4,
 ):
     alignment = alignment or {}
     footprint, front_field, back_field, report = align_relief_fields(
@@ -165,17 +168,35 @@ def build_fused_double_sided_relief(
     )
     if report["footprint_component_count"] != 1:
         raise ValueError("fused double-side production mode requires one connected aligned footprint")
-    vertices, faces = build_double_sided_relief_solid(
-        front_field,
-        back_field,
-        footprint,
-        width_mm,
-        height_mm,
-        body_thickness_mm,
-        front_relief_height_mm,
-        back_relief_height_mm,
-        edge_style=edge_style,
-        bevel_mm=bevel_mm,
-        radius_mm=radius_mm,
-    )
+    if adaptive_mesh_enabled and str(edge_style).lower() == "straight":
+        vertices, faces, adaptive_report = build_adaptive_double_sided_relief_solid(
+            front_field,
+            back_field,
+            footprint,
+            width_mm,
+            height_mm,
+            body_thickness_mm,
+            front_relief_height_mm,
+            back_relief_height_mm,
+            coarse_cell_px=adaptive_coarse_cell_px,
+        )
+    else:
+        vertices, faces = build_double_sided_relief_solid(
+            front_field,
+            back_field,
+            footprint,
+            width_mm,
+            height_mm,
+            body_thickness_mm,
+            front_relief_height_mm,
+            back_relief_height_mm,
+            edge_style=edge_style,
+            bevel_mm=bevel_mm,
+            radius_mm=radius_mm,
+        )
+        adaptive_report = {
+            "adaptive": False,
+            "reason": "adaptive fused mesh disabled or incompatible with a profiled edge style",
+        }
+    report["adaptive_mesh"] = adaptive_report
     return vertices, faces, footprint, front_field, back_field, report

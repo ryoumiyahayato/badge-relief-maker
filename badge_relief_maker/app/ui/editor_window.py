@@ -32,6 +32,8 @@ class MainWindow(ProjectWindow):
         self._preview_processing_shape = None
         self._raw_source_preview_path = None
         self._editing_source_preview_path = None
+        self._prepared_preview = None
+        self._preview_paths = {}
         self.selected_output_directory = None
         self.output_directory_label = None
         super().__init__()
@@ -137,6 +139,8 @@ class MainWindow(ProjectWindow):
         self._preview_processing_shape = None
         self._raw_source_preview_path = None
         self._editing_source_preview_path = None
+        self._prepared_preview = None
+        self._preview_paths = {}
         super()._clear_previews()
 
     def _source_preview_path_for_tool(self):
@@ -175,13 +179,19 @@ class MainWindow(ProjectWindow):
             self._raw_source_preview_path = raw_path
             self._editing_source_preview_path = editing_path
             paths = prepared.report["preview_paths"]
+            self._prepared_preview = prepared
+            self._preview_paths = dict(paths)
             self._set_preview(self.source_preview, self._source_preview_path_for_tool(), "Source image unavailable")
             self._set_preview(self.mask_preview, paths.get("mask_overlay_preview"), "Mask preview unavailable")
             self._set_preview(self.height_preview, paths.get("heightmap_preview"), "Height preview unavailable")
             self.report_box.setPlainText(json.dumps(prepared.report, indent=2, ensure_ascii=False, default=str))
+            self._after_preview_refresh(prepared, paths)
             self._log(f"Refreshed {self.active_side} previews")
         except Exception as exc:
             self._error("Could not refresh previews", exc)
+
+    def _after_preview_refresh(self, prepared, paths):
+        """Allow the concrete public editor to add review visualizations."""
 
     def _marker_geometry(self, preview_space, x_normalized, y_normalized, radius_normalized):
         coordinate_space = "final_normalized" if preview_space == "final" else "normalized"
@@ -216,6 +226,8 @@ class MainWindow(ProjectWindow):
             side.manual_crop_box
             or side.mask_edits
             or side.region_layers
+            or getattr(side, "semantic_annotations", [])
+            or getattr(side, "bezier_contours", [])
             or any(str(marker.target).lower() in {self.active_side, "both"} for marker in self.project.manual_markers)
         )
         if not has_dependent_edits or QMessageBox is None:

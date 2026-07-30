@@ -244,6 +244,8 @@ def build_fused_double_side_from_project(project, project_path, export_format="o
         edge_style=project.edge.edge_style,
         bevel_mm=project.edge.bevel_mm,
         radius_mm=project.edge.radius_mm,
+        adaptive_mesh_enabled=bool(front_params.adaptive_mesh_enabled and back_params.adaptive_mesh_enabled),
+        adaptive_coarse_cell_px=int(quality_preset(resolved_quality)["adaptive_coarse_cell_px"]),
     )
     vertices, faces, repair_report = repair_mesh_basic(vertices, faces)
     combined_relief = float(front_params.relief_height_mm) + float(back_params.relief_height_mm)

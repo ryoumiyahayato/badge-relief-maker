@@ -1,5 +1,5 @@
 """Canonical public import for the desktop editor window."""
 
-from .editor_window import MainWindow
+from .semantic_studio import MainWindow
 
 __all__ = ["MainWindow"]

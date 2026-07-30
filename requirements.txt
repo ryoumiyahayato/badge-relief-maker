@@ -1,4 +1,5 @@
 numpy
 Pillow
+scipy
 trimesh
 pytest

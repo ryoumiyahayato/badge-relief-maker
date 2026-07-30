@@ -177,6 +177,7 @@ class ProjectWindow(QMainWindow):
         controls_scroll.setWidgetResizable(True)
         controls_root = QWidget()
         controls_layout = QVBoxLayout(controls_root)
+        self.controls_layout = controls_layout
 
         self.width_spin = self._double_spin(0.01, 10000.0, dimensions.width_mm)
         self.height_spin = self._double_spin(0.01, 10000.0, dimensions.height_mm)
@@ -306,6 +307,7 @@ class ProjectWindow(QMainWindow):
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
+        self.right_layout = right_layout
         preview_layout = QHBoxLayout()
         self.source_preview = _PreviewLabel("Source image")
         self.mask_preview = _PreviewLabel("Exact final mask overlay")
