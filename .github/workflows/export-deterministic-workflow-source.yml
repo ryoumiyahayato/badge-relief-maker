@@ -1,4 +1,4 @@
-name: Apply deterministic workflow patch series
+name: Diagnose deterministic workflow patch transport
 
 on:
   push:
@@ -6,40 +6,27 @@ on:
       - fix/deterministic-grayscale-relief-workflow
     paths:
       - .github/workflows/export-deterministic-workflow-source.yml
-  pull_request:
-    branches:
-      - fix/usable-relief-preview-and-mask
-    paths:
-      - .github/workflows/export-deterministic-workflow-source.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
+  diagnose:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/deterministic-grayscale-relief-workflow
           fetch-depth: 0
-      - name: Restore transport baseline
-        shell: bash
-        run: |
-          git config user.name "OpenAI Codex"
-          git config user.email "codex@openai.com"
-          git checkout HEAD^ -- .github/workflows/export-deterministic-workflow-source.yml
-          git commit -m "chore: restore source export workflow before patch application"
-      - name: Reassemble and apply logical commits
+      - name: Reassemble transport
         shell: bash
         run: |
           cat tools/deterministic-patch-chunk-* > /tmp/deterministic_workflow_patch.gz.b64
-          test "$(sha256sum /tmp/deterministic_workflow_patch.gz.b64 | cut -d' ' -f1)" = "14ec1f82f5b98d4f66964e2619ca9397cad8d9820f2fb759f1a559772c680f6a"
-          base64 --decode /tmp/deterministic_workflow_patch.gz.b64 | gzip --decompress > /tmp/deterministic_workflow_series.patch
-          git am /tmp/deterministic_workflow_series.patch
-      - name: Remove temporary transport files
-        shell: bash
-        run: |
-          git rm tools/deterministic-patch-ready tools/deterministic-patch-chunk-* .github/workflows/apply-deterministic-workflow-patch.yml
-          git commit -m "chore: remove temporary patch transport"
-          git push origin HEAD:fix/deterministic-grayscale-relief-workflow
+          sha256sum /tmp/deterministic_workflow_patch.gz.b64
+          wc -c /tmp/deterministic_workflow_patch.gz.b64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deterministic-workflow-patch-transport
+          path: /tmp/deterministic_workflow_patch.gz.b64
+          if-no-files-found: error
+          retention-days: 1
