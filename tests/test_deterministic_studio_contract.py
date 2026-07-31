@@ -32,7 +32,7 @@ def test_default_studio_exposes_three_explicit_product_decisions():
 def test_default_studio_constructs_with_four_previews_and_visible_build_controls():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     pytest.importorskip("PySide6")
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QScrollArea
 
     from badge_relief_maker.app.ui.deterministic_studio import MainWindow
 
@@ -46,12 +46,23 @@ def test_default_studio_constructs_with_four_previews_and_visible_build_controls
     assert window.confirm_solid_button.text() == "确认并锁定实体蒙版"
     assert window.confirm_height_button.text() == "确认并锁定高度主图"
     assert window.build_button.text() == "构建并导出"
-    assert window.log_box.isVisible() is False or window.log_box is not None
-    window.resize(1366, 768)
-    window.show()
-    app.processEvents()
-    assert window.build_button.geometry().height() > 0
-    assert window.log_box.geometry().height() > 0
+
+    for width, height in ((1366, 768), (1400, 900)):
+        window.resize(width, height)
+        window.show()
+        app.processEvents()
+        assert window.build_button.isVisible()
+        assert window.confirm_solid_button.isVisible()
+        assert window.confirm_height_button.isVisible()
+        assert window.log_box.isVisible()
+        assert window.build_button.geometry().height() > 0
+        assert window.confirm_solid_button.geometry().height() > 0
+        assert window.confirm_height_button.geometry().height() > 0
+        assert window.log_box.geometry().height() > 0
+        scroll_areas = window.findChildren(QScrollArea)
+        assert scroll_areas
+        assert any(area.isVisible() and area.widgetResizable() for area in scroll_areas)
+
     window.close()
     app.processEvents()
 
