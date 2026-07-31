@@ -1,0 +1,30 @@
+name: Export deterministic workflow source
+
+on:
+  push:
+    branches:
+      - fix/deterministic-grayscale-relief-workflow
+    paths:
+      - .github/workflows/export-deterministic-workflow-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/deterministic-grayscale-relief-workflow
+          fetch-depth: 0
+      - name: Pack source tree
+        shell: bash
+        run: tar --exclude=.git -czf badge-relief-maker-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deterministic-workflow-source
+          path: badge-relief-maker-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
