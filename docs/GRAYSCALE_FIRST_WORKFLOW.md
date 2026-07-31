@@ -1,60 +1,145 @@
-# Grayscale-first workflow
+# Deterministic grayscale relief workflow
 
-The primary deliverable for badge, medal and award artwork is an editable grayscale height master. A shaded 3D preview or mesh is not acceptance evidence for this stage.
+## Scope
 
-## Required order
+The production workflow has one purpose: create and approve a binary material mask and continuous grayscale height master, then generate a closed 2.5D mesh from those two artifacts.
 
-1. Load and align the source image.
-2. Recover the physical silhouette and line-art topology.
-3. Accumulate confirmed void/background regions. A later edit must not discard an earlier confirmed void unless the user explicitly reverses it.
-4. Reconstruct source contours at the requested master resolution.
-5. Export and review the grayscale master.
-6. Edit the 16-bit PNG or 32-bit TIFF until its component heights, edges and engraving are accepted.
-7. Only after approval, use that exact grayscale master as the source for OBJ/STL/GLB construction.
+The source image is reference data. It can help draft a background mask and initial brightness mapping, but it is never a mesh-stage input after approval.
 
-## Master files
+## Canonical meanings
 
-A height-master export produces:
+### `solid_mask`
 
-- `height_master_16bit.png`: editable 16-bit unsigned grayscale master;
-- `height_master_32bit.tiff`: editable 32-bit floating-point master;
-- `height_master_preview.png`: display-only 8-bit preview;
-- `linework_mask.png`: separately editable recovered engraving/linework coverage;
-- `solid_mask.png`: physical solid footprint;
-- `void_mask.png`: cumulative confirmed holes and background gaps;
-- `source_aligned.png`: source aligned to the master canvas;
-- `height_master_manifest.json`: dimensions, bit depth, applied void regions and processing policy.
-
-The default requested long edge is 8192 pixels. Broad component mass is synthesized on a bounded working grid, then source linework is reconstructed directly at the requested final resolution in memory-bounded strips. This avoids treating a low-resolution 3D mesh grid as the detail ceiling for the grayscale artifact.
-
-## Editing contract
-
-- Black is the lowest or absent height; white is the highest normalized height.
-- Confirmed void regions are represented in `void_mask.png` and have zero height in the master.
-- Confirmed voids are cumulative. New corrections are applied on top of earlier corrections and cannot silently re-fill an earlier hole.
-- Fine source lines are shallow engraving detail, not automatic deep trenches.
-- Broad component height and fine engraving are separate signals.
-- The exported PNG/TIFF can be edited in a 16-bit/32-bit capable image editor before any mesh is generated.
-- Mesh export remains intentionally deferred while the grayscale master is under review.
-
-## Approved-master mesh conversion
-
-After the grayscale master is approved, the strict conversion path is:
-
-```powershell
-python -m badge_relief_maker.app `
-  --approved-heightmap height_master_16bit.png `
-  --approved-solid-mask solid_mask.png `
-  --output approved.obj `
-  --width-mm 100 `
-  --height-mm 150 `
-  --base-mm 2.5 `
-  --relief-mm 8 `
-  --max-grid-cells 1000000
+```text
+True / white  = material exists
+False / black = no material
 ```
 
-This path does not return to the original source image. It does not perform line-art interpretation, automatic embossing or semantic height inference. The approved grayscale is the source of truth. A documented mesh-grid resample may occur when the requested mesh grid exceeds the configured cell limit.
+It controls silhouette, holes and disconnected components. It never controls height.
 
-## Limits
+### `height_master`
 
-A small source image does not contain genuine high-frequency shape information merely because it is enlarged. The exporter preserves and reconstructs the source contour decisions at high resolution, but professional sculptural form still requires region-level correction or manual grayscale editing when the source is ambiguous. The program must expose that uncertainty rather than conceal it with a smooth 3D render.
+```text
+0.0 = lowest solid surface
+1.0 = highest solid surface
+```
+
+Only values under `solid_mask=True` are meaningful. Outside values are fixed to zero and excluded from normalization and mesh construction.
+
+### Confirmation state
+
+The project persists:
+
+```text
+solid_mask_confirmed
+height_master_confirmed
+```
+
+Anything saved before both are true is labelled `review_required`.
+
+## Fixed three-stage order
+
+### 1. Confirm material area
+
+Choose one:
+
+1. Whole plate.
+2. Automatic background draft: alpha, sampled background, border-connected colour or explicit bright/dark connected background.
+3. Custom mask with ordered add/remove/fill/delete-component/rectangle/polygon edits.
+
+Automatic removal is never final until the user confirms it. Confirmed material is locked; height generation cannot refill or delete it.
+
+### 2. Confirm height inside material
+
+Choose one:
+
+1. Bright is high.
+2. Dark is high.
+3. Dark/light line engraving at a fixed millimetre depth.
+4. Dark/light line embossing at a fixed millimetre height.
+5. Fixed height.
+
+The program may not silently choose among these meanings.
+
+For continuous brightness modes, finite solid pixels use percentile normalization:
+
+```text
+low default  = 2%
+high default = 98%
+```
+
+The interval is clipped and mapped to 0–1. The user can change black point, white point, midtone and inversion. Empty masks, non-finite values and invalid ranges are rejected. A uniform solid region receives a deterministic midpoint draft rather than division by zero.
+
+Line modes start from a flat surface. Detected line coverage changes height by a fixed millimetre amount, is clipped to 0–1, stays inside the mask and records clipped pixels. It does not stretch black and white across the entire relief range.
+
+Manual height operation order is fixed:
+
+```text
+automatic draft
+→ global levels
+→ line relief
+→ region fixed height
+→ local set/raise/lower/smooth edits
+→ final confirmation
+```
+
+### 3. Build and export
+
+The mesh builder reads only approved mask, approved height, dimensions and sampling settings. It uses the regular shared-vertex builder by default and creates top, bottom, outer walls, hole walls and closed components.
+
+```text
+top_z_mm = height_master × relief_height_mm
+bottom_z_mm = -base_thickness_mm
+```
+
+Mask and height are resampled separately:
+
+- mask: nearest-neighbour binary resampling;
+- height: bicubic continuous resampling, clipped to 0–1, then zeroed outside the resampled mask.
+
+Approved files must already have the same shape. The strict builder rejects misalignment instead of silently resizing one approved artifact to the other.
+
+## Formal artifacts
+
+```text
+source_aligned.png
+solid_mask.png
+height_master_16bit.png
+height_master_32bit.tiff
+height_master_preview.png
+mesh_preview.png
+project.json
+output.obj / output.stl / output.glb
+build_report.json
+```
+
+The 8-bit preview is not a formal mesh input. The strict CLI accepts 16-bit unsigned or 32-bit float single-channel masters and records input hashes.
+
+## Report requirements
+
+The build report includes:
+
+- actual X/Y grid spacing in millimetres;
+- source physical pixel size;
+- array and foreground grid dimensions;
+- vertices and triangles;
+- downsampling and interpolation policy;
+- minimum-feature three-sample advice;
+- estimated mesh-array memory;
+- dimensions and error;
+- topology, zero-area and component orientation checks;
+- input and output SHA-256 hashes;
+- deterministic mesh digest;
+- explicit confirmation that source inference, semantic inference, automatic line interpretation and adaptive meshing were not used.
+
+## Photo warning
+
+A photograph contains illumination and material effects. Brightness mapping from a photograph is a draft, not recovered true geometry. The GUI, project and report must state this and require manual correction.
+
+## Advanced isolation
+
+Semantic regions, uncertainty previews, Bezier contours, adaptive grids and double-sided fusion may remain available under an explicit advanced entry. They are not dependencies of the simple path, cannot edit an approved master in the background and cannot prevent regular-grid export when unavailable. SciPy is optional for the basic path.
+
+## External acceptance
+
+Automated checks do not certify manufacturability. Review OBJ/STL/GLB in Blender and the intended slicer or CAM application, then perform a physical test where required.
