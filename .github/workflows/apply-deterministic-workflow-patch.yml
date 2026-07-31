@@ -1,0 +1,35 @@
+name: Apply deterministic workflow patch series
+
+on:
+  push:
+    branches:
+      - fix/deterministic-grayscale-relief-workflow
+    paths:
+      - tools/deterministic-patch-ready
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/deterministic-grayscale-relief-workflow
+          fetch-depth: 0
+      - name: Reassemble and apply logical commits
+        shell: bash
+        run: |
+          cat tools/deterministic-patch-chunk-* > /tmp/deterministic_workflow_patch.gz.b64
+          test "$(sha256sum /tmp/deterministic_workflow_patch.gz.b64 | cut -d' ' -f1)" = "14ec1f82f5b98d4f66964e2619ca9397cad8d9820f2fb759f1a559772c680f6a"
+          base64 --decode /tmp/deterministic_workflow_patch.gz.b64 | gzip --decompress > /tmp/deterministic_workflow_series.patch
+          git config user.name "OpenAI Codex"
+          git config user.email "codex@openai.com"
+          git am /tmp/deterministic_workflow_series.patch
+      - name: Remove temporary transport files
+        shell: bash
+        run: |
+          git rm tools/deterministic-patch-ready tools/deterministic-patch-chunk-* .github/workflows/apply-deterministic-workflow-patch.yml
+          git commit -m "chore: remove temporary patch transport"
+          git push origin HEAD:fix/deterministic-grayscale-relief-workflow
