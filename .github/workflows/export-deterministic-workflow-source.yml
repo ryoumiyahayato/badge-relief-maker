@@ -70,7 +70,6 @@ jobs:
                     if-no-files-found: error
                     retention-days: 1
           BASELINE
-          sed -i 's/^          //' .github/workflows/export-deterministic-workflow-source.yml
           git add .github/workflows/export-deterministic-workflow-source.yml
           git commit -m "chore: restore source export workflow before patch application"
           git am /tmp/deterministic_workflow_series.patch
