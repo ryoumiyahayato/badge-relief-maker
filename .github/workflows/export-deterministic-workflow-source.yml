@@ -6,6 +6,11 @@ on:
       - fix/deterministic-grayscale-relief-workflow
     paths:
       - .github/workflows/export-deterministic-workflow-source.yml
+  pull_request:
+    branches:
+      - fix/usable-relief-preview-and-mask
+    paths:
+      - .github/workflows/export-deterministic-workflow-source.yml
 
 permissions:
   contents: read
