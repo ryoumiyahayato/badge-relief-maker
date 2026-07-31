@@ -26,10 +26,10 @@ jobs:
           fetch-depth: 0
       - name: Pack source tree
         shell: bash
-        run: tar --exclude=.git -czf badge-relief-maker-source.tar.gz .
+        run: tar --exclude=.git -czf /tmp/badge-relief-maker-source.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
           name: deterministic-workflow-source
-          path: badge-relief-maker-source.tar.gz
+          path: /tmp/badge-relief-maker-source.tar.gz
           if-no-files-found: error
           retention-days: 1
