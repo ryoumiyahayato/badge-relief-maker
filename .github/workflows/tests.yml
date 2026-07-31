@@ -1,3 +1,4 @@
+# Main-based deterministic grayscale workflow validation.
 name: tests
 
 on:
