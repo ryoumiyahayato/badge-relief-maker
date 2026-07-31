@@ -1,4 +1,4 @@
-name: Apply verified deterministic workflow patch series
+name: Publish deterministic workflow implementation
 
 on:
   push:
@@ -16,16 +16,17 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/deterministic-grayscale-relief-workflow
           fetch-depth: 0
-      - name: Verify and apply patch series
+      - name: Apply implementation without workflow-file changes
         shell: bash
         run: |
+          remote_head="$(git rev-parse origin/fix/deterministic-grayscale-relief-workflow)"
           cat tools/deterministic-patch-chunk-* > /tmp/deterministic_workflow_patch.gz.b64
           actual_sha="$(sha256sum /tmp/deterministic_workflow_patch.gz.b64 | cut -d' ' -f1)"
           echo "transport_sha256=${actual_sha}"
@@ -73,9 +74,9 @@ jobs:
           git add .github/workflows/export-deterministic-workflow-source.yml
           git commit -m "chore: restore source export workflow before patch application"
           git am /tmp/deterministic_workflow_series.patch
-      - name: Remove temporary transport files and push
-        shell: bash
-        run: |
-          git rm tools/deterministic-patch-ready tools/deterministic-patch-chunk-* .github/workflows/apply-deterministic-workflow-patch.yml
-          git commit -m "chore: remove temporary patch transport"
+          git checkout "${remote_head}" -- .github/workflows
+          git rm tools/deterministic-patch-ready tools/deterministic-patch-chunk-*
+          git reset --soft "${remote_head}"
+          test -z "$(git diff --cached --name-only -- .github/workflows)"
+          git commit -m "Stabilize deterministic grayscale relief workflow"
           git push origin HEAD:fix/deterministic-grayscale-relief-workflow
