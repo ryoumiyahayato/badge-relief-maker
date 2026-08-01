@@ -5,23 +5,24 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "badge-relief-maker"
 version = "0.3.0"
-description = "Local 2D badge and medal artwork to editable 2.5D relief meshes."
+description = "Chinese desktop software for single-image badge and medal grayscale heightmap generation."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 dependencies = [
   "numpy>=1.24",
   "Pillow>=10.0",
-  "scipy>=1.10,<2",
   "trimesh>=4.0",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+test = ["pytest>=8.0", "scipy>=1.10,<2"]
 gui = ["PySide6>=6.6"]
-package = ["PySide6>=6.6", "pyinstaller>=6.10"]
+advanced = ["scipy>=1.10,<2"]
+package = ["PySide6>=6.6", "pyinstaller>=6.10", "scipy>=1.10,<2"]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
+  "scipy>=1.10,<2",
   "PySide6>=6.6",
   "pyinstaller>=6.10",
 ]

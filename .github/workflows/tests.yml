@@ -1,3 +1,4 @@
+# Main-based deterministic grayscale workflow validation.
 name: tests
 
 on:
@@ -25,10 +26,10 @@ jobs:
         run: python -m badge_relief_maker.app --help
       - name: Verify version entry point
         run: python -m badge_relief_maker.app --version
-      - name: Verify corrected GUI module imports
-        run: python -c "from badge_relief_maker.app.ui.editor_window import MainWindow; print(MainWindow.__name__)"
+      - name: Verify deterministic default GUI and core imports
+        run: python -c "from badge_relief_maker.app.ui.deterministic_studio import MainWindow; from badge_relief_maker.app.core.deterministic_workflow import draft_solid_mask, draft_height_master; print(MainWindow.__name__)"
       - name: Run static checks
-        run: python -m ruff check badge_relief_maker tests
+        run: python -m ruff check badge_relief_maker tests tools
       - name: Run tests
         run: python -m pytest -q --junitxml=pytest-report.xml
       - name: Upload test report
@@ -53,11 +54,98 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: ./build_windows.ps1
-      - name: Smoke-test executable
-        run: .\dist\BadgeReliefMaker.exe --help
-      - name: Upload executable
+      - name: Generate fixed approved-mask and height-master fixtures
+        run: python tools/generate_deterministic_smoke_assets.py smoke-assets
+      - name: Smoke-test strict approved-artifact OBJ and STL paths
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force smoke-results | Out-Null
+          $Exe = Resolve-Path .\dist\BadgeReliefMaker.exe
+          & $Exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Packaged --help failed" }
+          & $Exe --version | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Packaged --version failed" }
+          & $Exe `
+            --approved-heightmap smoke-assets\white_background_logo\height_master_16bit.png `
+            --approved-solid-mask smoke-assets\white_background_logo\solid_mask.png `
+            --output smoke-results\white-background-logo.obj `
+            --build-report smoke-results\white-background-logo-report.json `
+            --width-mm 100 --height-mm 80 --base-mm 2 --relief-mm 3 `
+            --min-feature-mm 0.3 --quality standard
+          if ($LASTEXITCODE -ne 0) { throw "Approved white-background logo OBJ build failed" }
+          & $Exe `
+            --approved-heightmap smoke-assets\whole_plate_line_engraving\height_master_16bit.png `
+            --approved-solid-mask smoke-assets\whole_plate_line_engraving\solid_mask.png `
+            --output smoke-results\whole-plate-line-engraving.stl `
+            --build-report smoke-results\whole-plate-line-engraving-report.json `
+            --width-mm 120 --height-mm 90 --base-mm 2 --relief-mm 3 `
+            --min-feature-mm 0.3 --quality standard
+          if ($LASTEXITCODE -ne 0) { throw "Approved whole-plate line engraving STL build failed" }
+          $Required = @(
+            "smoke-results\white-background-logo.obj",
+            "smoke-results\white-background-logo-report.json",
+            "smoke-results\whole-plate-line-engraving.stl",
+            "smoke-results\whole-plate-line-engraving-report.json",
+            "smoke-assets\white_background_logo\solid_mask.png",
+            "smoke-assets\white_background_logo\height_master_16bit.png",
+            "smoke-assets\whole_plate_line_engraving\solid_mask.png",
+            "smoke-assets\whole_plate_line_engraving\height_master_16bit.png"
+          )
+          foreach ($Path in $Required) {
+            if (-not (Test-Path $Path)) { throw "Missing smoke artifact: $Path" }
+          }
+      - name: Smoke-test packaged GUI startup and clean shutdown
+        shell: pwsh
+        run: |
+          $Exe = Resolve-Path .\dist\BadgeReliefMaker.exe
+          & $Exe --gui-smoke-seconds 3
+          if ($LASTEXITCODE -ne 0) { throw "Packaged GUI smoke close failed" }
+          Start-Sleep -Seconds 2
+          $Remaining = Get-Process BadgeReliefMaker -ErrorAction SilentlyContinue
+          if ($Remaining) {
+            $Remaining | Stop-Process -Force
+            throw "Packaged GUI left a residual process"
+          }
+      - name: Record executable, dependency and PyInstaller evidence
+        shell: pwsh
+        run: |
+          $Exe = Get-Item .\dist\BadgeReliefMaker.exe
+          $Hash = (Get-FileHash $Exe.FullName -Algorithm SHA256).Hash
+          $Python = (& python --version 2>&1 | Out-String).Trim()
+          $Packages = @{}
+          foreach ($Name in @("numpy", "Pillow", "scipy", "trimesh", "PySide6", "pyinstaller")) {
+            $Version = (& python -c "import importlib.metadata as m; print(m.version('$Name'))" 2>$null | Out-String).Trim()
+            $Packages[$Name] = $Version
+          }
+          $WarningPath = ".\build\BadgeReliefMaker\warn-BadgeReliefMaker.txt"
+          $Warnings = if (Test-Path $WarningPath) { Get-Content $WarningPath -Raw } else { "warning file not generated" }
+          $Report = [ordered]@{
+            executable = $Exe.FullName
+            size_bytes = $Exe.Length
+            sha256 = $Hash
+            python = $Python
+            dependencies = $Packages
+            help = "passed"
+            version = "passed"
+            gui_startup_and_timed_close = "passed"
+            clean_shutdown = "passed"
+            white_background_logo_obj = "passed"
+            whole_plate_line_engraving_stl = "passed"
+            approved_heightmap_entry = "passed"
+            reports_generated = "passed"
+            pyinstaller_warning_file = $WarningPath
+            pyinstaller_warnings = $Warnings
+          }
+          $Report | ConvertTo-Json -Depth 6 | Set-Content smoke-results\package-smoke-report.json -Encoding UTF8
+          Write-Host "EXE size: $($Exe.Length) bytes"
+          Write-Host "EXE SHA-256: $Hash"
+      - name: Upload executable and smoke evidence
         uses: actions/upload-artifact@v4
         with:
           name: BadgeReliefMaker-windows-x64
-          path: dist/BadgeReliefMaker.exe
+          path: |
+            dist/BadgeReliefMaker.exe
+            smoke-assets/
+            smoke-results/
+            build/BadgeReliefMaker/warn-BadgeReliefMaker.txt
           if-no-files-found: error

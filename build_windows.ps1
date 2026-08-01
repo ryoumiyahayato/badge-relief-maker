@@ -43,25 +43,29 @@ $SmokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("BadgeReliefMaker-smok
 New-Item -ItemType Directory -Path $SmokeRoot | Out-Null
 $env:BADGE_RELIEF_SMOKE_DIR = $SmokeRoot
 try {
-    & $Python -c "import os; from pathlib import Path; from PIL import Image, ImageDraw; root=Path(os.environ['BADGE_RELIEF_SMOKE_DIR']); image=Image.new('RGBA',(96,96),(0,0,0,0)); draw=ImageDraw.Draw(image); draw.ellipse((8,8,88,88),fill=(210,210,210,255),outline=(20,20,20,255),width=5); draw.rectangle((42,20,54,76),fill=(45,45,45,255)); image.save(root/'input.png')"
+    & $Python -c "import os; from pathlib import Path; import numpy as np; from PIL import Image; root=Path(os.environ['BADGE_RELIEF_SMOKE_DIR']); rows,cols=48,64; mask=np.zeros((rows,cols),dtype=np.uint8); mask[6:-6,8:-8]=255; gradient=np.tile(np.linspace(0,65535,cols,dtype=np.uint16),(rows,1)); gradient[mask==0]=0; Image.fromarray(mask,mode='L').save(root/'solid_mask.png'); Image.fromarray(gradient).save(root/'height_master_16bit.png')"
     if ($LASTEXITCODE -ne 0) {
-        throw "Could not create packaged semantic-pipeline smoke fixture"
+        throw "Could not create approved-artifact package smoke fixtures"
     }
     & $Executable `
-        --input (Join-Path $SmokeRoot "input.png") `
+        --approved-heightmap (Join-Path $SmokeRoot "height_master_16bit.png") `
+        --approved-solid-mask (Join-Path $SmokeRoot "solid_mask.png") `
         --output (Join-Path $SmokeRoot "model.obj") `
-        --preview-dir (Join-Path $SmokeRoot "previews") `
-        --max-grid-cells 10000 | Out-Null
+        --build-report (Join-Path $SmokeRoot "build_report.json") `
+        --width-mm 64 `
+        --height-mm 48 `
+        --base-mm 2 `
+        --relief-mm 3 `
+        --quality draft | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "Packaged semantic/adaptive pipeline smoke test failed with exit code $LASTEXITCODE"
+        throw "Packaged approved-artifact OBJ smoke test failed with exit code $LASTEXITCODE"
     }
     foreach ($RequiredOutput in @(
         (Join-Path $SmokeRoot "model.obj"),
-        (Join-Path $SmokeRoot "previews\semantic_region_preview.png"),
-        (Join-Path $SmokeRoot "previews\confidence_heatmap_preview.png")
+        (Join-Path $SmokeRoot "build_report.json")
     )) {
         if (-not (Test-Path -LiteralPath $RequiredOutput)) {
-            throw "Packaged semantic/adaptive pipeline did not create $RequiredOutput"
+            throw "Packaged approved-artifact path did not create $RequiredOutput"
         }
     }
 }
@@ -71,4 +75,4 @@ finally {
         Remove-Item -LiteralPath $SmokeRoot -Recurse -Force
     }
 }
-Write-Host "Built and smoke-tested dist\BadgeReliefMaker.exe, including semantic/adaptive previews"
+Write-Host "Built and smoke-tested dist\BadgeReliefMaker.exe through the approved deterministic artifact path"
