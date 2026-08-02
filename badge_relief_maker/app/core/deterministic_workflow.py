@@ -34,6 +34,25 @@ HEIGHT_OPERATION_ORDER = (
 )
 
 
+def background_strength_to_tolerance(strength: float) -> float:
+    """Map the user-facing 0--100 background strength to RGB distance."""
+    value = float(np.clip(float(strength), 0.0, 100.0)) / 100.0
+    return float(value * np.sqrt(3.0))
+
+
+def _refine_mask_edges(mask: np.ndarray, edge_refinement_px: int) -> np.ndarray:
+    """Expand or contract a binary mask with a deterministic pixel radius."""
+    values = np.asarray(mask, dtype=bool)
+    radius = int(edge_refinement_px)
+    if radius == 0 or not values.size:
+        return values.copy()
+    size = radius * 2 + 1
+    image = Image.fromarray(values.astype(np.uint8) * 255, mode="L")
+    # A max filter expands the kept region; a min filter contracts it.
+    filtered = image.filter(ImageFilter.MaxFilter(size) if radius > 0 else ImageFilter.MinFilter(abs(radius) * 2 + 1))
+    return np.asarray(filtered, dtype=np.uint8) >= 128
+
+
 @dataclass(frozen=True)
 class SourceImageData:
     """Normalized source channels plus an 8-bit aligned reference image."""
@@ -358,8 +377,11 @@ def draft_solid_mask(
     alpha_threshold: float = 1.0 / 255.0,
     background_samples=(),
     background_tolerance: float = 0.08,
+    background_strength: float | None = None,
     explicit_background: str | None = None,
     explicit_threshold: float = 0.9,
+    edge_refinement_px: float = 0.0,
+    edge_refinement_reference_shape: tuple[int, int] | None = None,
     edits=(),
 ) -> SolidMaskDraft:
     """Draft a binary material mask without assigning any height meaning."""
@@ -371,7 +393,10 @@ def draft_solid_mask(
     method = selected_mode
     informative_alpha = bool(data.alpha.size and float(data.alpha.min()) < float(data.alpha.max()))
     sample_points = _sample_points(background_samples, data.luminance.shape)
-    tolerance = float(np.clip(background_tolerance, 0.0, np.sqrt(3.0)))
+    if background_strength is not None:
+        tolerance = background_strength_to_tolerance(background_strength)
+    else:
+        tolerance = float(np.clip(background_tolerance, 0.0, np.sqrt(3.0)))
     alpha_threshold = float(np.clip(alpha_threshold, 0.0, 1.0))
 
     if selected_mode == "whole_plate":
@@ -405,6 +430,15 @@ def draft_solid_mask(
             mask = ~background
             method = "border_connected_background"
 
+    auto_mask = mask.copy()
+    requested_edge_px = float(edge_refinement_px)
+    if edge_refinement_reference_shape is not None:
+        reference_minimum = max(min(int(edge_refinement_reference_shape[0]), int(edge_refinement_reference_shape[1])), 1)
+        current_minimum = max(min(mask.shape), 1)
+        effective_edge_px = int(round(requested_edge_px * current_minimum / reference_minimum))
+    else:
+        effective_edge_px = int(round(requested_edge_px))
+    mask = _refine_mask_edges(mask, effective_edge_px)
     initial_count = int(mask.sum())
     mask, edit_report = apply_solid_mask_edits(mask, edits)
     report = {
@@ -415,6 +449,10 @@ def draft_solid_mask(
         "alpha_informative": informative_alpha,
         "background_sample_count": len(sample_points),
         "background_tolerance": tolerance,
+        "background_strength": None if background_strength is None else float(np.clip(background_strength, 0.0, 100.0)),
+        "auto_solid_pixel_count": int(auto_mask.sum()),
+        "edge_refinement_px": requested_edge_px,
+        "edge_refinement_effective_px": effective_edge_px,
         "initial_solid_pixel_count": initial_count,
         "final_solid_pixel_count": int(mask.sum()),
         "solid_fraction": float(mask.mean()) if mask.size else 0.0,

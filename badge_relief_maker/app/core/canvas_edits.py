@@ -15,6 +15,26 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 
+def screen_radius_to_normalized(
+    screen_radius_px: float,
+    view_scale: float,
+    image_shape: tuple[int, int] | Sequence[int],
+) -> float:
+    """Convert a screen-space radius to the persisted normalized radius.
+
+    The conversion uses the minimum image dimension, matching the normalized
+    coordinate contract used by deterministic replay at any raster size.
+    """
+    try:
+        rows, cols = int(image_shape[0]), int(image_shape[1])
+    except (TypeError, ValueError, IndexError):
+        rows = cols = 1
+    minimum = max(min(rows, cols), 1)
+    scale = max(float(view_scale), 1e-9)
+    image_radius_px = max(float(screen_radius_px), 0.0) / scale
+    return float(np.clip(image_radius_px / minimum, 1e-7, 1.0))
+
+
 def clamp_normalized_point(point: Sequence[float]) -> tuple[float, float] | None:
     """Return a finite point in the normalized image rectangle, or ``None``."""
     try:
