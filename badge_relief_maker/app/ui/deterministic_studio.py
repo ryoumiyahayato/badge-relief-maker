@@ -674,9 +674,24 @@ class MainWindow(QMainWindow):
         self._update_state()
 
     # --------------------------------------------------------------- artifacts
+    def replay_formal_edits(self):
+        """Replay normalized canvas history against the original-resolution source."""
+        if self.source_data is None:
+            raise ValueError("source image is required")
+        solid = draft_solid_mask(**self._solid_arguments(self.source_data, self.session.solid_edits))
+        height = draft_height_master(self.source_data, solid.mask, **self._height_arguments())
+        return solid, height
+
     def _ensure_formal_artifacts(self):
         if self.source_data is None:
             raise ValueError("source image is required")
+        if self.session.formal_solid_mask is None and self.session.formal_height_master is None:
+            solid, height = self.replay_formal_edits()
+            self.session.formal_solid_mask = solid.mask
+            self.session.formal_height_master = height.height_master
+            self.session.solid_draft = solid
+            self.session.height_draft = height
+            return
         if self.session.formal_solid_mask is None:
             formal = draft_solid_mask(**self._solid_arguments(self.source_data, self.session.solid_edits))
             self.session.formal_solid_mask = formal.mask
