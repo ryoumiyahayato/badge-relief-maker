@@ -230,6 +230,35 @@ def _region_mask(shape: tuple[int, int], edit: dict) -> np.ndarray:
     coordinate_space = str(edit.get("coordinate_space", "normalized")).lower()
     normalized = coordinate_space not in {"pixel", "pixels", "image_pixel"}
     edit_shape = str(edit.get("shape", "circle")).lower()
+    if edit_shape in {"stroke", "brush", "line"}:
+        converted = []
+        for point in edit.get("points", ()):
+            try:
+                x, y = (point.get("x"), point.get("y")) if isinstance(point, dict) else point[:2]
+                x, y = float(x), float(y)
+            except (TypeError, ValueError, IndexError):
+                continue
+            if normalized:
+                x *= max(cols - 1, 1)
+                y *= max(rows - 1, 1)
+            converted.append((x, y))
+        if not converted:
+            return np.zeros(shape, dtype=bool)
+        image = Image.new("L", (cols, rows), 0)
+        draw = ImageDraw.Draw(image)
+        radius = float(edit.get("radius_normalized", edit.get("radius_px", 0.02)))
+        if normalized and "radius_px" not in edit:
+            radius *= min(rows, cols)
+        width = max(1, int(round(radius * 2.0)))
+        if len(converted) == 1:
+            x, y = converted[0]
+            draw.ellipse((x - width / 2.0, y - width / 2.0, x + width / 2.0, y + width / 2.0), fill=255)
+        else:
+            draw.line(converted, fill=255, width=width, joint="curve")
+            cap = max(1, width // 2)
+            for x, y in (converted[0], converted[-1]):
+                draw.ellipse((x - cap, y - cap, x + cap, y + cap), fill=255)
+        return np.asarray(image, dtype=np.uint8) > 0
     if edit_shape in {"polygon", "poly", "freeform", "free_form"}:
         converted = []
         for point in edit.get("points", edit.get("vertices", ())):
@@ -637,6 +666,7 @@ def export_workflow_artifacts(
     source_parameters: dict | None = None,
     solid_edits=(),
     height_edits=(),
+    canvas_state: dict | None = None,
 ) -> WorkflowArtifacts:
     """Write the canonical source/mask/height/project artifact set atomically."""
     data = source if isinstance(source, SourceImageData) else load_source_image(source)
@@ -671,7 +701,8 @@ def export_workflow_artifacts(
     review_required = not (bool(solid_mask_confirmed) and bool(height_master_confirmed))
     file_hashes = {name: sha256_file(path) for name, path in paths.items() if name not in {"project", "build_report"}}
     project = {
-        "file_version": 1,
+        "file_version": 2,
+        "editor_schema_version": 2,
         "workflow": "deterministic_grayscale_relief",
         "source_role": "reference_only_after_approval",
         "source_path": data.source_path,
@@ -687,6 +718,7 @@ def export_workflow_artifacts(
         "height_master_report": dict(height_report or {}),
         "solid_mask_edits": list(solid_edits or ()),
         "height_edits": list(height_edits or ()),
+        "canvas_state": dict(canvas_state or {}),
         "height_operation_order": list(HEIGHT_OPERATION_ORDER),
         "mesh_input_policy": ["approved solid_mask", "approved height_master", "physical dimensions", "mesh sampling settings"],
         "mesh_forbidden_inputs": ["source image inference", "semantic classification", "background detection", "automatic line interpretation"],
