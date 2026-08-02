@@ -24,8 +24,8 @@ def test_default_window_is_canvas_first_with_three_modes_and_one_main_canvas():
     window.show()
     app.processEvents()
     assert window.controls.confirm_solid_button.isVisible()
-    assert window.controls.confirm_height_button.isVisible()
-    assert window.controls.build_button.isVisible()
+    assert not window.controls.confirm_height_button.isVisible()
+    assert not window.controls.build_button.isVisible()
     assert window.log_box.isVisible()
     assert any(area.widgetResizable() for area in window.findChildren(QScrollArea))
     for width, height in ((1366, 768), (1400, 900)):

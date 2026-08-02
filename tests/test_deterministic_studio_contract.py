@@ -13,20 +13,20 @@ from badge_relief_maker.app.ui.deterministic_studio import (
 
 def test_default_studio_exposes_three_explicit_product_decisions():
     assert "确定性" in APP_TITLE
-    assert "实体蒙版" in APP_SUBTITLE
+    assert "区域" in APP_SUBTITLE
     assert SOLID_MODE_OPTIONS == {
-        "整个底板": "whole_plate",
-        "自动去背景": "auto_background",
-        "自定义实体范围": "custom",
+        "保留整张图": "whole_plate",
+        "去除背景": "auto_background",
+        "手动编辑": "custom",
     }
     assert HEIGHT_MODE_OPTIONS == {
-        "亮色凸起": "bright_high",
-        "暗色凸起": "dark_high",
-        "线条凹刻": "line_engrave",
-        "线条凸起": "line_emboss",
-        "固定高度": "fixed",
+        "亮处更高": "bright_high",
+        "暗处更高": "dark_high",
+        "刻线": "line_engrave",
+        "凸线": "line_emboss",
+        "等高": "fixed",
     }
-    assert QUALITY_OPTIONS == {"草稿": "draft", "标准": "standard", "精细": "fine"}
+    assert QUALITY_OPTIONS == {"快速": "draft", "标准": "standard", "精细": "fine"}
 
 
 def test_default_studio_constructs_with_four_previews_and_visible_build_controls():
@@ -43,21 +43,20 @@ def test_default_studio_constructs_with_four_previews_and_visible_build_controls
     assert window.solid_preview is not None
     assert window.height_preview is not None
     assert window.mesh_preview is not None
-    assert window.confirm_solid_button.text() == "确认并锁定实体蒙版"
-    assert window.confirm_height_button.text() == "确认并锁定高度主图"
-    assert window.build_button.text() == "构建并导出"
+    assert window.confirm_solid_button.text() == "确认区域"
+    assert window.confirm_height_button.text() == "确认高度"
+    assert window.build_button.text() == "生成模型"
 
     for width, height in ((1366, 768), (1400, 900)):
         window.resize(width, height)
         window.show()
         app.processEvents()
-        assert window.build_button.isVisible()
         assert window.confirm_solid_button.isVisible()
-        assert window.confirm_height_button.isVisible()
+        assert not window.confirm_height_button.isVisible()
+        assert not window.build_button.isVisible()
         assert window.log_box.isVisible()
-        assert window.build_button.geometry().height() > 0
         assert window.confirm_solid_button.geometry().height() > 0
-        assert window.confirm_height_button.geometry().height() > 0
+        assert window.confirm_solid_button.geometry().height() > 0
         assert window.log_box.geometry().height() > 0
         scroll_areas = window.findChildren(QScrollArea)
         assert scroll_areas
@@ -83,9 +82,9 @@ def test_default_studio_persists_confirmed_truth_and_mesh_controls(tmp_path):
 
     window = MainWindow()
     window.load_image(image_path)
-    window.solid_mode_combo.setCurrentText("整个底板")
+    window.solid_mode_combo.setCurrentText("保留整张图")
     window.confirm_solid()
-    window.height_mode_combo.setCurrentText("固定高度")
+    window.height_mode_combo.setCurrentText("等高")
     window.fixed_height_spin.setValue(0.65)
     window.width_spin.setValue(123.0)
     window.height_spin.setValue(77.0)
