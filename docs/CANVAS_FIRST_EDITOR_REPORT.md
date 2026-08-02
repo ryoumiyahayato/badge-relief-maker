@@ -1,71 +1,105 @@
-# Canvas-first editor phase 1 report
+# Canvas-first editor round 2 report
 
-## Baseline and final environment
+## Scope and revisions
 
+- Repository: `ryoumiyahayato/badge-relief-maker`
+- Pull request: Draft #8
 - Base branch: `main`
-- Base SHA: `fdb4a79a57feb6411f7dca96e0a9eea068d534b5`
-- Development interpreter: Python 3.10.20 (`.venv310`)
-- Packaging interpreter: Python 3.12.13 (`.venv`)
-- Baseline before the change: Ruff passed; 266 tests passed; CLI help/version
-  passed; offscreen GUI smoke started and exited cleanly.
-- Final: Ruff passed; 276 tests passed; CLI help/version passed; offscreen GUI
-  smoke passed.
+- Fixed starting head: `58f1a4d8308a3149c5e139185ef2b6df96f2877f`
+- Code and test implementation head: `1d4ab5beb5ef9af0069a941ae2c052f8851c016c`.
+- Final branch head: recorded in the PR update after the documentation commit.
 
-The layout screenshot captured at 1366×768 is
-[`canvas-first-editor-1366x768.png`](screenshots/canvas-first-editor-1366x768.png).
-It shows the top operation bar, narrow tool rail, single central canvas, right
-property stack and bottom task/log area. Native Windows font rendering should
-be used for the Chinese labels during manual acceptance.
+This round addresses stable pan/zoom, screen-space brush sizing, zoom-aware
+normalized replay, direct editor wording, and practical background-edge
+refinement. The PR remains Draft.
 
-## Implemented structure
+## Implementation
 
-- `app/ui/deterministic_studio.py`: window assembly, project I/O, mode and
-  approval coordination, formal replay and mesh coordination.
-- `app/ui/canvas_editor.py`: one `QGraphicsView`/`QGraphicsScene`, normalized
-  coordinate mapping, zoom/pan, layer compositing, stroke sampling and cursor.
-- `app/ui/editor_controls.py`: operation bar, tool rail, three mode property
-  pages, approval badges, layer visibility and opacity control.
-- `app/ui/editor_session.py`: explicit mode/tool state, per-mode undo/redo and
-  approval transitions.
-- `app/ui/background_jobs.py`: `JobController`, `JobRequest`, `JobResult`,
-  `JobError`, cancellation tokens, stale-result rejection and 200 ms debounce.
-- `app/core/canvas_edits.py`: deterministic interpolation, stroke rasterization,
-  ROI calculation and normalized replay helpers.
+### Pan and zoom
 
-The deterministic core now accepts `stroke` records in addition to legacy
-circle, rectangle and polygon records. `project.json` writes
-`editor_schema_version: 2` and the existing formal artifact names remain
-unchanged.
+`CanvasEditor` now exposes `_begin_pan(viewport_position)`, `_update_pan`, and
+`_end_pan`. Middle drag, Space + left drag, and the `移动` tool all use that
+same path. Each update maps the previous and current viewport points into scene
+coordinates and moves the view center by their difference. Pan cancels on
+focus loss, Escape, tool/mode changes, Space release, and mouse release; it
+does not create a stroke or undo record.
 
-## Acceptance and performance data
+The displayed zoom percentage is derived from the actual QGraphicsView
+transform after `fitInView`, reset, or scale. Wheel zoom preserves the scene
+point below the cursor where scrolling permits it. `Ctrl+0` fits the image and
+`Ctrl+1` sets the actual transform to 100%.
 
-The real metal badge fixture completed image import, preview editing, entity
-approval, height editing, height approval and project write in the local
-offscreen flow. The fixture is 353×384 pixels, so its preview copy remains the
-same size. A temporary fixture project was removed after the run.
+### Brush model
 
-For a synthetic 1536×2048 image, the deterministic core measured:
+The user-facing brush unit is integer screen pixels, range 2--300 px, default
+24 px. Slider, spin box, `[`, `]`, and Shift + wheel share the same value;
+entity/region and height modes persist separate last-used values.
 
-| Operation | Seconds |
-| --- | ---: |
-| Source import | 0.355 |
-| Solid draft | 0.017 |
-| Height draft | 0.310 |
-| Formal artifact write | 0.479 |
-| Draft-quality mesh build | 50.081 |
+At stroke start:
 
-Peak RSS was not available from the installed development environment. Stroke
-and pan/zoom work is kept on the preview copy; formal replay and mesh building
-are dispatched through the worker controller. Automated tests cover stale
-request IDs, cancellation, debounce, coordinate invariance, continuous
-strokes, undo/redo and project reopening.
+```text
+view_scale = actual QGraphicsView scene scale
+image_radius_px = screen_radius_px / view_scale
+radius_normalized = image_radius_px / min(image_height, image_width)
+```
 
-## Known remaining items
+The normalized radius is captured once per drag, persisted in the stroke
+record, and replayed at original resolution. The cursor and stroke preview use
+the same scene-space diameter, so a 24 px screen brush covers approximately
+one eighth of the image radius at 800% compared with 100%.
 
-- A second manual Windows pass with the user-provided complex badge should
-  capture live screenshots/recording for fine-line cleanup and verify all OBJ,
-  STL and GLB exports interactively.
-- Timing and peak-memory thresholds are machine acceptance measurements rather
-  than hard CI assertions.
-- The current phase keeps compatibility aliases for the prior deterministic
-  test/API names; they can be removed after downstream consumers migrate.
+### Background and edge refinement
+
+- `背景类型`: `自动` / `浅色` / `深色`
+- `去背景强度`: integer 0--100, mapped linearly to the internal RGB distance
+  range 0--√3
+- `边缘修正`: integer -20--20 px; negative values contract the mask and
+  positive values expand it
+- `取背景色` and `重新计算` remain available in the region page
+
+Preview recalculation is debounced by 200 ms and runs through the existing
+stale-result-safe job controller. Manual stroke history is applied after the
+automatic/edge-refined draft. Formal confirmation repeats the same operation
+against the original image dimensions, so a late preview result cannot replace
+newer manual edits.
+
+### Default wording and layout
+
+The primary labels now use `区域`, `高度`, `模型`, `确认区域`, `确认高度`,
+`生成模型`, `添加区域`, `擦除区域`, `填充区域`, `取背景色`, `去除背景`,
+`去背景强度`, `画笔大小`, and `模型精度`. Height normalization and line
+parameters are inside a collapsed `高级调整` group. Only the confirmation or
+generation action for the current mode is visible in the top bar. The current
+tool, brush size, and zoom remain visible.
+
+## Validation
+
+- Baseline before this round: 276 tests passed at the fixed starting head.
+- Current automated suite: 282 passed.
+- Ruff: passed with `python -m ruff check badge_relief_maker tests tools`.
+- CLI `--help`: passed.
+- CLI `--version`: passed (`Badge Relief Maker 0.3.0`).
+- Windows packaging: `build_windows.ps1` passed on Windows 11 / Python
+  3.12.13. `dist\BadgeReliefMaker.exe --help`, `--version`, and the approved
+  artifact OBJ smoke path passed.
+- Offscreen fixture check: `acceptance_fixtures/asymmetric_front.png` loaded,
+  automatic region draft, -2 px edge refinement, and a subsequent manual erase
+  completed without an exception.
+
+## Manual Windows acceptance
+
+The user-provided complex badge image and a screenshot/recording were not
+available in this workspace. Automated Qt tests cover the three pan entries,
+scene-coordinate zoom, brush scale, cursor-to-stroke radius, edge direction,
+stale jobs, persistence, and default wording. The remaining manual pass must
+be performed on the user's Windows host with the complex badge at 100%, 200%,
+400%, and 800%, including fine-line erase/recover and interactive OBJ/STL/GLB
+export checks.
+
+## Remaining items
+
+- Capture the requested before/after Windows screenshots or short recording.
+- Confirm the visual quality of white-background cleanup, bottom lettering,
+  star tips, and positive/negative edge correction on the supplied badge.
+- After the next manual pass, decide whether Draft PR #8 is ready for review;
+  it should remain Draft for now.
