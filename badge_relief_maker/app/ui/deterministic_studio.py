@@ -35,6 +35,7 @@ from ..core.deterministic_workflow import (
     SOLID_MODES,
     HeightMasterDraft,
     SolidMaskDraft,
+    background_strength_to_tolerance,
     draft_height_master,
     draft_solid_mask,
     export_workflow_artifacts,
@@ -50,20 +51,34 @@ from .editor_session import CanvasTool, EditorMode, EditorSession
 
 
 APP_TITLE = "确定性灰度浮雕直接编辑器"
-APP_SUBTITLE = "实体蒙版 → 高度主图 → 规则网格；批准后网格只读取正式主图"
+APP_SUBTITLE = "区域 → 高度 → 模型；确认后模型只读取正式主图"
 SOLID_MODE_OPTIONS = {
-    "整个底板": "whole_plate",
-    "自动去背景": "auto_background",
-    "自定义实体范围": "custom",
+    "保留整张图": "whole_plate",
+    "去除背景": "auto_background",
+    "手动编辑": "custom",
 }
 HEIGHT_MODE_OPTIONS = {
-    "亮色凸起": "bright_high",
-    "暗色凸起": "dark_high",
-    "线条凹刻": "line_engrave",
-    "线条凸起": "line_emboss",
-    "固定高度": "fixed",
+    "亮处更高": "bright_high",
+    "暗处更高": "dark_high",
+    "刻线": "line_engrave",
+    "凸线": "line_emboss",
+    "等高": "fixed",
 }
-QUALITY_OPTIONS = {"草稿": "draft", "标准": "standard", "精细": "fine"}
+QUALITY_OPTIONS = {"快速": "draft", "标准": "standard", "精细": "fine"}
+
+TOOL_LABELS = {
+    CanvasTool.PAN: "移动",
+    CanvasTool.BACKGROUND_SAMPLE: "取背景色",
+    CanvasTool.BRUSH_ADD: "添加区域",
+    CanvasTool.BRUSH_ERASE: "擦除区域",
+    CanvasTool.FILL: "填充区域",
+    CanvasTool.RECTANGLE: "矩形",
+    CanvasTool.POLYGON: "多边形",
+    CanvasTool.HEIGHT_SET: "设置高度",
+    CanvasTool.HEIGHT_RAISE: "抬高",
+    CanvasTool.HEIGHT_LOWER: "降低",
+    CanvasTool.HEIGHT_SMOOTH: "平滑",
+}
 
 
 def _preview_data(source_data, maximum_edge: int = 1536):
@@ -160,7 +175,7 @@ class MainWindow(QMainWindow):
         self.log_box.setPlaceholderText("日志（可展开查看后台任务和构建报告）")
         root.addWidget(self.log_box)
         self.setCentralWidget(central)
-        self.statusBar().showMessage("导入图片后，在画布上编辑实体蒙版")
+        self.statusBar().showMessage("导入图片后，在画布上编辑区域")
 
         # The old public attribute names remain aliases for projects and tests
         # that used the deterministic window API before the canvas migration.
@@ -169,11 +184,19 @@ class MainWindow(QMainWindow):
             "save_project_button",
             "solid_mode_combo",
             "explicit_background_combo",
+            "background_strength_slider",
+            "background_strength_spin",
             "background_tolerance_spin",
+            "edge_refinement_spin",
             "solid_radius_spin",
+            "solid_brush_size_slider",
+            "solid_brush_size_spin",
             "refresh_solid_button",
+            "remove_background_button",
+            "sample_background_button",
             "confirm_solid_button",
             "height_mode_combo",
+            "height_relief_spin",
             "low_percentile_spin",
             "high_percentile_spin",
             "black_point_spin",
@@ -185,6 +208,8 @@ class MainWindow(QMainWindow):
             "line_threshold_spin",
             "line_softness_spin",
             "height_radius_spin",
+            "height_brush_size_slider",
+            "height_brush_size_spin",
             "height_amount_spin",
             "refresh_height_button",
             "reset_height_button",
@@ -192,7 +217,7 @@ class MainWindow(QMainWindow):
             "width_spin",
             "height_spin",
             "base_spin",
-            "relief_spin",
+            "relief_spin_mesh",
             "minimum_thickness_spin",
             "min_feature_spin",
             "quality_combo",
@@ -200,6 +225,9 @@ class MainWindow(QMainWindow):
             "build_button",
         ):
             setattr(self, name, getattr(self.controls, name))
+        # Keep the old public mesh parameter name while making the height page
+        # use its own visible relief-height control.
+        self.relief_spin = self.controls.relief_spin_mesh
         self.source_preview = self.canvas
         self.solid_preview = self.canvas
         self.height_preview = self.canvas
@@ -211,11 +239,19 @@ class MainWindow(QMainWindow):
         self.controls.tool_requested.connect(self.set_tool)
         self.controls.overlay_opacity_changed.connect(self._set_overlay_opacity)
         self.controls.layer_visibility_requested.connect(self.canvas.set_layer_visibility)
+        self.controls.brush_size_requested.connect(self._set_brush_size)
         self.controls.undo_button.clicked.connect(self.undo_current)
         self.controls.redo_button.clicked.connect(self.redo_current)
         self.cancel_task_button.clicked.connect(self.cancel_active_job)
         self.canvas.stroke_finished.connect(self._on_stroke_finished)
-        for control in (self.solid_mode_combo, self.explicit_background_combo, self.background_tolerance_spin):
+        self.canvas.zoom_changed.connect(self.controls.set_zoom_status)
+        self.canvas.brush_size_changed.connect(self._on_canvas_brush_size_changed)
+        for control in (
+            self.solid_mode_combo,
+            self.explicit_background_combo,
+            self.background_strength_spin,
+            self.edge_refinement_spin,
+        ):
             signal = control.currentTextChanged if hasattr(control, "currentTextChanged") else control.valueChanged
             signal.connect(lambda *_: self.solid_debouncer.trigger())
         for control in (
@@ -235,6 +271,8 @@ class MainWindow(QMainWindow):
                 control.toggled if hasattr(control, "toggled") else control.valueChanged
             )
             signal.connect(lambda *_: self.height_debouncer.trigger())
+        self._set_brush_size("solid", self.session.solid_brush_size_px)
+        self._set_brush_size("height", self.session.height_brush_size_px)
 
     # --------------------------------------------------------------- utilities
     def _sync_aliases(self):
@@ -273,8 +311,14 @@ class MainWindow(QMainWindow):
         self.controls.solid_mode_combo.setEnabled(not self.session.solid_mask_confirmed)
         self.controls.height_mode_combo.setEnabled(self.session.solid_mask_confirmed and not self.session.height_master_confirmed)
         self.controls.mesh_status_label.setText(
-            "已批准主图；网格只读取 solid_mask 和 height_master" if self.session.height_master_confirmed else "批准高度后可构建"
+            "高度已确认，可生成模型" if self.session.height_master_confirmed else "确认高度后可生成模型"
         )
+        selected_size = self.session.solid_brush_size_px if self.session.editor_mode == EditorMode.SOLID else self.session.height_brush_size_px
+        selected_key = "height" if self.session.editor_mode == EditorMode.HEIGHT else "solid"
+        self.controls.set_brush_size(selected_key, selected_size)
+        self.canvas.set_brush_size_px(selected_size)
+        self.controls.set_brush_status(selected_size)
+        self.controls.set_tool_status(TOOL_LABELS.get(self.session.active_tool, str(self.session.active_tool.value)))
 
     def _set_task(self, name: str, detail: str = "", *, busy: bool = True):
         self.task_name_label.setText(name)
@@ -316,6 +360,11 @@ class MainWindow(QMainWindow):
             self.build_and_export()
         elif action == "refresh_solid":
             self.refresh_solid()
+        elif action == "remove_background":
+            self.solid_mode_combo.setCurrentText("去除背景")
+            self.refresh_solid()
+        elif action == "sample_background":
+            self.set_tool(CanvasTool.BACKGROUND_SAMPLE)
         elif action == "refresh_height":
             self.refresh_height()
         elif action == "reset_height":
@@ -324,13 +373,15 @@ class MainWindow(QMainWindow):
     def set_mode(self, mode: EditorMode | str):
         selected = EditorMode(mode)
         if not self.session.request_mode(selected):
-            self._log("当前批准状态不允许进入该模式")
+            self._log("当前确认状态不允许进入该模式")
             return False
+        self.canvas.cancel_interaction()
         self._update_state()
         return True
 
     def set_tool(self, tool: CanvasTool | str):
         selected = CanvasTool(tool)
+        self.canvas.cancel_interaction()
         self.session.set_tool(selected)
         self.canvas.set_tool(selected)
         if selected in {CanvasTool.HEIGHT_SET, CanvasTool.HEIGHT_RAISE, CanvasTool.HEIGHT_LOWER, CanvasTool.HEIGHT_SMOOTH}:
@@ -338,8 +389,26 @@ class MainWindow(QMainWindow):
         elif selected not in {CanvasTool.PAN, CanvasTool.BACKGROUND_SAMPLE} and self.session.editor_mode != EditorMode.SOLID:
             if self.session.solid_mask_confirmed:
                 self.set_mode(EditorMode.HEIGHT)
-        radius = self.height_radius_spin.value() if self.session.editor_mode == EditorMode.HEIGHT else self.solid_radius_spin.value()
-        self.canvas.set_brush_radius(radius)
+        size = self.session.height_brush_size_px if self.session.editor_mode == EditorMode.HEIGHT else self.session.solid_brush_size_px
+        self.canvas.set_brush_size_px(size)
+        self.controls.set_tool_status(TOOL_LABELS.get(selected, selected.value))
+        self.controls.set_brush_status(size)
+
+    def _set_brush_size(self, mode: str, value: int):
+        selected = str(mode).lower()
+        size = int(np.clip(int(value), self.canvas.MIN_BRUSH_SIZE_PX, self.canvas.MAX_BRUSH_SIZE_PX))
+        if selected == "height":
+            self.session.height_brush_size_px = size
+        else:
+            self.session.solid_brush_size_px = size
+        active_size = self.session.height_brush_size_px if self.session.editor_mode == EditorMode.HEIGHT else self.session.solid_brush_size_px
+        self.controls.set_brush_size(selected, size)
+        self.controls.set_brush_status(active_size)
+        self.canvas.set_brush_size_px(active_size)
+
+    def _on_canvas_brush_size_changed(self, value: int):
+        mode = "height" if self.session.editor_mode == EditorMode.HEIGHT else "solid"
+        self._set_brush_size(mode, int(value))
 
     def _set_overlay_opacity(self, value: float):
         self.session.overlay_opacity = float(np.clip(float(value), 0.0, 1.0))
@@ -386,6 +455,9 @@ class MainWindow(QMainWindow):
             directory = self.source_path.parent / f"{self.source_path.stem}_relief_project"
             self.session.reset_for_source(source, preview, directory)
             self._render_canvas_layers()
+            self.canvas.fit_to_window()
+            self._set_brush_size("solid", self.session.solid_brush_size_px)
+            self._set_brush_size("height", self.session.height_brush_size_px)
             self._log("图片已导入；编辑预览最长边限制为 1536 像素", {"path": str(self.source_path), "source_shape": list(source.luminance.shape), "preview_shape": list(preview.luminance.shape)})
             self.refresh_solid()
             self._update_state()
@@ -417,12 +489,17 @@ class MainWindow(QMainWindow):
             state = project.get("canvas_state", {})
             self.session.overlay_opacity = float(state.get("overlay_opacity", 0.5))
             self.session.canvas_zoom = float(state.get("zoom", 1.0))
+            self.session.solid_brush_size_px = int(np.clip(state.get("solid_brush_size_px", 24), 2, 300))
+            self.session.height_brush_size_px = int(np.clip(state.get("height_brush_size_px", 24), 2, 300))
             requested_mode = str(state.get("mode", "height" if self.session.height_master_confirmed else "solid"))
             self.session.editor_mode = EditorMode(requested_mode) if requested_mode in {item.value for item in EditorMode} else EditorMode.SOLID
             if self.session.editor_mode == EditorMode.MESH and not self.session.height_master_confirmed:
                 self.session.editor_mode = EditorMode.HEIGHT if self.session.solid_mask_confirmed else EditorMode.SOLID
             self.canvas.set_overlay_opacity(self.session.overlay_opacity)
             self._render_canvas_layers()
+            self.canvas.set_zoom(self.session.canvas_zoom)
+            self._set_brush_size("solid", self.session.solid_brush_size_px)
+            self._set_brush_size("height", self.session.height_brush_size_px)
             self._update_state()
             self._log("项目已重新打开，已恢复批准状态、编辑记录和正式主图", {"project": str(Path(project_path).resolve()), "editor_schema_version": project.get("editor_schema_version", 1), "solid_edit_count": len(self.session.solid_edits), "height_edit_count": len(self.session.height_edits)})
         except Exception as exc:
@@ -458,14 +535,21 @@ class MainWindow(QMainWindow):
                 break
         solid_settings = parameters.get("solid_settings", {})
         explicit = solid_settings.get("explicit_background")
-        self.explicit_background_combo.setCurrentText("亮背景" if explicit == "bright" else "暗背景" if explicit == "dark" else "自动判断边缘背景")
-        self.background_tolerance_spin.setValue(float(solid_settings.get("background_tolerance", 0.08)))
+        self.explicit_background_combo.setCurrentText("浅色" if explicit == "bright" else "深色" if explicit == "dark" else "自动")
+        if "background_strength" in solid_settings:
+            strength = float(solid_settings.get("background_strength", 8))
+        else:
+            tolerance = float(solid_settings.get("background_tolerance", 0.08))
+            strength = tolerance / max(float(np.sqrt(3.0)), 1e-9) * 100.0
+        self.background_strength_spin.setValue(int(np.clip(round(strength), 0, 100)))
+        self.edge_refinement_spin.setValue(int(np.clip(round(float(solid_settings.get("edge_refinement_px", 0))), -20, 20)))
         normalization = parameters.get("normalization", {})
         for name, default in (("low_percentile", 2.0), ("high_percentile", 98.0), ("black_point", 0.0), ("white_point", 1.0), ("midtone", 1.0)):
             getattr(self, f"{name if name != 'low_percentile' else 'low_percentile'}_spin").setValue(float(normalization.get(name, default)))
         self.invert_check.setChecked(bool(normalization.get("invert", False)))
         height_settings = parameters.get("height_settings", {})
         self.fixed_height_spin.setValue(float(height_settings.get("fixed_height", 1.0)))
+        self.height_relief_spin.setValue(float(height_settings.get("relief_height_mm", 3.0)))
         self.line_depth_spin.setValue(float(height_settings.get("line_depth_mm", 0.2)))
         self.line_threshold_spin.setValue(float(height_settings.get("line_threshold", 0.35)))
         self.line_softness_spin.setValue(float(height_settings.get("line_softness_px", 0.75)))
@@ -483,7 +567,7 @@ class MainWindow(QMainWindow):
     # -------------------------------------------------------------- parameters
     def _explicit_background(self):
         text = self.explicit_background_combo.currentText()
-        return "bright" if text == "亮背景" else "dark" if text == "暗背景" else None
+        return "bright" if text == "浅色" else "dark" if text == "深色" else None
 
     def _height_arguments(self, edits=None):
         return {
@@ -497,7 +581,7 @@ class MainWindow(QMainWindow):
             "fixed_height": float(self.fixed_height_spin.value()),
             "line_threshold": float(self.line_threshold_spin.value()),
             "line_depth_mm": float(self.line_depth_spin.value()),
-            "relief_height_mm": float(self.relief_spin.value()),
+            "relief_height_mm": float(self.height_relief_spin.value()),
             "line_softness_px": float(self.line_softness_spin.value()),
             "height_edits": tuple(edits if edits is not None else self.session.height_edits),
         }
@@ -507,9 +591,11 @@ class MainWindow(QMainWindow):
             "source": source,
             "mode": SOLID_MODE_OPTIONS[self.solid_mode_combo.currentText()],
             "background_samples": tuple(self.session.background_samples),
-            "background_tolerance": float(self.background_tolerance_spin.value()),
+            "background_strength": float(self.background_strength_spin.value()),
             "explicit_background": self._explicit_background(),
             "explicit_threshold": 0.9 if self._explicit_background() == "bright" else 0.1,
+            "edge_refinement_px": float(self.edge_refinement_spin.value()),
+            "edge_refinement_reference_shape": tuple(self.source_data.luminance.shape) if self.source_data is not None else None,
             "edits": tuple(edits),
         }
 
@@ -518,7 +604,7 @@ class MainWindow(QMainWindow):
         if self.preview_source_data is None:
             return
         inputs = self._solid_arguments(self.preview_source_data, list(self.session.solid_edits))
-        self._set_task("正在生成实体初稿……", "编辑预览")
+        self._set_task("正在去除背景……", "编辑预览")
         self._solid_job_request = self.job_controller.submit("solid_draft", inputs, self._solid_worker)
 
     @staticmethod
@@ -526,7 +612,7 @@ class MainWindow(QMainWindow):
         token.throw_if_cancelled()
         progress(15, "读取预览图")
         result = draft_solid_mask(**inputs)
-        progress(100, "实体初稿完成")
+        progress(100, "区域初稿完成")
         return result
 
     def _compute_solid_preview_sync(self):
@@ -552,7 +638,7 @@ class MainWindow(QMainWindow):
             "solid_mask": preview_mask,
             **self._height_arguments(),
         }
-        self._set_task("正在生成高度初稿……", "编辑预览")
+        self._set_task("正在生成高度……", "编辑预览")
         self._height_job_request = self.job_controller.submit("height_draft", inputs, self._height_worker)
 
     @staticmethod
@@ -589,7 +675,9 @@ class MainWindow(QMainWindow):
             self._log("已添加背景取样点")
             return
         if self.session.editor_mode == EditorMode.SOLID:
-            radius = float(self.solid_radius_spin.value())
+            radius = self.canvas.last_stroke_radius_normalized or self.canvas.screen_radius_to_normalized(
+                self.session.solid_brush_size_px / 2.0
+            )
             if tool == CanvasTool.BRUSH_ERASE:
                 edit = normalized_edit_record("remove", points, radius)
             elif tool == CanvasTool.FILL:
@@ -606,7 +694,9 @@ class MainWindow(QMainWindow):
             self._update_state()
             return
         if self.session.editor_mode == EditorMode.HEIGHT and self.session.solid_mask_confirmed:
-            radius = float(self.height_radius_spin.value())
+            radius = self.canvas.last_stroke_radius_normalized or self.canvas.screen_radius_to_normalized(
+                self.session.height_brush_size_px / 2.0
+            )
             if tool == CanvasTool.HEIGHT_RAISE:
                 edit = normalized_edit_record("add", points, radius, amount=float(self.height_amount_spin.value()))
             elif tool == CanvasTool.HEIGHT_LOWER:
@@ -627,14 +717,14 @@ class MainWindow(QMainWindow):
             self._compute_solid_preview_sync()
             formal = draft_solid_mask(**self._solid_arguments(self.source_data, self.session.solid_edits))
             if not formal.mask.any():
-                raise ValueError("实体蒙版为空")
+                raise ValueError("保留区域为空")
             self.session.solid_draft = formal
             self.session.confirm_solid(formal.mask.copy())
             self._compute_height_preview_sync()
             self.session.editor_mode = EditorMode.HEIGHT
             self._render_canvas_layers()
             self._update_state()
-            self._log("实体蒙版已批准；现在可在同一画布编辑高度")
+            self._log("区域已确认；现在可在同一画布编辑高度")
             return True
         except Exception as exc:
             self._show_error("批准实体失败", exc)
@@ -662,7 +752,7 @@ class MainWindow(QMainWindow):
             self.session.editor_mode = EditorMode.MESH
             self._render_canvas_layers()
             self._update_state()
-            self._log("高度主图已批准；网格模式已解锁")
+            self._log("高度已确认；模型模式已解锁")
             return True
         except Exception as exc:
             self._show_error("批准高度失败", exc)
@@ -707,9 +797,14 @@ class MainWindow(QMainWindow):
             "solid_mode": SOLID_MODE_OPTIONS[self.solid_mode_combo.currentText()],
             "height_mode": HEIGHT_MODE_OPTIONS[self.height_mode_combo.currentText()],
             "background_samples": list(self.session.background_samples),
-            "solid_settings": {"explicit_background": self._explicit_background(), "background_tolerance": float(self.background_tolerance_spin.value())},
+            "solid_settings": {
+                "explicit_background": self._explicit_background(),
+                "background_strength": int(self.background_strength_spin.value()),
+                "background_tolerance": background_strength_to_tolerance(self.background_strength_spin.value()),
+                "edge_refinement_px": int(self.edge_refinement_spin.value()),
+            },
             "normalization": {"low_percentile": float(self.low_percentile_spin.value()), "high_percentile": float(self.high_percentile_spin.value()), "black_point": float(self.black_point_spin.value()), "white_point": float(self.white_point_spin.value()), "midtone": float(self.midtone_spin.value()), "invert": bool(self.invert_check.isChecked())},
-            "height_settings": {"fixed_height": float(self.fixed_height_spin.value()), "line_threshold": float(self.line_threshold_spin.value()), "line_depth_mm": float(self.line_depth_spin.value()), "line_softness_px": float(self.line_softness_spin.value())},
+            "height_settings": {"fixed_height": float(self.fixed_height_spin.value()), "line_threshold": float(self.line_threshold_spin.value()), "line_depth_mm": float(self.line_depth_spin.value()), "line_softness_px": float(self.line_softness_spin.value()), "relief_height_mm": float(self.height_relief_spin.value())},
             "mesh_settings": {"width_mm": float(self.width_spin.value()), "height_mm": float(self.height_spin.value()), "base_thickness_mm": float(self.base_spin.value()), "relief_height_mm": float(self.relief_spin.value()), "minimum_thickness_mm": float(self.minimum_thickness_spin.value()), "minimum_feature_mm": float(self.min_feature_spin.value()), "quality_mode": QUALITY_OPTIONS[self.quality_combo.currentText()], "export_format": self.format_combo.currentText().lower(), "mesh_type": "regular_shared_vertex_grid"},
         }
         artifacts = export_workflow_artifacts(
@@ -724,7 +819,13 @@ class MainWindow(QMainWindow):
             source_parameters=source_parameters,
             solid_edits=self.session.solid_edits,
             height_edits=self.session.height_edits,
-            canvas_state={"mode": self.session.editor_mode.value, "zoom": self.canvas.zoom, "overlay_opacity": self.canvas.overlay_opacity},
+            canvas_state={
+                "mode": self.session.editor_mode.value,
+                "zoom": self.canvas.zoom,
+                "overlay_opacity": self.canvas.overlay_opacity,
+                "solid_brush_size_px": self.session.solid_brush_size_px,
+                "height_brush_size_px": self.session.height_brush_size_px,
+            },
         )
         self.session.artifact_directory = Path(directory)
         self._sync_aliases()
@@ -733,7 +834,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------- mesh
     def build_and_export(self, output_path: str | Path | None = None):
         if not (self.session.solid_mask_confirmed and self.session.height_master_confirmed):
-            self._log("请先批准实体蒙版和高度主图")
+            self._log("请先确认区域和高度")
             return False
         if output_path is None:
             suffix = self.format_combo.currentText().lower()
@@ -747,7 +848,7 @@ class MainWindow(QMainWindow):
             preset = quality_preset(QUALITY_OPTIONS[self.quality_combo.currentText()])
             params = ReliefParameters(width_mm=float(self.width_spin.value()), height_mm=float(self.height_spin.value()), base_thickness_mm=float(self.base_spin.value()), relief_height_mm=float(self.relief_spin.value()), minimum_thickness_mm=float(self.minimum_thickness_spin.value()), max_grid_cells=int(preset["max_grid_cells"]), edge_style="straight")
             inputs = {"height_path": artifacts.paths["height_master_16bit"], "mask_path": artifacts.paths["solid_mask"], "output_path": str(output_path), "parameters": params, "quality_mode": preset["canonical_quality_mode"], "min_feature_mm": float(self.min_feature_spin.value()), "report_path": str(Path(self.session.artifact_directory) / "build_report.json")}
-            self._set_task("正在构建规则网格……", "窗口和画布仍可操作")
+            self._set_task("正在生成模型……", "窗口和画布仍可操作")
             self._mesh_job_request = self.job_controller.submit("mesh_build", inputs, self._mesh_worker)
             return True
         except Exception as exc:
