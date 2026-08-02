@@ -59,6 +59,8 @@ class EditorSession:
     overlay_opacity: float = 0.5
     active_job_id: int | None = None
     canvas_zoom: float = 1.0
+    solid_brush_size_px: int = 24
+    height_brush_size_px: int = 24
     canvas_state: dict = field(default_factory=dict)
 
     @property
@@ -91,6 +93,8 @@ class EditorSession:
         self.active_tool = CanvasTool.BRUSH_ADD
         self.active_job_id = None
         self.canvas_zoom = 1.0
+        self.solid_brush_size_px = 24
+        self.height_brush_size_px = 24
 
     def add_solid_edit(self, edit: dict) -> None:
         item = deepcopy(edit)
