@@ -1,6 +1,7 @@
 """Manual height marker helpers for local relief adjustment."""
 
 import numpy as np
+from PIL import Image, ImageDraw
 
 from .marker_schema import (
     ADD_OPERATIONS,
@@ -119,6 +120,20 @@ def _normalize_marker(marker, default_shape):
         return None
 
     marker_shape = _marker_shape(marker)
+    if marker_shape in {"stroke", "brush", "line"}:
+        points = _stroke_points_px(marker, default_shape)
+        if points is None:
+            return None
+        radius_px = _radius_px(marker, default_shape)
+        if radius_px is None or radius_px < 0.0:
+            return None
+        return {
+            "shape": "stroke",
+            "points": points,
+            "radius_px": float(radius_px),
+            "operation": operation,
+            "value": float(value),
+        }
     if marker_shape in POLYGON_SHAPES:
         points = _polygon_points_px(marker, default_shape)
         if points is None:
@@ -204,7 +219,22 @@ def _looks_like_shape(value):
 def _marker_region(mask, marker):
     rows, cols = mask.shape
     yy, xx = np.ogrid[:rows, :cols]
-    if marker["shape"] == "rectangle":
+    if marker["shape"] == "stroke":
+        image = Image.new("L", (cols, rows), 0)
+        draw = ImageDraw.Draw(image)
+        points = [(float(point[0]), float(point[1])) for point in marker["points"]]
+        width = max(1, int(round(marker["radius_px"] * 2.0)))
+        if len(points) == 1:
+            x, y = points[0]
+            radius = width / 2.0
+            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=255)
+        else:
+            draw.line(points, fill=255, width=width, joint="curve")
+            radius = max(1, width // 2)
+            for x, y in (points[0], points[-1]):
+                draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=255)
+        region = np.asarray(image, dtype=np.uint8) > 0
+    elif marker["shape"] == "rectangle":
         half_w = marker["width_px"] / 2.0
         half_h = marker["height_px"] / 2.0
         region = (np.abs(xx - marker["cx"]) <= half_w) & (np.abs(yy - marker["cy"]) <= half_h)
@@ -256,10 +286,10 @@ def _operation(marker):
 
 def _operation_value(marker, operation):
     if operation == "smooth":
-        value = _float_or_none(marker.get("strength", marker.get("value", 1.0)))
+        value = _float_or_none(marker.get("strength", marker.get("amount", marker.get("value", 1.0))))
         return None if value is None else clamp01(value)
     if operation in {"add", "subtract"}:
-        for key in ["delta", "delta_height", "height_delta", "value", "height"]:
+        for key in ["delta", "delta_height", "height_delta", "amount", "value", "height"]:
             if key in marker:
                 value = _float_or_none(marker.get(key))
                 if value is None:
@@ -358,6 +388,36 @@ def _polygon_points_px(marker, default_shape):
         if coordinate_space not in PIXEL_COORDINATE_SPACES:
             x = x * max(cols - 1, 1)
             y = y * max(rows - 1, 1)
+        result.append((float(x), float(y)))
+    return np.asarray(result, dtype=float)
+
+
+def _stroke_points_px(marker, default_shape):
+    points = marker.get("points", marker.get("stroke_points", ()))
+    try:
+        points = list(points)
+    except TypeError:
+        return None
+    if not points:
+        return None
+    coordinate_space = str(marker.get("coordinate_space", marker.get("space", "normalized"))).lower()
+    rows, cols = _grid_shape(marker, default_shape)
+    result = []
+    for point in points:
+        if isinstance(point, dict):
+            x = _float_or_none(point.get("x"))
+            y = _float_or_none(point.get("y"))
+        else:
+            try:
+                x = _float_or_none(point[0])
+                y = _float_or_none(point[1])
+            except (TypeError, IndexError):
+                return None
+        if x is None or y is None:
+            return None
+        if coordinate_space not in PIXEL_COORDINATE_SPACES:
+            x *= max(cols - 1, 1)
+            y *= max(rows - 1, 1)
         result.append((float(x), float(y)))
     return np.asarray(result, dtype=float)
 

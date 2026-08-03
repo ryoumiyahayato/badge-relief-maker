@@ -34,6 +34,25 @@ HEIGHT_OPERATION_ORDER = (
 )
 
 
+def background_strength_to_tolerance(strength: float) -> float:
+    """Map the user-facing 0--100 background strength to RGB distance."""
+    value = float(np.clip(float(strength), 0.0, 100.0)) / 100.0
+    return float(value * np.sqrt(3.0))
+
+
+def _refine_mask_edges(mask: np.ndarray, edge_refinement_px: int) -> np.ndarray:
+    """Expand or contract a binary mask with a deterministic pixel radius."""
+    values = np.asarray(mask, dtype=bool)
+    radius = int(edge_refinement_px)
+    if radius == 0 or not values.size:
+        return values.copy()
+    size = radius * 2 + 1
+    image = Image.fromarray(values.astype(np.uint8) * 255, mode="L")
+    # A max filter expands the kept region; a min filter contracts it.
+    filtered = image.filter(ImageFilter.MaxFilter(size) if radius > 0 else ImageFilter.MinFilter(abs(radius) * 2 + 1))
+    return np.asarray(filtered, dtype=np.uint8) >= 128
+
+
 @dataclass(frozen=True)
 class SourceImageData:
     """Normalized source channels plus an 8-bit aligned reference image."""
@@ -230,6 +249,35 @@ def _region_mask(shape: tuple[int, int], edit: dict) -> np.ndarray:
     coordinate_space = str(edit.get("coordinate_space", "normalized")).lower()
     normalized = coordinate_space not in {"pixel", "pixels", "image_pixel"}
     edit_shape = str(edit.get("shape", "circle")).lower()
+    if edit_shape in {"stroke", "brush", "line"}:
+        converted = []
+        for point in edit.get("points", ()):
+            try:
+                x, y = (point.get("x"), point.get("y")) if isinstance(point, dict) else point[:2]
+                x, y = float(x), float(y)
+            except (TypeError, ValueError, IndexError):
+                continue
+            if normalized:
+                x *= max(cols - 1, 1)
+                y *= max(rows - 1, 1)
+            converted.append((x, y))
+        if not converted:
+            return np.zeros(shape, dtype=bool)
+        image = Image.new("L", (cols, rows), 0)
+        draw = ImageDraw.Draw(image)
+        radius = float(edit.get("radius_normalized", edit.get("radius_px", 0.02)))
+        if normalized and "radius_px" not in edit:
+            radius *= min(rows, cols)
+        width = max(1, int(round(radius * 2.0)))
+        if len(converted) == 1:
+            x, y = converted[0]
+            draw.ellipse((x - width / 2.0, y - width / 2.0, x + width / 2.0, y + width / 2.0), fill=255)
+        else:
+            draw.line(converted, fill=255, width=width, joint="curve")
+            cap = max(1, width // 2)
+            for x, y in (converted[0], converted[-1]):
+                draw.ellipse((x - cap, y - cap, x + cap, y + cap), fill=255)
+        return np.asarray(image, dtype=np.uint8) > 0
     if edit_shape in {"polygon", "poly", "freeform", "free_form"}:
         converted = []
         for point in edit.get("points", edit.get("vertices", ())):
@@ -329,8 +377,11 @@ def draft_solid_mask(
     alpha_threshold: float = 1.0 / 255.0,
     background_samples=(),
     background_tolerance: float = 0.08,
+    background_strength: float | None = None,
     explicit_background: str | None = None,
     explicit_threshold: float = 0.9,
+    edge_refinement_px: float = 0.0,
+    edge_refinement_reference_shape: tuple[int, int] | None = None,
     edits=(),
 ) -> SolidMaskDraft:
     """Draft a binary material mask without assigning any height meaning."""
@@ -342,7 +393,10 @@ def draft_solid_mask(
     method = selected_mode
     informative_alpha = bool(data.alpha.size and float(data.alpha.min()) < float(data.alpha.max()))
     sample_points = _sample_points(background_samples, data.luminance.shape)
-    tolerance = float(np.clip(background_tolerance, 0.0, np.sqrt(3.0)))
+    if background_strength is not None:
+        tolerance = background_strength_to_tolerance(background_strength)
+    else:
+        tolerance = float(np.clip(background_tolerance, 0.0, np.sqrt(3.0)))
     alpha_threshold = float(np.clip(alpha_threshold, 0.0, 1.0))
 
     if selected_mode == "whole_plate":
@@ -376,6 +430,15 @@ def draft_solid_mask(
             mask = ~background
             method = "border_connected_background"
 
+    auto_mask = mask.copy()
+    requested_edge_px = float(edge_refinement_px)
+    if edge_refinement_reference_shape is not None:
+        reference_minimum = max(min(int(edge_refinement_reference_shape[0]), int(edge_refinement_reference_shape[1])), 1)
+        current_minimum = max(min(mask.shape), 1)
+        effective_edge_px = int(round(requested_edge_px * current_minimum / reference_minimum))
+    else:
+        effective_edge_px = int(round(requested_edge_px))
+    mask = _refine_mask_edges(mask, effective_edge_px)
     initial_count = int(mask.sum())
     mask, edit_report = apply_solid_mask_edits(mask, edits)
     report = {
@@ -386,6 +449,10 @@ def draft_solid_mask(
         "alpha_informative": informative_alpha,
         "background_sample_count": len(sample_points),
         "background_tolerance": tolerance,
+        "background_strength": None if background_strength is None else float(np.clip(background_strength, 0.0, 100.0)),
+        "auto_solid_pixel_count": int(auto_mask.sum()),
+        "edge_refinement_px": requested_edge_px,
+        "edge_refinement_effective_px": effective_edge_px,
         "initial_solid_pixel_count": initial_count,
         "final_solid_pixel_count": int(mask.sum()),
         "solid_fraction": float(mask.mean()) if mask.size else 0.0,
@@ -599,6 +666,42 @@ def _height_preview(height: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return np.round(values * 255.0).astype(np.uint8)
 
 
+def export_grayscale_heightmaps(
+    height_master: np.ndarray,
+    solid_mask: np.ndarray,
+    output_dir: str | Path,
+    *,
+    include_tiff: bool = True,
+) -> dict[str, str]:
+    """Export the approved grayscale master and its 8-bit preview.
+
+    The helper is intentionally independent from mesh generation so a user can
+    obtain the height artifacts immediately after generation or confirmation.
+    The 16-bit PNG is the formal master, the 8-bit PNG is display-oriented,
+    and the optional float TIFF preserves the normalized 32-bit values.
+    """
+    height = np.asarray(height_master, dtype=np.float32)
+    mask = np.asarray(solid_mask, dtype=bool)
+    if height.ndim != 2 or mask.ndim != 2 or height.shape != mask.shape:
+        raise ValueError("height_master and solid_mask must be matching 2D arrays")
+    if not np.isfinite(height).all():
+        raise ValueError("height_master contains non-finite values")
+    height = np.where(mask, np.clip(height, 0.0, 1.0), 0.0).astype(np.float32)
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    paths: dict[str, str] = {
+        "height_master_16bit": str(output / "height_master_16bit.png"),
+        "height_master_preview": str(output / "height_master_preview.png"),
+    }
+    if include_tiff:
+        paths["height_master_32bit"] = str(output / "height_master_32bit.tiff")
+    Image.fromarray(np.round(height * 65535.0).astype(np.uint16)).save(paths["height_master_16bit"])
+    Image.fromarray(_height_preview(height, mask), mode="L").save(paths["height_master_preview"])
+    if include_tiff:
+        Image.fromarray(height, mode="F").save(paths["height_master_32bit"])
+    return paths
+
+
 def _shaded_preview(height: np.ndarray, mask: np.ndarray) -> np.ndarray:
     values = np.asarray(height, dtype=np.float32)
     if min(values.shape) < 2:
@@ -637,6 +740,7 @@ def export_workflow_artifacts(
     source_parameters: dict | None = None,
     solid_edits=(),
     height_edits=(),
+    canvas_state: dict | None = None,
 ) -> WorkflowArtifacts:
     """Write the canonical source/mask/height/project artifact set atomically."""
     data = source if isinstance(source, SourceImageData) else load_source_image(source)
@@ -671,7 +775,8 @@ def export_workflow_artifacts(
     review_required = not (bool(solid_mask_confirmed) and bool(height_master_confirmed))
     file_hashes = {name: sha256_file(path) for name, path in paths.items() if name not in {"project", "build_report"}}
     project = {
-        "file_version": 1,
+        "file_version": 2,
+        "editor_schema_version": 2,
         "workflow": "deterministic_grayscale_relief",
         "source_role": "reference_only_after_approval",
         "source_path": data.source_path,
@@ -687,6 +792,7 @@ def export_workflow_artifacts(
         "height_master_report": dict(height_report or {}),
         "solid_mask_edits": list(solid_edits or ()),
         "height_edits": list(height_edits or ()),
+        "canvas_state": dict(canvas_state or {}),
         "height_operation_order": list(HEIGHT_OPERATION_ORDER),
         "mesh_input_policy": ["approved solid_mask", "approved height_master", "physical dimensions", "mesh sampling settings"],
         "mesh_forbidden_inputs": ["source image inference", "semantic classification", "background detection", "automatic line interpretation"],

@@ -156,7 +156,7 @@ def _mesh_digest(vertices: np.ndarray, faces: np.ndarray, settings: dict) -> str
     stable_faces = np.asarray(faces, dtype="<i8")
     digest.update(stable_vertices.tobytes(order="C"))
     digest.update(stable_faces.tobytes(order="C"))
-    digest.update(json.dumps(settings, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    digest.update(json.dumps(settings, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
     return digest.hexdigest()
 
 
