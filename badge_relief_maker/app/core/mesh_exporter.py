@@ -272,7 +272,7 @@ def _pad_bytes(data, pad_byte):
 
 
 def _write_glb(path, document, binary_blob=b""):
-    json_chunk = json.dumps(document, separators=(",", ":")).encode("utf-8")
+    json_chunk = json.dumps(document, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     json_chunk = _pad_bytes(json_chunk, b" ")
     chunks = [(0x4E4F534A, json_chunk)]
     if binary_blob:

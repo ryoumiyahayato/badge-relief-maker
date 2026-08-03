@@ -26,8 +26,10 @@ def run_gui(*, smoke_seconds: float | None = None) -> int:
         return 2
 
     from .ui.deterministic_studio import MainWindow
+    from .ui.qt_text import install_readable_ui_font
 
     app = QApplication.instance() or QApplication(sys.argv[:1])
+    install_readable_ui_font(app)
     window = MainWindow()
     window.show()
     if smoke_seconds is not None:

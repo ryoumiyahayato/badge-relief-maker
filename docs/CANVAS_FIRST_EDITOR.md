@@ -9,28 +9,32 @@ canvas. The workflow is:
    background removal is an editable first draft: `去背景强度` is 0--100 and
    `边缘修正` is -20--20 px. Use `取背景色` for a sampled background and
    `重新计算` after changing a parameter.
-3. Edit and confirm the region. The left rail provides `移动`, `添加区域`,
-   `擦除区域`, `填充区域`, rectangle, and polygon tools. A drag is one
-   normalized `stroke` record and one undo step.
-4. In **高度**, choose the gray interpretation and edit the approved region.
-   The brush slider and integer box use screen pixels (2--300 px, default
-   24 px). The brush keeps its screen diameter while zooming, so at 800% the
-   image-space radius is approximately one eighth of the 100% radius.
+3. Edit and confirm the region. The left rail provides `添加区域`, `擦除区域`,
+   `填充区域`, rectangle, and polygon tools. Right-button drag is the only
+   canvas pan gesture; left-button drag always belongs to the selected tool.
+   A completed operation is one normalized edit record and one undo step.
+4. In **高度**, click `生成高度图`, choose the gray interpretation, and edit
+   the approved region. The canvas defaults to a true black-to-white grayscale
+   layer. Brush size is read-only in the status bar and changes only with
+   Shift + mouse wheel (2--300 px, default 24 px). The brush keeps its screen
+   diameter while zooming, so at 800% the image-space radius is approximately
+   one eighth of the 100% radius. The generated master and preview can be
+   exported before model generation.
 5. In **模型**, set physical parameters, choose `快速`/`标准`/`精细`, and
    generate OBJ, STL, or GLB in the background.
 
 ## Pan and zoom
 
-All three pan entries use the same scene-coordinate implementation:
-
-- middle-button drag;
-- hold Space and drag with the left button;
-- choose `移动` and drag with the left button.
+The canvas has one explicit scene-coordinate pan implementation: hold the
+right mouse button and drag. `QGraphicsView` is configured with `NoDrag` and
+`NoContextMenu`; right-button events are accepted by the editor, so pan never
+creates a stroke or an undo record. Middle-button drag, Space + left drag, and
+the old `移动` tool are not supported.
 
 `_begin_pan`, `_update_pan`, and `_end_pan` track the previous viewport point,
 convert both points with the view transform, and move the scene center by the
-scene-coordinate delta. Pan never creates a stroke or undo record and is
-cancelled on tool/mode changes, focus loss, Escape, and key release.
+scene-coordinate delta. Pan is cancelled on tool/mode changes, focus loss,
+Escape, and right-button release.
 
 The displayed zoom percentage comes from the actual QGraphicsView transform.
 The wheel zoom keeps the scene point under the cursor when that point can be
@@ -75,8 +79,8 @@ confirmation. The bottom task bar reports progress, cancellation and full
 error text while zoom, pan and window movement remain available.
 
 The default UI shows `区域`, `高度`, `模型`, `确认区域`, `确认高度`,
-`生成模型`, `去除背景`, `去背景强度`, `画笔大小`, and `模型精度`; advanced
-height normalization controls start collapsed. Internal artifact names such as
+`生成模型`, `生成高度图`, `导出灰度图`, `去除背景`, `去背景强度`, and
+`模型精度`; advanced height normalization controls start collapsed. Internal artifact names such as
 `solid_mask` and `height_master` remain in project files and logs only.
 
 For local acceptance, record import, preview, stroke p95, formal replay, mesh

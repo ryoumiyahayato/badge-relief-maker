@@ -21,7 +21,6 @@ class EditorMode(str, Enum):
 
 
 class CanvasTool(str, Enum):
-    PAN = "pan"
     BACKGROUND_SAMPLE = "background_sample"
     BRUSH_ADD = "brush_add"
     BRUSH_ERASE = "brush_erase"

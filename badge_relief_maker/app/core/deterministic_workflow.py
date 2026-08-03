@@ -666,6 +666,42 @@ def _height_preview(height: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return np.round(values * 255.0).astype(np.uint8)
 
 
+def export_grayscale_heightmaps(
+    height_master: np.ndarray,
+    solid_mask: np.ndarray,
+    output_dir: str | Path,
+    *,
+    include_tiff: bool = True,
+) -> dict[str, str]:
+    """Export the approved grayscale master and its 8-bit preview.
+
+    The helper is intentionally independent from mesh generation so a user can
+    obtain the height artifacts immediately after generation or confirmation.
+    The 16-bit PNG is the formal master, the 8-bit PNG is display-oriented,
+    and the optional float TIFF preserves the normalized 32-bit values.
+    """
+    height = np.asarray(height_master, dtype=np.float32)
+    mask = np.asarray(solid_mask, dtype=bool)
+    if height.ndim != 2 or mask.ndim != 2 or height.shape != mask.shape:
+        raise ValueError("height_master and solid_mask must be matching 2D arrays")
+    if not np.isfinite(height).all():
+        raise ValueError("height_master contains non-finite values")
+    height = np.where(mask, np.clip(height, 0.0, 1.0), 0.0).astype(np.float32)
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    paths: dict[str, str] = {
+        "height_master_16bit": str(output / "height_master_16bit.png"),
+        "height_master_preview": str(output / "height_master_preview.png"),
+    }
+    if include_tiff:
+        paths["height_master_32bit"] = str(output / "height_master_32bit.tiff")
+    Image.fromarray(np.round(height * 65535.0).astype(np.uint16)).save(paths["height_master_16bit"])
+    Image.fromarray(_height_preview(height, mask), mode="L").save(paths["height_master_preview"])
+    if include_tiff:
+        Image.fromarray(height, mode="F").save(paths["height_master_32bit"])
+    return paths
+
+
 def _shaded_preview(height: np.ndarray, mask: np.ndarray) -> np.ndarray:
     values = np.asarray(height, dtype=np.float32)
     if min(values.shape) < 2:

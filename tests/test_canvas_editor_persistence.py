@@ -28,6 +28,7 @@ def test_stroke_records_approval_state_and_formal_artifacts_survive_reopen(tmp_p
     solid_record = list(window.solid_edits)
     assert solid_record[0]["shape"] == "stroke"
     assert window.confirm_solid()
+    window._compute_height_preview_sync()
     window.height_mode_combo.setCurrentIndex(4)
     window.fixed_height_spin.setValue(0.65)
     window.set_tool("height_set")

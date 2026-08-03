@@ -33,6 +33,7 @@ def test_default_studio_constructs_with_four_previews_and_visible_build_controls
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication, QScrollArea
+    from PySide6.QtTest import QTest
 
     from badge_relief_maker.app.ui.deterministic_studio import MainWindow
 
@@ -54,7 +55,7 @@ def test_default_studio_constructs_with_four_previews_and_visible_build_controls
         assert window.confirm_solid_button.isVisible()
         assert not window.confirm_height_button.isVisible()
         assert not window.build_button.isVisible()
-        assert window.log_box.isVisible()
+        assert not window.log_box.isVisible()
         assert window.confirm_solid_button.geometry().height() > 0
         assert window.confirm_solid_button.geometry().height() > 0
         assert window.log_box.geometry().height() > 0
@@ -71,6 +72,7 @@ def test_default_studio_persists_confirmed_truth_and_mesh_controls(tmp_path):
     pytest.importorskip("PySide6")
     import numpy as np
     from PIL import Image
+    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
 
     from badge_relief_maker.app.ui.deterministic_studio import MainWindow
@@ -84,6 +86,12 @@ def test_default_studio_persists_confirmed_truth_and_mesh_controls(tmp_path):
     window.load_image(image_path)
     window.solid_mode_combo.setCurrentText("保留整张图")
     window.confirm_solid()
+    window.refresh_height()
+    for _ in range(100):
+        app.processEvents()
+        QTest.qWait(5)
+        if window.height_draft is not None:
+            break
     window.height_mode_combo.setCurrentText("等高")
     window.fixed_height_spin.setValue(0.65)
     window.width_spin.setValue(123.0)

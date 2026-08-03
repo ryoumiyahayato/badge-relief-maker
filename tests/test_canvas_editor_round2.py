@@ -7,7 +7,8 @@ from PIL import Image
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -50,33 +51,44 @@ def test_background_strength_maps_to_tolerance_and_edge_refinement_is_directiona
     assert expanded.report["edge_refinement_effective_px"] == 2
 
 
-@pytest.mark.parametrize("entry", ("middle", "space", "tool"))
-def test_all_pan_entries_move_by_scene_delta_without_emitting_strokes(entry):
+def test_right_button_is_the_only_pan_entry_and_never_emits_strokes():
     app, canvas = _canvas()
     finished = []
     canvas.stroke_finished.connect(finished.append)
-    if entry == "tool":
-        canvas.set_tool("pan")
     center = canvas.viewport().rect().center()
     before = canvas.viewport_to_image(center)
-    if entry == "space":
-        QTest.keyPress(canvas, Qt.Key.Key_Space)
-    button = Qt.MouseButton.MiddleButton if entry == "middle" else Qt.MouseButton.LeftButton
-    QTest.mousePress(canvas.viewport(), button, pos=center)
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.RightButton, pos=center)
     QTest.mouseMove(canvas.viewport(), center - QPoint(40, 0))
-    QTest.mouseRelease(canvas.viewport(), button, pos=center - QPoint(40, 0))
-    if entry == "space":
-        QTest.keyRelease(canvas, Qt.Key.Key_Space)
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.RightButton, pos=center - QPoint(40, 0))
     app.processEvents()
     after = canvas.viewport_to_image(center)
     assert after[0] > before[0]
     assert canvas._panning is False
     assert finished == []
+    assert canvas.contextMenuPolicy() == Qt.ContextMenuPolicy.NoContextMenu
+
+    before = canvas.viewport_to_image(center)
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.MiddleButton, pos=center)
+    QTest.mouseMove(canvas.viewport(), center - QPoint(40, 0))
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.MiddleButton, pos=center - QPoint(40, 0))
+    app.processEvents()
+    assert canvas.viewport_to_image(center) == pytest.approx(before)
+    assert finished == []
+
+    before = canvas.viewport_to_image(center)
+    QTest.keyPress(canvas, Qt.Key.Key_Space)
+    QTest.mousePress(canvas.viewport(), Qt.MouseButton.LeftButton, pos=center)
+    QTest.mouseMove(canvas.viewport(), center - QPoint(40, 0))
+    QTest.mouseRelease(canvas.viewport(), Qt.MouseButton.LeftButton, pos=center - QPoint(40, 0))
+    QTest.keyRelease(canvas, Qt.Key.Key_Space)
+    app.processEvents()
+    assert canvas.viewport_to_image(center) == pytest.approx(before)
+    assert len(finished) == 1
     canvas.close()
     app.processEvents()
 
 
-def test_screen_brush_radius_scales_with_zoom_and_size_controls_are_immediate():
+def test_screen_brush_radius_scales_with_zoom_and_shift_wheel_is_the_only_key_control():
     app, canvas = _canvas()
     canvas.set_brush_size_px(24)
     canvas.set_zoom(1.0)
@@ -93,6 +105,38 @@ def test_screen_brush_radius_scales_with_zoom_and_size_controls_are_immediate():
     app.processEvents()
     assert len(finished) == 1
     assert canvas.last_stroke_radius_normalized == pytest.approx(radius_800, rel=1e-6)
+
+    point = canvas.viewport().rect().center()
+    old_zoom = canvas.zoom
+    old_size = canvas.brush_size_px
+    shift_event = QWheelEvent(
+        QPointF(point),
+        QPointF(canvas.mapToGlobal(point)),
+        QPoint(0, 120),
+        QPoint(0, 120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.ShiftModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(canvas.viewport(), shift_event)
+    app.processEvents()
+    assert canvas.brush_size_px > old_size
+    assert canvas.zoom == pytest.approx(old_zoom)
+    plain_event = QWheelEvent(
+        QPointF(point),
+        QPointF(canvas.mapToGlobal(point)),
+        QPoint(0, 120),
+        QPoint(0, 120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(canvas.viewport(), plain_event)
+    app.processEvents()
+    assert canvas.brush_size_px > old_size
+    assert canvas.zoom > old_zoom
     canvas.close()
     app.processEvents()
 
@@ -108,18 +152,27 @@ def test_default_labels_use_direct_actions_and_advanced_height_controls_start_co
     assert window.confirm_height_button.text() == "确认高度"
     assert window.build_button.text() == "生成模型"
     assert window.controls.advanced_group.isChecked() is False
-    assert window.controls.background_strength_spin.minimum() == 0
-    assert window.controls.background_strength_spin.maximum() == 100
+    assert window.controls.background_strength_value_label.text() == "8"
+    assert window.controls.background_strength_value_label.isEnabled()
     assert window.controls.edge_refinement_spin.minimum() == -20
     assert window.controls.edge_refinement_spin.maximum() == 20
-    window.controls.solid_brush_size_slider.setValue(64)
-    app.processEvents()
-    assert window.session.solid_brush_size_px == 64
-    assert window.canvas.brush_size_px == 64
+    assert not hasattr(window.controls, "solid_brush_size_slider")
+    assert not hasattr(window.controls, "height_brush_size_slider")
     window.canvas.setFocus()
-    QTest.keyPress(window.canvas, Qt.Key.Key_BracketRight)
+    point = window.canvas.viewport().rect().center()
+    event = QWheelEvent(
+        QPointF(point),
+        QPointF(window.canvas.mapToGlobal(point)),
+        QPoint(0, 120),
+        QPoint(0, 120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.ShiftModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(window.canvas.viewport(), event)
     app.processEvents()
-    assert window.session.solid_brush_size_px == 69
-    assert window.controls.solid_brush_size_spin.value() == 69
+    assert window.session.solid_brush_size_px == 29
+    assert window.controls.brush_size_status_label.text() == "画笔：29 px"
     window.close()
     app.processEvents()

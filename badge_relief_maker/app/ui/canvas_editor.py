@@ -8,8 +8,6 @@ finer image-space detail.
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 
 try:
@@ -86,6 +84,8 @@ if Signal is not None:
         stroke_started = Signal(object)
         stroke_points_changed = Signal(object)
         stroke_finished = Signal(object)
+        polygon_points_changed = Signal(object)
+        polygon_finished = Signal(object)
         normalized_clicked = Signal(object)
         zoom_changed = Signal(float)
         brush_size_changed = Signal(int)
@@ -110,21 +110,26 @@ if Signal is not None:
             self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
             self.setBackgroundBrush(QColor("#171b22"))
             self.setFrameShape(QFrame.Shape.NoFrame)
+            self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
             self.image_width = 1
             self.image_height = 1
             self._zoom = 1.0  # actual scene-to-viewport scale, not a mode flag
             self._fit_pending = False
-            self._space_pressed = False
             self._panning = False
             self._painting = False
             self._last_viewport: QPoint | None = None
             self._current_stroke: list[list[float]] = []
+            self._polygon_points: list[list[float]] = []
+            self._polygon_item = None
+            self._polygon_vertex_items = []
             self._stroke_radius_normalized: float | None = None
             self._last_stroke_radius_normalized: float | None = None
             self._brush_size_px = 24
             self.active_tool = "brush_add"
             self.overlay_opacity = 0.5
+            self.height_display_mode = "grayscale"
+            self._editor_mode = "solid"
 
             self._items: dict[str, QGraphicsPixmapItem] = {}
             self.layer_order = (
@@ -269,10 +274,13 @@ if Signal is not None:
                 self._clear_layer("height")
             else:
                 values = np.asarray(height, dtype=np.float32)
-                rgba = np.zeros((*values.shape, 4), dtype=np.uint8)
-                rgba[..., :3] = np.asarray([64, 176, 255], dtype=np.uint8)
-                rgba[..., 3] = np.round(np.clip(values, 0.0, 1.0) * 190.0).astype(np.uint8)
-                self._set_layer("height", rgba, opacity=self.overlay_opacity, z=3)
+                # Height mode is a true grayscale view.  An opaque
+                # single-channel layer keeps black/white meanings stable
+                # across zoom and prevents the old blue alpha overlay from
+                # being mistaken for a height value.
+                grayscale = np.round(np.clip(values, 0.0, 1.0) * 255.0).astype(np.uint8)
+                self._set_layer("height", grayscale, opacity=1.0, z=3)
+                self._apply_display_visibility()
 
         def set_mesh_preview(self, preview):
             if preview is None:
@@ -287,15 +295,33 @@ if Signal is not None:
 
         def set_overlay_opacity(self, value: float):
             self.overlay_opacity = float(np.clip(float(value), 0.0, 1.0))
-            for name in ("solid", "height"):
-                item = self._items.get(name)
-                if item is not None:
-                    item.setOpacity(self.overlay_opacity)
+            solid_item = self._items.get("solid")
+            if solid_item is not None:
+                solid_item.setOpacity(self.overlay_opacity)
+            height_item = self._items.get("height")
+            if height_item is not None and self.height_display_mode == "overlay":
+                height_item.setOpacity(self.overlay_opacity)
 
         def set_tool(self, tool):
             self.cancel_interaction()
             self.active_tool = str(getattr(tool, "value", tool))
             self._refresh_cursor()
+
+        @property
+        def current_polygon(self) -> list[list[float]]:
+            return [list(point) for point in self._polygon_points]
+
+        def finish_polygon(self):
+            """Finish the current polygon draft and emit its vertices."""
+            if self.active_tool != "polygon" or len(self._polygon_points) < 3:
+                return []
+            points = self.current_polygon
+            self._clear_polygon()
+            self.polygon_finished.emit(points)
+            return points
+
+        def cancel_polygon(self):
+            self._clear_polygon()
 
         # ------------------------------------------------------------- layers
         def _set_layer(self, name: str, array, *, opacity: float, z: float):
@@ -437,11 +463,36 @@ if Signal is not None:
             self._set_absolute_zoom(self.zoom * float(factor), anchor=anchor)
 
         # ------------------------------------------------------------ display
+        def set_height_display_mode(self, mode: str):
+            selected = str(mode).lower()
+            if selected not in {"source", "grayscale", "overlay"}:
+                selected = "grayscale"
+            self.height_display_mode = selected
+            self._apply_display_visibility()
+
+        def _apply_display_visibility(self):
+            mode = getattr(self, "_editor_mode", "solid")
+            display = getattr(self, "height_display_mode", "grayscale")
+            if mode == "height":
+                self.set_layer_visibility("source", display in {"source", "overlay"})
+                self.set_layer_visibility("solid", False)
+                self.set_layer_visibility("height", display in {"grayscale", "overlay"})
+                height_item = self._items.get("height")
+                if height_item is not None:
+                    height_item.setOpacity(self.overlay_opacity if display == "overlay" else 1.0)
+            elif mode == "mesh":
+                self.set_layer_visibility("source", False)
+                self.set_layer_visibility("solid", False)
+                self.set_layer_visibility("height", False)
+            else:
+                self.set_layer_visibility("source", True)
+                self.set_layer_visibility("solid", True)
+                self.set_layer_visibility("height", False)
+
         def set_mode_visibility(self, mode: str):
             mode = str(mode).lower()
-            self.set_layer_visibility("source", mode != "mesh")
-            self.set_layer_visibility("solid", mode in {"solid", "height", "mesh"})
-            self.set_layer_visibility("height", mode in {"height", "mesh"})
+            self._editor_mode = mode
+            self._apply_display_visibility()
             self.set_layer_visibility("mesh", mode == "mesh")
             self._refresh_cursor()
 
@@ -478,7 +529,14 @@ if Signal is not None:
             return QColor("#ffe08a")
 
         def _brush_tool_active(self) -> bool:
-            return self.active_tool not in {"pan", "background_sample"}
+            return self.active_tool in {
+                "brush_add",
+                "brush_erase",
+                "height_set",
+                "height_raise",
+                "height_lower",
+                "height_smooth",
+            }
 
         def _refresh_cursor(self, viewport_point=None):
             if viewport_point is None:
@@ -538,6 +596,42 @@ if Signal is not None:
             self._stroke_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self.scene.addItem(self._stroke_item)
 
+        def _update_polygon_preview(self):
+            if self._polygon_item is not None:
+                self.scene.removeItem(self._polygon_item)
+                self._polygon_item = None
+            for item in self._polygon_vertex_items:
+                self.scene.removeItem(item)
+            self._polygon_vertex_items = []
+            if not self._polygon_points:
+                return
+            path = QPainterPath()
+            first = self.normalized_to_image(self._polygon_points[0])
+            path.moveTo(QPointF(*first))
+            for point in self._polygon_points[1:]:
+                image = self.normalized_to_image(point)
+                path.lineTo(QPointF(*image))
+            self._polygon_item = QGraphicsPathItem(path)
+            self._polygon_item.setPen(QPen(QColor("#ffe08a"), max(1.0, 1.5 / self.zoom)))
+            self._polygon_item.setZValue(16)
+            self._polygon_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self.scene.addItem(self._polygon_item)
+            for point in self._polygon_points:
+                image = self.normalized_to_image(point)
+                radius = max(2.5 / self.zoom, 1.0)
+                vertex = QGraphicsEllipseItem(image[0] - radius, image[1] - radius, radius * 2.0, radius * 2.0)
+                vertex.setPen(QPen(QColor("#fff2a8"), max(0.75, 1.0 / self.zoom)))
+                vertex.setBrush(QColor("#ffcf5c"))
+                vertex.setZValue(17)
+                vertex.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+                self.scene.addItem(vertex)
+                self._polygon_vertex_items.append(vertex)
+
+        def _clear_polygon(self):
+            self._polygon_points.clear()
+            self._update_polygon_preview()
+            self.polygon_points_changed.emit([])
+
         # -------------------------------------------------------------- pan API
         def _begin_pan(self, viewport_position):
             if isinstance(viewport_position, QPointF):
@@ -591,6 +685,7 @@ if Signal is not None:
         def cancel_interaction(self):
             self._end_pan()
             self._cancel_paint()
+            self._clear_polygon()
 
         # -------------------------------------------------------------- events
         def wheelEvent(self, event):
@@ -608,20 +703,7 @@ if Signal is not None:
 
         def keyPressEvent(self, event):
             if event.key() == Qt.Key.Key_Escape:
-                self._space_pressed = False
                 self.cancel_interaction()
-                event.accept()
-                return
-            if event.key() == Qt.Key.Key_Space:
-                self._space_pressed = True
-                event.accept()
-                return
-            if event.key() == Qt.Key.Key_BracketLeft:
-                self.adjust_brush_size(-1)
-                event.accept()
-                return
-            if event.key() == Qt.Key.Key_BracketRight:
-                self.adjust_brush_size(1)
                 event.accept()
                 return
             if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
@@ -635,27 +717,24 @@ if Signal is not None:
                     return
             super().keyPressEvent(event)
 
-        def keyReleaseEvent(self, event):
-            if event.key() == Qt.Key.Key_Space:
-                self._space_pressed = False
-                if self._panning:
-                    self._end_pan()
-                event.accept()
-                return
-            super().keyReleaseEvent(event)
-
         def mousePressEvent(self, event):
             self.setFocus()
             point = event.position().toPoint()
             self._last_viewport = QPoint(point)
-            if event.button() == Qt.MouseButton.MiddleButton or self.active_tool == "pan" or (
-                event.button() == Qt.MouseButton.LeftButton and self._space_pressed
-            ):
+            if event.button() == Qt.MouseButton.RightButton:
                 self._begin_pan(point)
                 event.accept()
                 return
             if event.button() != Qt.MouseButton.LeftButton:
-                super().mousePressEvent(event)
+                event.accept()
+                return
+            if self.active_tool == "polygon":
+                normalized = self.image_to_normalized(self.viewport_to_image(point))
+                if normalized is not None:
+                    self._polygon_points.append(list(normalized))
+                    self.polygon_points_changed.emit(self.current_polygon)
+                    self._update_polygon_preview()
+                event.accept()
                 return
             normalized = self.image_to_normalized(self.viewport_to_image(point))
             if normalized is None:
@@ -677,6 +756,9 @@ if Signal is not None:
                 self._update_pan(current)
                 event.accept()
                 return
+            if event.buttons() & Qt.MouseButton.RightButton:
+                event.accept()
+                return
             self._last_viewport = QPoint(current)
             if self._painting:
                 normalized = self.image_to_normalized(self.viewport_to_image(current))
@@ -692,8 +774,11 @@ if Signal is not None:
             super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event):
-            if self._panning:
+            if event.button() == Qt.MouseButton.RightButton:
                 self._end_pan()
+                event.accept()
+                return
+            if self._panning:
                 event.accept()
                 return
             if self._painting and event.button() == Qt.MouseButton.LeftButton:
@@ -715,7 +800,17 @@ if Signal is not None:
                 self._refresh_cursor(current)
                 event.accept()
                 return
-            super().mouseReleaseEvent(event)
+            event.accept()
+
+        def mouseDoubleClickEvent(self, event):
+            if event.button() == Qt.MouseButton.RightButton:
+                event.accept()
+                return
+            if event.button() == Qt.MouseButton.LeftButton and self.active_tool == "polygon":
+                self.finish_polygon()
+                event.accept()
+                return
+            event.accept()
 
         def leaveEvent(self, event):
             if not self._panning:
@@ -735,7 +830,6 @@ if Signal is not None:
                 QTimer.singleShot(0, self.fit_to_window)
 
         def focusOutEvent(self, event):
-            self._space_pressed = False
             self.cancel_interaction()
             super().focusOutEvent(event)
 

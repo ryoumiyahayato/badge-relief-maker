@@ -39,13 +39,11 @@ if Signal is not None:
         action_requested = Signal(str)
         overlay_opacity_changed = Signal(float)
         layer_visibility_requested = Signal(str, bool)
-        brush_size_requested = Signal(str, int)
 
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setObjectName("editorControls")
             self.tool_buttons: dict[str, QToolButton] = {}
-            self._brush_widgets: dict[str, tuple[QSlider, QSpinBox]] = {}
             self._build()
 
         def _build(self):
@@ -122,11 +120,11 @@ if Signal is not None:
             body.setContentsMargins(0, 0, 0, 0)
             body.setSpacing(6)
             self.tool_bar = QWidget()
+            self.tool_bar.setMinimumWidth(112)
             tools = QVBoxLayout(self.tool_bar)
             tools.setContentsMargins(5, 8, 5, 8)
             tools.setSpacing(3)
             tool_labels = {
-                CanvasTool.PAN.value: "移动",
                 CanvasTool.BACKGROUND_SAMPLE.value: "取背景色",
                 CanvasTool.BRUSH_ADD.value: "添加区域",
                 CanvasTool.BRUSH_ERASE.value: "擦除区域",
@@ -191,6 +189,7 @@ if Signal is not None:
             spin.setDecimals(int(decimals))
             if suffix:
                 spin.setSuffix(suffix)
+            spin.setMinimumWidth(96)
             return spin
 
         def _page(self, title: str):
@@ -206,54 +205,12 @@ if Signal is not None:
             layout.addLayout(form)
             return page, layout, form
 
-        def _build_brush_controls(self, mode: str, form: QFormLayout):
-            slider = QSlider(Qt.Orientation.Horizontal)
-            slider.setObjectName(f"{mode}BrushSizeSlider")
-            slider.setRange(2, 300)
-            slider.setValue(24)
-            spin = QSpinBox()
-            spin.setObjectName(f"{mode}BrushSizeSpin")
-            spin.setRange(2, 300)
-            spin.setValue(24)
-            spin.setSuffix(" px")
-            row = QWidget()
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.addWidget(slider, 1)
-            row_layout.addWidget(spin)
-            self._brush_widgets[mode] = (slider, spin)
-
-            def from_slider(value, *, selected=mode, target=spin):
-                target.blockSignals(True)
-                target.setValue(int(value))
-                target.blockSignals(False)
-                self.brush_size_requested.emit(selected, int(value))
-
-            def from_spin(value, *, selected=mode, target=slider):
-                target.blockSignals(True)
-                target.setValue(int(value))
-                target.blockSignals(False)
-                self.brush_size_requested.emit(selected, int(value))
-
-            slider.valueChanged.connect(from_slider)
-            spin.valueChanged.connect(from_spin)
-            form.addRow("画笔大小", row)
-            return slider, spin
-
-        def set_brush_size(self, mode: str, value: int):
-            widgets = self._brush_widgets.get(str(mode))
-            if widgets is None:
-                return
-            slider, spin = widgets
-            slider.blockSignals(True)
-            spin.blockSignals(True)
-            slider.setValue(int(value))
-            spin.setValue(int(value))
-            slider.blockSignals(False)
-            spin.blockSignals(False)
-
         def _build_solid_page(self):
-            page, layout, form = self._page("区域")
+            page, layout, _ = self._page("区域")
+            self.solid_start_group = QGroupBox("起始区域")
+            start_layout = QVBoxLayout(self.solid_start_group)
+            start_form = QFormLayout()
+            start_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
             self.solid_mode_combo = QComboBox()
             self.solid_mode_combo.addItems(["保留整张图", "去除背景", "手动编辑"])
             self.solid_mode_combo.setCurrentText("去除背景")
@@ -262,31 +219,43 @@ if Signal is not None:
             self.background_strength_slider = QSlider(Qt.Orientation.Horizontal)
             self.background_strength_slider.setRange(0, 100)
             self.background_strength_slider.setValue(8)
-            self.background_strength_spin = QSpinBox()
-            self.background_strength_spin.setRange(0, 100)
-            self.background_strength_spin.setValue(8)
-            self.background_strength_spin.setSuffix(" / 100")
-            self.background_strength_slider.valueChanged.connect(self.background_strength_spin.setValue)
-            self.background_strength_spin.valueChanged.connect(self.background_strength_slider.setValue)
+            self.background_strength_value_label = QLabel("8")
+            self.background_strength_value_label.setMinimumWidth(36)
+            self.background_strength_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.background_strength_slider.valueChanged.connect(
+                lambda value: self.background_strength_value_label.setText(str(int(value)))
+            )
             strength_row = QWidget()
             strength_layout = QHBoxLayout(strength_row)
             strength_layout.setContentsMargins(0, 0, 0, 0)
             strength_layout.addWidget(self.background_strength_slider, 1)
-            strength_layout.addWidget(self.background_strength_spin)
-            # Compatibility alias; the visible control is intentionally 0--100.
-            self.background_tolerance_spin = self.background_strength_spin
-            self.edge_refinement_spin = QSpinBox()
-            self.edge_refinement_spin.setRange(-20, 20)
-            self.edge_refinement_spin.setValue(0)
-            self.edge_refinement_spin.setSuffix(" px")
-            self.solid_brush_size_slider, self.solid_brush_size_spin = self._build_brush_controls("solid", form)
-            self.solid_radius_spin = self.solid_brush_size_spin
-            form.insertRow(0, "保留区域", self.solid_mode_combo)
-            form.insertRow(1, "背景类型", self.explicit_background_combo)
-            form.insertRow(2, "去背景强度", strength_row)
-            form.insertRow(3, "边缘修正", self.edge_refinement_spin)
-            self.solid_amount_label = QLabel("在画布上拖动以添加或擦除区域")
-            form.addRow(self.solid_amount_label)
+            strength_layout.addWidget(self.background_strength_value_label)
+            strength_layout.addWidget(QLabel("/ 100"))
+            # Read-only label aliases make the numeric display explicit and
+            # keep old callers from accidentally treating it as an input.
+            self.background_strength_spin = self.background_strength_value_label
+            self.background_tolerance_spin = self.background_strength_value_label
+            self.edge_refinement_slider = QSlider(Qt.Orientation.Horizontal)
+            self.edge_refinement_slider.setRange(-20, 20)
+            self.edge_refinement_slider.setValue(0)
+            self.edge_refinement_value_label = QLabel("0")
+            self.edge_refinement_value_label.setMinimumWidth(36)
+            self.edge_refinement_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.edge_refinement_slider.valueChanged.connect(
+                lambda value: self.edge_refinement_value_label.setText(str(int(value)))
+            )
+            self.edge_refinement_spin = self.edge_refinement_slider
+            edge_row = QWidget()
+            edge_layout = QHBoxLayout(edge_row)
+            edge_layout.setContentsMargins(0, 0, 0, 0)
+            edge_layout.addWidget(self.edge_refinement_slider, 1)
+            edge_layout.addWidget(self.edge_refinement_value_label)
+            edge_layout.addWidget(QLabel("px"))
+            edge_layout.addStretch(1)
+            start_form.addRow("保留区域", self.solid_mode_combo)
+            start_form.addRow("背景类型", self.explicit_background_combo)
+            start_form.addRow("去背景强度", strength_row)
+            start_form.addRow("边缘修正", edge_row)
 
             self.remove_background_button = QPushButton("去除背景")
             self.remove_background_button.clicked.connect(lambda: self.action_requested.emit("remove_background"))
@@ -294,28 +263,62 @@ if Signal is not None:
             self.refresh_solid_button.clicked.connect(lambda: self.action_requested.emit("refresh_solid"))
             self.sample_background_button = QPushButton("取背景色")
             self.sample_background_button.clicked.connect(lambda: self.action_requested.emit("sample_background"))
+            start_layout.addLayout(start_form)
+            start_layout.addWidget(self.remove_background_button)
+            start_layout.addWidget(self.refresh_solid_button)
+            start_layout.addWidget(self.sample_background_button)
+            layout.addWidget(self.solid_start_group)
+
+            self.solid_manual_group = QGroupBox("手工修正")
+            manual_layout = QVBoxLayout(self.solid_manual_group)
+            self.solid_amount_label = QLabel("请先生成区域")
+            self.solid_amount_label.setWordWrap(True)
+            manual_layout.addWidget(self.solid_amount_label)
+            self.selection_operation_combo = QComboBox()
+            self.selection_operation_combo.addItems(["添加", "擦除"])
+            self.selection_operation_combo.setMinimumWidth(86)
+            selection_row = QHBoxLayout()
+            selection_row.addWidget(QLabel("选择操作"))
+            selection_row.addWidget(self.selection_operation_combo)
+            selection_row.addStretch(1)
+            manual_layout.addLayout(selection_row)
+            self.apply_selection_button = QPushButton("应用选择")
+            self.apply_selection_button.clicked.connect(lambda: self.action_requested.emit("apply_selection"))
+            manual_layout.addWidget(self.apply_selection_button)
             self.finish_polygon_button = QPushButton("完成多边形")
             self.finish_polygon_button.clicked.connect(lambda: self.action_requested.emit("finish_polygon"))
-            layout.addWidget(self.remove_background_button)
-            layout.addWidget(self.sample_background_button)
-            layout.addWidget(self.refresh_solid_button)
-            layout.addWidget(self.finish_polygon_button)
+            manual_layout.addWidget(self.finish_polygon_button)
             self.solid_confirm_state = QLabel("区域未确认")
-            layout.addWidget(self.solid_confirm_state)
+            manual_layout.addWidget(self.solid_confirm_state)
+            layout.addWidget(self.solid_manual_group)
             layout.addStretch(1)
             self.property_stack.addWidget(page)
 
         def _build_height_page(self):
-            page, layout, form = self._page("高度")
+            page, layout, _ = self._page("高度")
+            self.height_generate_group = QGroupBox("生成高度图")
+            generate_layout = QVBoxLayout(self.height_generate_group)
+            generate_form = QFormLayout()
+            generate_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
             self.height_mode_combo = QComboBox()
             self.height_mode_combo.addItems(["亮处更高", "暗处更高", "刻线", "凸线", "等高"])
             self.height_relief_spin = self._spin(0.01, 100.0, 3.0, 0.1, 2, " mm")
-            form.addRow("灰度方式", self.height_mode_combo)
-            form.addRow("浮雕高度", self.height_relief_spin)
-            self.height_brush_size_slider, self.height_brush_size_spin = self._build_brush_controls("height", form)
-            self.height_radius_spin = self.height_brush_size_spin
+            self.height_view_combo = QComboBox()
+            self.height_view_combo.addItems(["原图", "灰度图", "原图 + 灰度叠加"])
+            self.height_view_combo.setCurrentText("灰度图")
+            self.height_view_combo.setMinimumWidth(150)
+            generate_form.addRow("灰度方式", self.height_mode_combo)
+            generate_form.addRow("查看", self.height_view_combo)
+            generate_form.addRow("浮雕高度", self.height_relief_spin)
             self.height_amount_spin = self._spin(0.0, 1.0, 0.10, 0.01, 2)
-            form.addRow("画笔强度", self.height_amount_spin)
+            generate_form.addRow("抬高/降低幅度", self.height_amount_spin)
+            generate_layout.addLayout(generate_form)
+
+            self.generate_height_button = QPushButton("生成高度图")
+            self.generate_height_button.clicked.connect(lambda: self.action_requested.emit("generate_height"))
+            # Compatibility name for callers of the previous direct editor.
+            self.refresh_height_button = self.generate_height_button
+            generate_layout.addWidget(self.generate_height_button)
 
             self.advanced_group = QGroupBox("高级调整")
             self.advanced_group.setCheckable(True)
@@ -350,13 +353,21 @@ if Signal is not None:
             group_layout.addWidget(advanced_widget)
             self.advanced_group.toggled.connect(advanced_widget.setVisible)
             advanced_widget.setVisible(False)
-            layout.addWidget(self.advanced_group)
+            generate_layout.addWidget(self.advanced_group)
+            layout.addWidget(self.height_generate_group)
 
-            self.refresh_height_button = QPushButton("重新计算")
-            self.refresh_height_button.clicked.connect(lambda: self.action_requested.emit("refresh_height"))
+            self.height_edit_group = QGroupBox("修正高度")
+            edit_layout = QVBoxLayout(self.height_edit_group)
+            self.height_edit_hint = QLabel("请先生成高度图")
+            self.height_edit_hint.setWordWrap(True)
+            edit_layout.addWidget(self.height_edit_hint)
+            self.export_height_button = QPushButton("导出灰度图")
+            self.export_height_button.clicked.connect(lambda: self.action_requested.emit("export_height"))
+            edit_layout.addWidget(self.export_height_button)
+            layout.addWidget(self.height_edit_group)
+
             self.reset_height_button = QPushButton("恢复默认")
             self.reset_height_button.clicked.connect(lambda: self.action_requested.emit("reset_height"))
-            layout.addWidget(self.refresh_height_button)
             layout.addWidget(self.reset_height_button)
             self.height_confirm_state = QLabel("高度未确认")
             layout.addWidget(self.height_confirm_state)
@@ -364,7 +375,7 @@ if Signal is not None:
             self.property_stack.addWidget(page)
 
         def _build_mesh_page(self):
-            page, layout, form = self._page("模型设置")
+            page, layout, form = self._page("模型")
             self.width_spin = self._spin(1.0, 2000.0, 80.0, 1.0, 2, " mm")
             self.height_spin = self._spin(1.0, 2000.0, 80.0, 1.0, 2, " mm")
             self.base_spin = self._spin(0.0, 100.0, 2.0, 0.1, 2, " mm")
@@ -410,6 +421,7 @@ if Signal is not None:
             self.confirm_solid_button.setVisible(selected == EditorMode.SOLID)
             self.confirm_height_button.setVisible(selected == EditorMode.HEIGHT)
             self.build_button.setVisible(selected == EditorMode.MESH)
+            self.tool_bar.setVisible(selected != EditorMode.MESH)
 
         def set_approval_state(self, solid: bool, height: bool):
             self.solid_status_label.setText("区域：已确认" if solid else "区域：未确认")
@@ -421,11 +433,55 @@ if Signal is not None:
             self.confirm_solid_button.setEnabled(not solid)
             self.confirm_height_button.setEnabled(bool(solid and not height))
             self.build_button.setEnabled(bool(solid and height))
+            self.generate_height_button.setEnabled(bool(solid and not height))
+            self.height_mode_button.setToolTip("" if solid else "请先确认区域")
+            self.mesh_mode_button.setToolTip("" if solid and height else "请先确认高度")
+
+        def set_stage_content(self, mode: EditorMode | str, *, solid_exists: bool, height_exists: bool):
+            """Show only tools that belong to the current stage and state."""
+            selected = EditorMode(mode)
+            solid_tools = {
+                CanvasTool.BACKGROUND_SAMPLE.value,
+                CanvasTool.BRUSH_ADD.value,
+                CanvasTool.BRUSH_ERASE.value,
+                CanvasTool.FILL.value,
+                CanvasTool.RECTANGLE.value,
+                CanvasTool.POLYGON.value,
+            }
+            height_tools = {
+                CanvasTool.HEIGHT_SET.value,
+                CanvasTool.HEIGHT_RAISE.value,
+                CanvasTool.HEIGHT_LOWER.value,
+                CanvasTool.HEIGHT_SMOOTH.value,
+            }
+            visible_tools = solid_tools if selected == EditorMode.SOLID else height_tools if selected == EditorMode.HEIGHT else set()
+            for name, button in self.tool_buttons.items():
+                stage_ready = solid_exists if selected == EditorMode.SOLID else height_exists
+                button.setVisible(name in visible_tools and bool(stage_ready))
+                button.setEnabled(bool(stage_ready) if name in visible_tools else False)
+            if selected == EditorMode.SOLID:
+                self.solid_manual_group.setVisible(True)
+                self.solid_amount_label.setText("区域已生成，可选择添加、擦除、填充、矩形或多边形工具" if solid_exists else "请先生成区域")
+                self.apply_selection_button.setEnabled(bool(solid_exists))
+                self.finish_polygon_button.setEnabled(bool(solid_exists))
+            else:
+                self.solid_manual_group.setVisible(False)
+            if selected == EditorMode.HEIGHT:
+                self.height_edit_group.setVisible(True)
+                self.height_edit_hint.setText("高度图已生成，可在画布上修正" if height_exists else "请先生成高度图")
+                self.export_height_button.setEnabled(bool(height_exists))
+            else:
+                self.height_edit_group.setVisible(False)
 
         def set_tool_enabled(self, tool: CanvasTool | str, enabled: bool):
             button = self.tool_buttons.get(CanvasTool(tool).value)
             if button is not None:
                 button.setEnabled(bool(enabled))
+
+        def set_active_tool(self, tool: CanvasTool | str):
+            selected = CanvasTool(tool).value
+            for name, button in self.tool_buttons.items():
+                button.setChecked(name == selected)
 
         def set_tool_status(self, label: str):
             self.tool_status_label.setText(f"工具：{label}")
